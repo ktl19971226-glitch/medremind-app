@@ -9,10 +9,15 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: read
     
     steps:
-      - name: Checkout
-        run: git clone --depth 1 https://github.com/ktl19971226-glitch/medremind-app.git .
+      - name: Checkout (with auth for private repo)
+        run: |
+          git clone --depth 1 https://x-access-token:${GITHUB_TOKEN}@github.com/ktl19971226-glitch/medremind-app.git .
+          echo "✓ Clone OK"
+          ls -la
 
       - name: Setup
         run: |
@@ -20,8 +25,8 @@ jobs:
           node --version
           npm --version
           npm install
-          npx cap sync ios 2>&1
-  
+          npx cap sync ios
+
       - name: Signing
         run: |
           set -ex
@@ -52,19 +57,18 @@ jobs:
       - name: Export
         run: |
           set -ex
-          ls -la $GITHUB_WORKSPACE/build/
           xcodebuild -exportArchive \
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             -exportPath $GITHUB_WORKSPACE/build \
             -exportOptionsPlist exportOptions.plist
 
-      - name: Artifact
+      - name: Verify & Upload
         run: |
-          find build -name "*.ipa" -exec cp {} medremind.ipa \;
-          ls -lh medremind.ipa
-          
-      - name: Upload
-        uses: actions/upload-artifact@v4
+          set -ex
+          ls -lh build/*.ipa
+          cp build/*.ipa medremind.ipa
+        
+      - uses: actions/upload-artifact@v4
         with:
           name: medremind-ipa
           path: medremind.ipa
