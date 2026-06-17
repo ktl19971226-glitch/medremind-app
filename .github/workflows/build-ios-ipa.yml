@@ -8,29 +8,23 @@ jobs:
     runs-on: macos-latest
     
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      - name: Checkout code
+        run: |
+          git clone --depth 1 https://github.com/ktl19971226-glitch/medremind-app.git .
+          
+      - name: Setup Node.js 22
+        run: |
+          brew install node@22 2>/dev/null || true
+          node --version
+          npm --version
 
       - name: Install npm deps
         run: npm install
 
-      - name: Add iOS platform
-        run: npx cap add ios 2>&1
-
-      - name: Sync iOS
-        run: npx cap sync ios 2>&1
-
-      - name: List iOS project
+      - name: Setup iOS platform
         run: |
-          echo "=== ios/App ==="
-          ls -la ios/App/
-          echo "=== Schemes ==="
-          cd ios/App
-          xcodebuild -list -project App.xcodeproj 2>&1 | head -20
+          npx cap add ios 2>&1
+          npx cap sync ios 2>&1
 
       - name: Prepare signing
         run: |
@@ -55,7 +49,7 @@ jobs:
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=N7T77R4X9X \
-            -allowProvisioningUpdates 2>&1 | tail -40
+            -allowProvisioningUpdates 2>&1 | tail -50
 
       - name: Export IPA
         run: |
@@ -64,9 +58,16 @@ jobs:
             -exportPath $GITHUB_WORKSPACE/build \
             -exportOptionsPlist exportOptions.plist 2>&1
 
+      - name: Package IPA
+        run: |
+          ls -la $GITHUB_WORKSPACE/build/
+          find $GITHUB_WORKSPACE/build -name "*.ipa" -exec cp {} medremind.ipa \;
+          ls -la medremind.ipa 2>/dev/null || echo "No IPA found"
+          echo "IPA_PATH=$GITHUB_WORKSPACE/medremind.ipa" >> $GITHUB_ENV
+
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: medremind-ipa
-          path: $GITHUB_WORKSPACE/build/*.ipa
+          path: medremind.ipa
           retention-days: 30
