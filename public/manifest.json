@@ -1,0 +1,54 @@
+{
+  "name": "藥記得 - 智慧用藥提醒",
+  "short_name": "藥記得",
+  "description": "AI 藥袋辨識、用藥提醒、家人照護、健康紀錄與就診報告。",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#27AE60",
+  "theme_color": "#27AE60",
+  "orientation": "portrait-primary",
+  "categories": ["health", "medical", "productivity"],
+  "lang": "zh-TW",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "今日用藥",
+      "short_name": "用藥",
+      "description": "快速查看今日提醒",
+      "url": "/?shortcut=today",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "健康紀錄",
+      "short_name": "健康",
+      "description": "快速記錄血壓、血糖、體重",
+      "url": "/?shortcut=health",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "緊急卡",
+      "short_name": "緊急",
+      "description": "查看緊急用藥資訊",
+      "url": "/?shortcut=emergency",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

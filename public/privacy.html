@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>💊 藥記得 - 隱私權政策</title>
+  <style>
+    :root {
+      --green: #27AE60; --blue: #3498DB; --red: #E74C3C; --orange: #F39C12;
+      --bg: #f5f7fa; --card-bg: #ffffff; --text: #2c3e50; --text-light: #7f8c8d;
+      --border: #e0e6ed;
+    }
+    body.dark {
+      --bg: #1a1a2e; --card-bg: #16213e; --text: #e0e6ed; --text-light: #a0aab4; --border: #2a3a5e;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      background: var(--bg); color: var(--text); font-size: 18px; line-height: 1.6; min-height: 100vh;
+    }
+    .header {
+      background: var(--green); color: white; padding: 16px 20px; display: flex; align-items: center;
+      gap: 12px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 12px rgba(39,174,96,0.2);
+      font-size: 20px; font-weight: 600;
+    }
+    .header a { color: white; text-decoration: none; font-size: 24px; }
+    .container { max-width: 520px; margin: 0 auto; padding: 20px 16px 60px; }
+    .legal-content { font-size: 16px; line-height: 1.9; }
+    .legal-content h2 { font-size: 20px; margin: 32px 0 14px; color: var(--green); border-bottom: 2px solid #d4edda; padding-bottom: 8px; }
+    .legal-content h3 { font-size: 17px; margin: 20px 0 8px; }
+    .legal-content p { margin: 10px 0; }
+    .legal-content ul { padding-left: 22px; margin: 8px 0; }
+    .legal-content li { margin: 6px 0; }
+    .highlight { background: #e8f5e9; padding: 14px 18px; border-radius: 12px; margin: 18px 0; }
+    .warning { background: #fff8e1; border-left: 4px solid var(--orange); padding: 14px 18px; border-radius: 0 12px 12px 0; margin: 18px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; background: var(--card-bg); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    th { background: #e8f5e9; padding: 10px 12px; text-align: left; font-weight: 600; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .last-updated { font-size: 13px; color: var(--text-light); text-align: right; margin-bottom: 20px; }
+    .footer { text-align: center; font-size: 13px; color: var(--text-light); margin-top: 36px; padding-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <div class="header"><a href="javascript:history.back()">←</a>🔒 隱私權政策</div>
+  <div class="container legal-content">
+    <div class="last-updated">最後更新日期：2026 年 6 月 16 日</div>
+
+    <div class="highlight">
+      <strong>📌 簡短摘要：</strong>「藥記得」非常重視您的隱私。我們只收集必要的用藥與健康資料，絕不將您的個人資料出售給第三方。所有資料加密儲存，您可以隨時要求查看、修改或刪除您的資料。
+    </div>
+
+    <h2>一、適用範圍</h2>
+    <p>本隱私權政策說明「藥記得」（以下稱「本服務」）如何蒐集、處理、利用及保護您使用本服務時所提供的個人資料。本政策適用於所有使用本服務的使用者，包括透過網頁瀏覽器、PWA 存取本服務的個人。</p>
+    <p>本服務依據中華民國《個人資料保護法》及相關法規，制定本隱私權政策。</p>
+
+    <h2>二、我們蒐集的資料</h2>
+    <p>為提供用藥提醒、健康追蹤及家庭監督功能，本服務會蒐集以下類別的個人資料：</p>
+
+    <table>
+      <tr><th>資料類別</th><th>具體內容</th><th>蒐集目的</th></tr>
+      <tr><td>👤 帳號資料</td><td>Email、登入密碼（加密儲存）</td><td>建立帳號、身份驗證、帳號安全</td></tr>
+      <tr><td>📋 個人基本資料</td><td>姓名、年齡、手機號碼</td><td>個人化服務、身份識別</td></tr>
+      <tr><td>🏥 健康相關資料</td><td>血壓、血糖、體重、體溫</td><td>健康追蹤、用藥參考</td></tr>
+      <tr><td>💊 用藥資料</td><td>藥品名稱、劑量、服用時間、用藥指示、副作用</td><td>用藥提醒、庫存管理、服藥紀錄</td></tr>
+      <tr><td>📸 藥袋照片</td><td>使用者上傳的藥袋圖片（選用）</td><td>AI 藥品辨識輔助</td></tr>
+      <tr><td>✅ 服藥紀錄</td><td>服藥打卡時間、跳過紀錄、備註</td><td>用藥遵從性追蹤、家人監督</td></tr>
+      <tr><td>👨‍👩‍👧 家庭關係</td><td>家庭成員關聯、關係類型、檢視權限</td><td>家庭監督功能</td></tr>
+      <tr><td>📍 位置資訊</td><td>GPS 定位（僅在使用藥局查詢時，不儲存於伺服器）</td><td>查詢附近藥局</td></tr>
+    </table>
+
+    <div class="warning">
+      <strong>⚠️ 我們不蒐集的資料：</strong>
+      <ul>
+        <li>❌ 國民身分證字號</li>
+        <li>❌ 信用卡或金融卡號碼</li>
+        <li>❌ 詳細住址</li>
+        <li>❌ 生物辨識資料（指紋、臉部辨識等）</li>
+      </ul>
+    </div>
+
+    <h2>三、資料的利用方式</h2>
+    <p>本服務蒐集的資料僅用於以下目的：</p>
+    <ul>
+      <li><strong>提供核心服務：</strong>用藥提醒通知、服藥紀錄追蹤、健康數據記錄與趨勢圖表</li>
+      <li><strong>家庭監督：</strong>經您明確同意後，將用藥狀態分享給您指定的家庭成員</li>
+      <li><strong>服務改善：</strong>匿名統計分析，用於改善 App 功能與使用者體驗</li>
+      <li><strong>安全防護：</strong>防範未經授權的存取、詐騙或濫用行為</li>
+      <li><strong>法定義務：</strong>依法令規定或政府機關要求提供資料</li>
+    </ul>
+
+    <h2>四、資料分享與第三方</h2>
+    <p><strong>我們不會將您的個人資料出售、出租或交易給任何第三方。</strong></p>
+    <ul>
+      <li><strong>經您明確同意：</strong>例如您授權家庭成員查看您的用藥狀態</li>
+      <li><strong>服務提供商：</strong>資料儲存於安全的 SQLite 資料庫，伺服器位於受保護的環境中</li>
+      <li><strong>法律要求：</strong>依法院命令、傳票或法律程序要求提供</li>
+      <li><strong>緊急情況：</strong>為保護您或他人的生命安全</li>
+    </ul>
+    <p>本服務使用 OpenStreetMap 提供藥局地圖功能，查詢時僅傳送經緯度座標，不會附帶任何個人識別資訊。</p>
+
+    <h2>五、資料儲存與安全</h2>
+    <ul>
+      <li>所有資料儲存於伺服器端的 SQLite 資料庫</li>
+      <li>使用者密碼使用 SHA-256 單向雜湊加密，無法還原原始密碼</li>
+      <li>API 端點使用 JWT（JSON Web Token）進行身份驗證</li>
+      <li>伺服器部署於受防火牆保護的環境</li>
+    </ul>
+
+    <h2>六、您的權利</h2>
+    <p>依據《個人資料保護法》第 3 條，您得行使下列權利：</p>
+    <ul>
+      <li><strong>查詢或請求閱覽：</strong>您可隨時在 App「設定」頁面查看個人資料</li>
+      <li><strong>請求補充或更正：</strong>您可在 App 內直接編輯個人資料</li>
+      <li><strong>請求停止蒐集、處理或利用：</strong>您可隨時停用特定功能（如通知、位置）</li>
+      <li><strong>請求刪除：</strong>您可要求刪除帳號及所有相關資料，我們將在 30 天內完成</li>
+    </ul>
+
+    <h2>七、資料保留期限</h2>
+    <ul>
+      <li><strong>使用中帳號：</strong>資料將持續保存，直到您主動要求刪除</li>
+      <li><strong>刪除帳號後：</strong>30 天內永久刪除所有個人資料</li>
+      <li><strong>匿名統計數據：</strong>可能以無法識別個人身份的形式保留</li>
+    </ul>
+
+    <h2>八、Cookie 與追蹤技術</h2>
+    <p>本服務在網頁端使用 localStorage 儲存以下資料：</p>
+    <ul>
+      <li>JWT 身份驗證 Token（用於維持登入狀態）</li>
+      <li>使用者偏好設定（深色模式、語言選擇）</li>
+    </ul>
+    <p>本服務<strong>不使用</strong>第三方追蹤 Cookie、廣告 Cookie 或任何使用者行為追蹤技術。</p>
+
+    <h2>九、兒童隱私</h2>
+    <p>本服務主要設計給成年長輩及其家屬使用。若您為未滿 18 歲之未成年人，請在家長或監護人的陪同下使用本服務。</p>
+
+    <h2>十、政策變更</h2>
+    <p>本隱私權政策可能因應法規變更或服務調整而更新。重大變更時，我們將透過 App 內通知或在登入頁面公告。</p>
+
+    <h2>十一、聯絡我們</h2>
+    <div class="highlight">
+      <p>如對本隱私權政策有任何疑問或欲行使您的權利，請聯繫我們：</p>
+      <p>📧 電子郵件：privacy@medremind.tw</p>
+    </div>
+
+    <div class="footer">
+      本隱私權政策依中華民國《個人資料保護法》制定<br>
+      © 2026 藥記得 MedRemember
+    </div>
+  </div>
+</body>
+</html>

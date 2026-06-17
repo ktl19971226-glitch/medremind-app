@@ -1,0 +1,1481 @@
+// 藥記得 App - 後端伺服器
+// Node.js + Express + SQLite (sql.js 內存版)
+
+const express = require('express');
+const initSqlJs = require('sql.js');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
+
+// 簡單密碼雜湊（開發用）
+function hashPwd(p) { return crypto.createHash('sha256').update(p + 'yaojide_salt').digest('hex'); }
+
+// 簡易速率限制（每 IP 每分鐘最多 60 次請求）
+const rateLimitMap = new Map();
+function rateLimiter(maxPerMin = 60) {
+    return (req, res, next) => {
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+        const now = Date.now();
+        if (!rateLimitMap.has(ip)) rateLimitMap.set(ip, []);
+        const window = rateLimitMap.get(ip).filter(t => now - t < 60000);
+        window.push(now);
+        rateLimitMap.set(ip, window);
+        if (window.length > maxPerMin) return res.status(429).json({ error: '請求過於頻繁，請稍後再試' });
+        next();
+    };
+}
+// 每分鐘清理一次過期的 IP 記錄
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, times] of rateLimitMap) {
+        const fresh = times.filter(t => now - t < 60000);
+        if (fresh.length === 0) rateLimitMap.delete(ip);
+        else rateLimitMap.set(ip, fresh);
+    }
+}, 60000);
+
+const app = express();
+const PORT = 8050;
+const JWT_SECRET = 'yaojide_medremind_secret_key_2026';
+const DB_FILE = path.join(__dirname, 'medremind.db');
+let db = null;
+
+// 輔助函數
+function dbAll(sql, params = []) {
+    const stmt = db.prepare(sql);
+    if (params.length > 0) stmt.bind(params);
+    const results = [];
+    while (stmt.step()) results.push(stmt.getAsObject());
+    stmt.free();
+    return results;
+}
+function dbGet(sql, params = []) { const rows = dbAll(sql, params); return rows[0] || null; }
+function dbRun(sql, params = []) { db.run(sql, params); return dbAll('SELECT last_insert_rowid() AS id')[0]; }
+function saveDB() { fs.writeFileSync(DB_FILE, Buffer.from(db.export())); }
+
+// 中間件
+app.use(cors());
+app.use(express.json());
+app.use('/api/', rateLimiter(60));  // API 速率限制
+app.use(express.static('public'));
+
+// JWT 認證
+function auth(req, res, next) {
+    const token = (req.headers['authorization'] || '').split(' ')[1];
+    if (!token) return res.status(401).json({ error: '請先登入' });
+    try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+    catch (e) { res.status(403).json({ error: '登入已過期' }); }
+}
+
+// ====== 初始化 ======
+async function init() {
+    const SQL = await initSqlJs();
+    db = fs.existsSync(DB_FILE) ? new SQL.Database(fs.readFileSync(DB_FILE)) : new SQL.Database();
+    
+    const schema = fs.readFileSync(path.join(__dirname, 'database.sql'), 'utf8');
+    db.run(schema);
+    
+    // 補上可能缺失的欄位
+    try { db.run('ALTER TABLE medications ADD COLUMN is_active INTEGER DEFAULT 1'); } catch(e) {}
+    
+    // 清理過期用藥：end_date 已過的就軟刪除（設為停用）
+    function cleanupExpiredMeds() {
+        const today = new Date().toISOString().split('T')[0];
+        // 軟刪除：標記為停用而非刪除
+        dbRun('UPDATE medications SET is_active=0 WHERE end_date IS NOT NULL AND end_date < ? AND is_active=1', [today]);
+    }
+    cleanupExpiredMeds();
+    
+    const uc = dbGet('SELECT COUNT(*) AS c FROM users');
+    if (!uc || !uc.c || uc.c === 0) {
+        const h1 = hashPwd('123456'), h2 = hashPwd('123456');
+        dbRun('INSERT INTO users (name,email,phone,password_hash,age) VALUES (?,?,?,?,?)', ['王大明','wang@example.com','0912-345-678',h1,65]);
+        dbRun('INSERT INTO users (name,email,phone,password_hash,age) VALUES (?,?,?,?,?)', ['李小華','li@example.com','0923-456-789',h2,42]);
+        dbRun("INSERT INTO medications (user_id,drug_name,dosage,usage_notes,remind_time) VALUES (?,?,?,?,?)", [1,'高血壓藥','1顆','飯後服用','["08:00","20:00"]']);
+        dbRun("INSERT INTO medications (user_id,drug_name,dosage,usage_notes,remind_time) VALUES (?,?,?,?,?)", [1,'糖尿病藥','1顆','飯前服用','["07:00","19:00"]']);
+        dbRun("INSERT INTO medications (user_id,drug_name,dosage,usage_notes,remind_time) VALUES (?,?,?,?,?)", [1,'膽固醇藥','0.5顆','睡前服用','["21:00"]']);
+        dbRun("INSERT INTO medications (user_id,drug_name,dosage,usage_notes,remind_time) VALUES (?,?,?,?,?)", [2,'血壓藥','1顆','早餐後','["08:00"]']);
+        dbRun("INSERT INTO health_records (user_id,record_date,blood_pressure_sys,blood_pressure_dia,blood_sugar,weight) VALUES (?,?,?,?,?,?)", [1,'2026-06-14',135,85,120,72.5]);
+        dbRun("INSERT INTO health_records (user_id,record_date,blood_pressure_sys,blood_pressure_dia,blood_sugar,weight) VALUES (?,?,?,?,?,?)", [1,'2026-06-13',130,82,115,72.3]);
+        dbRun("INSERT INTO health_records (user_id,record_date,blood_pressure_sys,blood_pressure_dia,blood_sugar,weight) VALUES (?,?,?,?,?,?)", [1,'2026-06-12',140,88,125,72.8]);
+        dbRun("INSERT INTO family_members (user_id,related_user_id,relationship,permission_level) VALUES (?,?,?,?)", [1,2,'子女','view']);
+        dbRun("INSERT INTO family_members (user_id,related_user_id,relationship,permission_level) VALUES (?,?,?,?)", [2,1,'父母','edit']);
+        for (const d of [
+            ['高血壓藥','amlodipine','高血壓治療','頭暈、水腫、心悸','每日1顆','飯後服用，勿飲酒','心血管'],
+            ['糖尿病藥','metformin','第二型糖尿病控制','腸胃不適、腹瀉、食慾不振','每日1-2顆','飯前30分鐘服用，監測血糖','代謝'],
+            ['膽固醇藥','atorvastatin','高膽固醇治療','肌肉疼痛、肝功能異常、頭痛','每日1顆','睡前服用，定期檢查肝功能','心血管'],
+            ['胃腸藥','omeprazole','胃酸過多、胃潰瘍','頭痛、腹瀉、便秘','每日1顆','早餐前30分鐘服用','消化系統'],
+            ['止痛藥','acetaminophen','輕度至中度疼痛','肝功能損害(過量)、過敏','需要時1-2顆','每4-6小時一次，一日不超過4次','止痛'],
+            ['降血糖藥','glibenclamide','第二型糖尿病','低血糖、體重增加','每日1-2顆','飯前服用，隨餐調整','代謝'],
+            ['降血脂藥','rosuvastatin','高膽固醇血症','肌肉痠痛、頭暈','每日1顆','晚上服用效果較佳','心血管'],
+            ['抗凝血藥','warfarin','預防血栓','出血、瘀青','依醫囑調整','定時服藥，監測凝血功能','心血管'],
+            ['甲狀腺藥','levothyroxine','甲狀腺功能低下','心悸、失眠、體重減輕','每日1顆','空腹服用，與其他藥物隔4小時','內分泌'],
+            ['氣喘吸入劑','albuterol','支氣管痙攣','心跳加速、手抖','需要時1-2吸','急性發作時使用，間隔4小時','呼吸系統'],
+            ['安眠藥','zolpidem','失眠','嗜睡、頭暈、夢遊','睡前1顆','睡前服用，服用後勿開車','神經系統'],
+            ['抗憂鬱藥','fluoxetine','憂鬱症、焦慮','噁心、失眠、性功能障礙','每日1顆','早晨服用，需持續服用數週','神經系統'],
+            ['抗生素','amoxicillin','細菌感染','腹瀉、皮疹、過敏','每日2-3顆','飯後服用，完整療程吃完','抗感染'],
+            ['過敏藥','cetirizine','過敏性鼻炎、蕁麻疹','嗜睡、口乾','每日1顆','睡前服用較佳，避免飲酒','抗過敏'],
+            ['消炎藥','ibuprofen','發炎、疼痛、發燒','胃痛、胃出血、腎功能影響','需要時1-2顆','飯後服用，避免與酒精併用','止痛消炎'],
+            ['鈣片','calcium carbonate','骨質疏鬆、鈣質補充','便秘、脹氣','每日1-2顆','飯後服用吸收較佳','營養補充'],
+            ['維生素B群','vitamin B complex','神經炎、疲勞','尿液變黃(正常)','每日1顆','早餐後服用','營養補充'],
+            ['眼藥水','artificial tears','眼睛乾澀','暫時性視力模糊','需要時1-2滴','開封後一個月內用完','眼科'],
+            ['軟便劑','sennoside','便秘','腹瀉、腹痛','睡前1-2顆','睡前服用，勿長期使用','消化系統'],
+            ['利尿劑','furosemide','水腫、高血壓','頻尿、電解質不平衡','每日1顆','早晨服用，避免夜間頻尿','心血管'],
+            ['心律不整藥','propranolol','心律不整、高血壓','疲倦、手腳冰冷','每日1-2顆','定時服藥，勿突然停藥','心血管'],
+            ['痛風藥','allopurinol','痛風、高尿酸','皮疹、肝功能異常','每日1顆','飯後服用，多喝水','代謝'],
+            ['骨鬆藥','alendronate','骨質疏鬆症','胃灼熱、吞嚥困難','每週1顆','空腹服用，配一大杯水，服後30分鐘勿躺下','骨骼'],
+            ['止咳藥','dextromethorphan','乾咳','嗜睡、噁心','需要時1-2顆','飯後服用，避免開車','呼吸系統'],
+            ['化痰藥','acetylcysteine','痰液黏稠','噁心、嘔吐','每日2-3顆','飯後服用，多喝水','呼吸系統'],
+            ['抗癲癇藥','carbamazepine','癲癇、三叉神經痛、躁鬱症','頭暈、嗜睡、白血球減少、低血鈉','每日1-3顆','飯後服用，勿飲酒，避免開車','神經系統'],
+            ['癲通長效錠','carbamazepine CR','癲癇、三叉神經痛','頭暈、嗜睡、視覺模糊','每日1-2顆','可剝半不可嚼碎，飯後服用','神經系統'],
+            ['阿茲海默藥','donepezil','阿茲海默症','噁心、腹瀉、失眠','每日1顆','睡前服用','神經系統'],
+            ['帕金森藥','levodopa/carbidopa','帕金森氏症','噁心、頭暈、異動症','每日2-4顆','空腹或飯後皆可，避免高蛋白飲食','神經系統'],
+            ['類固醇','prednisolone','發炎、過敏、氣喘','水腫、胃痛、血糖升高','每日1-4顆','飯後服用，勿突然停藥','內分泌'],
+            ['攝護腺藥','tamsulosin','良性攝護腺肥大','頭暈、姿勢性低血壓','每日1顆','飯後服用，睡前服用較佳','泌尿'],
+            ['暈眩藥','betahistine','梅尼爾氏症、眩暈','頭痛、胃部不適','每日2-3顆','飯後服用','神經系統'],
+            ['肌肉鬆弛劑','baclofen','肌肉痙攣','嗜睡、頭暈、肌肉無力','每日2-3顆','飯後服用，避免開車','神經系統'],
+            ['心臟藥','digoxin','心臟衰竭、心律不整','噁心、視覺異常、心律不整','每日1顆','定時服藥，監測脈搏','心血管']
+        ]) dbRun("INSERT INTO drug_database (drug_name,generic_name,indications,side_effects,dosage_common,usage_notes,category) VALUES (?,?,?,?,?,?,?)", d);
+        saveDB();
+        console.log('✅ 測試數據已建立');
+    }
+    // setInterval(saveDB, 30000); // 暫停定時保存
+    
+    // ====== 用戶 API ======
+    app.post('/api/register', (req, res) => {
+        const { name, email, phone, password, age } = req.body;
+        if (!name || !email || !password) return res.status(400).json({ error: '姓名、Email 和密碼為必填' });
+        if (dbGet('SELECT id FROM users WHERE email = ?', [email])) return res.status(400).json({ error: '此 Email 已被註冊' });
+        const hash = hashPwd(password);
+        dbRun('INSERT INTO users (name,email,phone,password_hash,age) VALUES (?,?,?,?,?)', [name, email, phone||null, hash, age||null]);
+        const idRow = dbGet('SELECT last_insert_rowid() AS id');
+        const id = idRow ? idRow.id : null;
+        if (!id) return res.status(500).json({ error: '註冊失敗，請重試' });
+        const token = jwt.sign({ id, name, email, role: 'user' }, JWT_SECRET, { expiresIn: '30d' });
+        saveDB();
+        res.json({ message:'註冊成功', token, user:{ id, name, email, phone, age, role: 'user' } });
+    });
+    
+    app.post('/api/login', (req, res) => {
+        const { email, password } = req.body;
+        if (!email || !password) return res.status(400).json({ error: '請輸入 Email 和密碼' });
+        const u = dbGet('SELECT * FROM users WHERE email = ?', [email]);
+        const hash = hashPwd(password);
+        if (!u || u.password_hash !== hash) return res.status(401).json({ error: 'Email 或密碼錯誤' });
+        const token = jwt.sign({ id:u.id, name:u.name, email:u.email, role: u.role || 'user' }, JWT_SECRET, { expiresIn: '30d' });
+        res.json({ message:'登入成功', token, user:{ id:u.id, name:u.name, email:u.email, phone:u.phone, age:u.age, role: u.role || 'user' } });
+    });
+    
+    app.get('/api/user/profile', auth, (req, res) => {
+        const u = dbGet('SELECT id,name,email,phone,age FROM users WHERE id=?', [req.user.id]);
+        res.json(u ? { user:u } : { error:'用戶不存在' });
+    });
+    
+    // ====== 用藥 API ======
+    app.get('/api/medications', auth, (req, res) => {
+        cleanupExpiredMeds();
+        const meds = dbAll('SELECT * FROM medications WHERE user_id=? AND is_active=1 ORDER BY created_at DESC', [req.user.id]);
+        const today = new Date().toISOString().split('T')[0];
+        const withStatus = meds.map(m => {
+            const times = JSON.parse(m.remind_time);
+            const daysLeft = m.end_date ? Math.max(0, Math.ceil((new Date(m.end_date) - new Date()) / 86400000)) : null;
+            return { ...m, days_left: daysLeft, today_status: times.map(t => {
+                const l = dbGet('SELECT taken_status FROM medication_logs WHERE medication_id=? AND remind_time=? AND log_date=?', [m.id, t, today]);
+                return { time:t, taken: !!(l && l.taken_status) };
+            })};
+        });
+        res.json({ medications:withStatus });
+    });
+    
+    app.post('/api/medications', auth, (req, res) => {
+        const { drug_name, dosage, usage_notes, remind_time, duration_days } = req.body;
+        if (!drug_name || !dosage || !remind_time || remind_time.length===0) return res.status(400).json({ error:'藥名、劑量和提醒時間為必填' });
+        const days = parseInt(duration_days) || null;
+        const endDate = days ? new Date(Date.now() + days * 86400000).toISOString().split('T')[0] : null;
+        dbRun('INSERT INTO medications (user_id,drug_name,dosage,usage_notes,remind_time,duration_days,end_date) VALUES (?,?,?,?,?,?,?)', [req.user.id, drug_name, dosage, usage_notes||'', JSON.stringify(remind_time), days, endDate]);
+        saveDB();
+        res.json({ message: '用藥已添加', end_date: endDate });
+    });
+    
+    app.put('/api/medications/:id', auth, (req, res) => {
+        const { drug_name, dosage, usage_notes, remind_time, duration_days } = req.body;
+        if (!dbGet('SELECT id FROM medications WHERE id=? AND user_id=?', [req.params.id, req.user.id])) return res.status(404).json({ error:'用藥記錄不存在' });
+        const days = parseInt(duration_days) || null;
+        const endDate = days ? new Date(Date.now() + days * 86400000).toISOString().split('T')[0] : null;
+        dbRun('UPDATE medications SET drug_name=?,dosage=?,usage_notes=?,remind_time=?,duration_days=?,end_date=? WHERE id=?', [drug_name,dosage,usage_notes||'',JSON.stringify(remind_time),days,endDate,req.params.id]);
+        saveDB();
+        res.json({ message: '用藥已更新', end_date: endDate });
+    });
+    
+    app.delete('/api/medications/:id', auth, (req, res) => {
+        if (!dbGet('SELECT id FROM medications WHERE id=? AND user_id=?', [req.params.id, req.user.id])) return res.status(404).json({ error:'用藥記錄不存在' });
+        dbRun('DELETE FROM medications WHERE id=?', [req.params.id]);
+        dbRun('DELETE FROM medication_logs WHERE medication_id=?', [req.params.id]);
+        saveDB();
+        res.json({ message:'用藥已刪除' });
+    });
+    
+    // ====== 打卡 API ======
+    app.post('/api/medications/:id/take', auth, (req, res) => {
+        const { remind_time } = req.body;
+        const today = new Date().toISOString().split('T')[0];
+        const med = dbGet('SELECT * FROM medications WHERE id=? AND user_id=?', [req.params.id, req.user.id]);
+        if (!med) return res.status(404).json({ error:'用藥記錄不存在' });
+        const ex = dbGet('SELECT id FROM medication_logs WHERE medication_id=? AND remind_time=? AND log_date=?', [req.params.id, remind_time, today]);
+        if (ex) dbRun('UPDATE medication_logs SET taken_status=1,taken_at=? WHERE id=?', [new Date().toISOString(), ex.id]);
+        else dbRun('INSERT INTO medication_logs (user_id,medication_id,remind_time,taken_status,taken_at,log_date) VALUES (?,?,?,1,?,?)', [req.user.id, req.params.id, remind_time, new Date().toISOString(), today]);
+        saveDB();
+        res.json({ message:'已打卡', drug_name:med.drug_name, time:remind_time });
+    });
+    
+    app.get('/api/medications/today-status', auth, (req, res) => {
+        const today = new Date().toISOString().split('T')[0];
+        const meds = dbAll('SELECT * FROM medications WHERE user_id=?', [req.user.id]);
+        let total=0, taken=0;
+        const details = meds.map(m => {
+            const times = JSON.parse(m.remind_time).map(t => {
+                total++;
+                const l = dbGet('SELECT taken_status FROM medication_logs WHERE medication_id=? AND remind_time=? AND log_date=?', [m.id, t, today]);
+                const ok = !!(l && l.taken_status);
+                if (ok) taken++;
+                return { time:t, taken:ok, drug_name:m.drug_name };
+            });
+            return { medication_id:m.id, drug_name:m.drug_name, dosage:m.dosage, times };
+        });
+        res.json({ today, total_reminders:total, taken_count:taken, adherence_rate: total>0 ? Math.round(taken/total*100):100, details });
+    });
+    
+    // ====== 用藥排程 ======
+    app.get('/api/medications/today-schedule', auth, (req, res) => {
+        const today = new Date().toISOString().split('T')[0];
+        const n = new Date();
+        const ct = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+        const meds = dbAll('SELECT * FROM medications WHERE user_id=?', [req.user.id]);
+        const sched = [];
+        meds.forEach(m => {
+            let times = [];
+            try { times = JSON.parse(m.remind_time); if (!Array.isArray(times)) times = []; } catch(e) { times = []; }
+            times.forEach(t => {
+                const l = dbGet('SELECT taken_status FROM medication_logs WHERE medication_id=? AND remind_time=? AND log_date=?', [m.id, t, today]);
+                sched.push({ medication_id:m.id, drug_name:m.drug_name, dosage:m.dosage, time:t, taken:!!(l&&l.taken_status), is_past:t<=ct, is_current:t===ct });
+            });
+        });
+        sched.sort((a,b)=>a.time.localeCompare(b.time));
+        res.json({ today, current_time:ct, schedule:sched });
+    });
+    
+    app.get('/api/medications/history', auth, (req, res) => {
+        const d30 = new Date(Date.now()-30*86400000).toISOString().split('T')[0];
+        const logs = dbAll("SELECT ml.*, m.drug_name FROM medication_logs ml JOIN medications m ON ml.medication_id=m.id WHERE ml.user_id=? AND ml.log_date>=? ORDER BY ml.log_date DESC, ml.remind_time DESC", [req.user.id, d30]);
+        const bd = {};
+        logs.forEach(l => {
+            if (!bd[l.log_date]) bd[l.log_date] = { taken:0, missed:0, total:0, details:[] };
+            bd[l.log_date].total++;
+            l.taken_status ? bd[l.log_date].taken++ : bd[l.log_date].missed++;
+            bd[l.log_date].details.push(l);
+        });
+        res.json({ history:bd });
+    });
+    
+    // ====== 健康數據 API ======
+    app.get('/api/health', auth, (req, res) => {
+        const d30 = new Date(Date.now()-30*86400000).toISOString().split('T')[0];
+        res.json({ records: dbAll('SELECT * FROM health_records WHERE user_id=? AND record_date>=? ORDER BY record_date DESC', [req.user.id, d30]) });
+    });
+    
+    app.post('/api/health', auth, (req, res) => {
+        const { blood_pressure_sys, blood_pressure_dia, blood_sugar, weight, notes } = req.body;
+        const d = new Date().toISOString().split('T')[0];
+        const ex = dbGet('SELECT id FROM health_records WHERE user_id=? AND record_date=?', [req.user.id, d]);
+        if (ex) dbRun('UPDATE health_records SET blood_pressure_sys=?,blood_pressure_dia=?,blood_sugar=?,weight=?,notes=? WHERE id=?', [blood_pressure_sys||null,blood_pressure_dia||null,blood_sugar||null,weight||null,notes||null,ex.id]);
+        else dbRun('INSERT INTO health_records (user_id,record_date,blood_pressure_sys,blood_pressure_dia,blood_sugar,weight,notes) VALUES (?,?,?,?,?,?,?)', [req.user.id,d,blood_pressure_sys||null,blood_pressure_dia||null,blood_sugar||null,weight||null,notes||null]);
+        saveDB();
+        res.json({ message: ex ? '健康數據已更新':'健康數據已記錄' });
+    });
+    
+    app.get('/api/health/summary', auth, (req, res) => {
+        const rs = dbAll('SELECT * FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 30', [req.user.id]);
+        if (!rs.length) return res.json({ summary:null });
+        const lt = rs[0];
+        res.json({ summary:{
+            latest_bp: lt.blood_pressure_sys ? `${lt.blood_pressure_sys}/${lt.blood_pressure_dia}`:null,
+            latest_sugar: lt.blood_sugar, latest_weight: lt.weight,
+            avg_bp_sys: Math.round(rs.filter(r=>r.blood_pressure_sys).reduce((a,b)=>a+b.blood_pressure_sys,0)/rs.filter(r=>r.blood_pressure_sys).length)||null,
+            total_records: rs.length
+        }});
+    });
+    
+    // ====== 家庭 API ======
+    app.get('/api/family', auth, (req, res) => {
+        res.json({ members: dbAll("SELECT fm.*, u.name,u.email,u.phone,u.age FROM family_members fm JOIN users u ON fm.related_user_id=u.id WHERE fm.user_id=?", [req.user.id]) });
+    });
+    
+    app.post('/api/family/add', auth, (req, res) => {
+        const { email, relationship } = req.body;
+        if (!email||!relationship) return res.status(400).json({ error:'請輸入家人 Email 和關係' });
+        const ru = dbGet('SELECT id,name FROM users WHERE email=?', [email]);
+        if (!ru || !ru.id) return res.status(404).json({ error:'找不到此用戶' });
+        if (ru.id===req.user.id) return res.status(400).json({ error:'不能加入自己' });
+        if (dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [req.user.id, ru.id])) return res.status(400).json({ error:'此家人已在清單中' });
+        dbRun('INSERT INTO family_members (user_id,related_user_id,relationship,permission_level) VALUES (?,?,?,?)', [req.user.id, ru.id, relationship, 'view']);
+        const rr = relationship==='子女'?'父母':relationship==='父母'?'子女':relationship;
+        if (!dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [ru.id, req.user.id]))
+            dbRun('INSERT INTO family_members (user_id,related_user_id,relationship,permission_level) VALUES (?,?,?,?)', [ru.id, req.user.id, rr, 'view']);
+        saveDB();
+        res.json({ message:'已加入家庭成員', member:{ name:ru.name, email, relationship } });
+    });
+    
+    app.get('/api/family/:fid/medications', auth, (req, res) => {
+        const fm = dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [req.user.id, req.params.fid]);
+        if (!fm) return res.status(403).json({ error:'無權限查看' });
+        const today = new Date().toISOString().split('T')[0];
+        const meds = dbAll('SELECT * FROM medications WHERE user_id=?', [req.params.fid]);
+        let total=0, taken=0;
+        meds.forEach(m => {
+            let times = [];
+            try { times = JSON.parse(m.remind_time); if (!Array.isArray(times)) times = []; } catch(e) { times = []; }
+            times.forEach(t => {
+                total++;
+                const l = dbGet('SELECT taken_status FROM medication_logs WHERE medication_id=? AND remind_time=? AND log_date=?', [m.id, t, today]);
+                if (l&&l.taken_status) taken++;
+            });
+        });
+        const famMem = dbGet('SELECT id,name FROM users WHERE id=?', [req.params.fid]);
+        res.json({ family_member:famMem, today, adherence_rate:total>0?Math.round(taken/total*100):100, total_reminders:total, taken_count:taken });
+    });
+    
+    // ====== 通知 API ======
+    app.get('/api/notifications', auth, (req, res) => {
+        res.json({ notifications: dbAll('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 20', [req.user.id]) });
+    });
+    
+    app.put('/api/notifications/:id/read', auth, (req, res) => {
+        dbRun('UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?', [req.params.id, req.user.id]); saveDB();
+        res.json({ message:'已標記為已讀' });
+    });
+    
+    // ====== 藥物庫 API ======
+    app.get('/api/drugs/search', auth, (req, res) => {
+        const q = req.query.q;
+        res.json({ drugs: q ? dbAll("SELECT * FROM drug_database WHERE drug_name LIKE ? OR generic_name LIKE ? LIMIT 10", ['%'+q+'%', '%'+q+'%']) : [] });
+    });
+    
+    app.get('/api/drugs/categories', auth, (req, res) => {
+        res.json({ categories: dbAll('SELECT DISTINCT category FROM drug_database ORDER BY category').map(c=>c.category) });
+    });
+    
+    // ====== 拍照辨識藥物 API ======
+    const multer = require('multer');
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+    
+    app.post('/api/drugs/scan', auth, upload.single('image'), async (req, res) => {
+        if (!req.file) return res.status(400).json({ error: '請上傳照片' });
+        
+        // OCR 辨識：提取照片中的文字
+        const Tesseract = require('tesseract.js');
+        try {
+            const { data: { text } } = await Tesseract.recognize(req.file.buffer, 'chi_tra+eng');
+            const ocrText = text.trim();
+            
+            if (!ocrText || ocrText.length < 2) {
+                return res.json({ success: false, message: '照片中未辨識到文字，請重新拍照', candidates: [] });
+            }
+            
+            // 用 OCR 文字比對藥物資料庫
+            const allDrugs = dbAll('SELECT * FROM drug_database');
+            const candidates = allDrugs.filter(d => {
+                const searchText = ocrText.toLowerCase();
+                return d.drug_name.toLowerCase().includes(searchText) ||
+                       (d.generic_name && d.generic_name.toLowerCase().includes(searchText)) ||
+                       searchText.includes(d.drug_name.toLowerCase()) ||
+                       (d.generic_name && searchText.includes(d.generic_name.toLowerCase()));
+            }).slice(0, 5).map(d => ({
+                id: d.id,
+                drug_name: d.drug_name,
+                generic_name: d.generic_name,
+                dosage_common: d.dosage_common,
+                usage_notes: d.usage_notes,
+                side_effects: d.side_effects,
+                category: d.category
+            }));
+            
+            // 若 OCR 辨識到部分藥名，用模糊比對
+            if (candidates.length === 0 && ocrText.length >= 2) {
+                const chars = ocrText.replace(/\s/g, '');
+                const fuzzy = [];
+                for (const d of allDrugs) {
+                    const dn = d.drug_name.replace(/\s/g, '');
+                    let m = 0;
+                    for (const c of chars) { if (dn.includes(c)) m++; }
+                    if (m >= Math.min(chars.length - 1, 2)) {
+                        fuzzy.push({ id: d.id, drug_name: d.drug_name, generic_name: d.generic_name, dosage_common: d.dosage_common, usage_notes: d.usage_notes, side_effects: d.side_effects, category: d.category, confidence: Math.round(m / dn.length * 100) });
+                        if (fuzzy.length >= 5) break;
+                    }
+                }
+                
+                if (fuzzy.length > 0) {
+                    return res.json({
+                        success: true,
+                        ocr_text: ocrText,
+                        message: '辨識到文字「' + ocrText + '」，找到 ' + fuzzy.length + ' 筆可能藥物',
+                        candidates: fuzzy
+                    });
+                }
+            }
+            
+            res.json({
+                success: candidates.length > 0,
+                ocr_text: ocrText,
+                message: candidates.length > 0 
+                    ? '辨識到文字「' + ocrText + '」，找到 ' + candidates.length + ' 筆可能藥物' 
+                    : '辨識到文字「' + ocrText + '」，但未找到相符藥物，請手動輸入',
+                candidates: candidates
+            });
+        } catch (err) {
+            console.error('OCR 錯誤:', err);
+            res.status(500).json({ error: '辨識失敗：' + err.message });
+        }
+    });
+    
+    // 純文字掃描（用於服用須知、副作用等欄位）
+    app.post('/api/drugs/scan-text', auth, upload.single('image'), async (req, res) => {
+        if (!req.file) return res.status(400).json({ error: '請上傳照片' });
+        const Tesseract = require('tesseract.js');
+        try {
+            const { data: { text } } = await Tesseract.recognize(req.file.buffer, 'chi_tra+eng');
+            const clean = text.trim().replace(/\n/g, '，').replace(/\s+/g, ' ').substring(0, 200);
+            res.json({ text: clean || null });
+        } catch (err) {
+            res.status(500).json({ error: '辨識失敗' });
+        }
+    });
+    
+    // ====== AI 精準辨識藥物 API（Gemini Vision）======
+    const GEMINI_API_KEY = 'AIzaSyBm1GvPu-yVsVOGv3TlJtf1GVcuxQPA20A';
+    const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+    
+    app.post('/api/drugs/ai-scan', auth, upload.single('image'), async (req, res) => {
+        if (!req.file) return res.status(400).json({ error: '請上傳照片' });
+        
+        try {
+            const base64 = req.file.buffer.toString('base64');
+            const mimeType = req.file.mimetype || 'image/jpeg';
+            
+            const prompt = `你是一個專業的藥袋辨識助手。請仔細分析這張台灣醫院/藥局的藥袋照片，提取以下資訊。
+
+重要規則：
+- JSON 字串內不可有換行，多行文字請用「；」分隔
+- 藥袋上通常有中文藥名和英文藥名
+- 用法用量通常寫「每日X次」「每次X粒」「飯前/飯後/睡前」
+- 提醒時間用24小時制，如08:00、12:00、20:00
+- 只回傳純 JSON
+
+{"drug_name":"藥品中文名稱","drug_name_en":"藥品英文名稱(無則null)","dosage":"每次劑量","frequency":"每日次數","timing":"服用時間說明","remind_times":["08:00","12:00","20:00"],"side_effects":"副作用(無則null)","notes":"服用須知(無則null)","usage_raw":"藥袋上的用法用量原文"}`;
+
+            const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: prompt },
+                            { inlineData: { mimeType, data: base64 } }
+                        ]
+                    }],
+                    generationConfig: { 
+                        temperature: 0, 
+                        maxOutputTokens: 4096
+                    }
+                })
+            });
+            
+            if (!response.ok) {
+                const errText = await response.text();
+                console.error('Gemini API 錯誤:', response.status, errText);
+                throw new Error(`Gemini API 回應 ${response.status}`);
+            }
+            
+            const result = await response.json();
+            const rawText = result?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            
+            // 清理 JSON
+            let cleanJSON = rawText.trim();
+            // 去掉 markdown 包裝
+            cleanJSON = cleanJSON.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+            
+            let parsed;
+            try {
+                parsed = JSON.parse(cleanJSON);
+            } catch (e1) {
+                // 移除所有換行再試
+                const noNewlines = cleanJSON.replace(/\n/g, ' ').replace(/\r/g, '').replace(/  +/g, ' ');
+                try {
+                    parsed = JSON.parse(noNewlines);
+                } catch (e2) {
+                    console.log('JSON 解析失敗，原始:', rawText.substring(0, 600));
+                    throw e2;
+                }
+            }
+            
+            console.log('Gemini 解析成功');
+            
+            res.json({
+                success: true,
+                method: 'ai',
+                ai_result: {
+                    drug_name: parsed.drug_name || '',
+                    drug_name_en: parsed.drug_name_en || null,
+                    dosage: parsed.dosage || '',
+                    frequency: parsed.frequency || '',
+                    timing: parsed.timing || '',
+                    remind_times: parsed.remind_times || [],
+                    side_effects: parsed.side_effects || null,
+                    notes: parsed.notes || null,
+                    usage_raw: parsed.usage_raw || ''
+                }
+            });
+            
+        } catch (err) {
+            console.error('AI 掃描錯誤:', err.message);
+            // AI 失敗時 fallback 到 OCR
+            res.json({
+                success: false,
+                method: 'ai',
+                error: err.message,
+                message: 'AI 辨識失敗，請改用一般掃描'
+            });
+        }
+    });
+    
+    // ====== 藥物交互作用 API ======
+    app.post('/api/drugs/check-interaction', auth, (req, res) => {
+        const { generic_name } = req.body;
+        if (!generic_name) return res.json({ warnings: [] });
+        const userDrugs = dbAll("SELECT DISTINCT generic_name FROM drug_database WHERE id IN (SELECT id FROM medications WHERE user_id=?)", [req.user.id]);
+        // 查詢已知交互作用
+        const warnings = [];
+        const interactionPairs = {
+            'warfarin': { drugs: ['aspirin','ibuprofen','acetaminophen'], desc: '增加出血風險' },
+            'metformin': { drugs: ['furosemide'], desc: '可能影響血糖控制' },
+            'digoxin': { drugs: ['furosemide','omeprazole'], desc: '可能增加心律不整風險' },
+            'atorvastatin': { drugs: ['warfarin','digoxin'], desc: '可能增加肌肉病變風險' },
+            'carbamazepine': { drugs: ['warfarin','zolpidem','fluoxetine'], desc: '可能降低藥效' },
+            'levothyroxine': { drugs: ['omeprazole','calcium carbonate'], desc: '減少甲狀腺素吸收，需隔4小時' },
+            'ibuprofen': { drugs: ['warfarin','furosemide','aspirin'], desc: '增加腸胃出血及腎臟風險' },
+            'fluoxetine': { drugs: ['warfarin','carbamazepine','zolpidem'], desc: '可能增加血清素症候群風險' },
+            'amlodipine': { drugs: ['warfarin','digoxin'], desc: '可能影響血壓控制' },
+        };
+        userDrugs.forEach(ud => {
+            if (interactionPairs[generic_name] && interactionPairs[generic_name].drugs.includes(ud.generic_name)) {
+                warnings.push({ drug: ud.generic_name, severity: 'high', description: interactionPairs[generic_name].desc });
+            }
+            if (interactionPairs[ud.generic_name] && interactionPairs[ud.generic_name].drugs.includes(generic_name)) {
+                warnings.push({ drug: ud.generic_name, severity: 'high', description: interactionPairs[ud.generic_name].desc });
+            }
+        });
+        res.json({ warnings });
+    });
+    
+    // ====== 用戶設定 API ======
+    app.get('/api/settings', auth, (req, res) => {
+        let s = dbGet('SELECT * FROM user_settings WHERE user_id=?', [req.user.id]);
+        if (!s) { dbRun('INSERT INTO user_settings (user_id) VALUES (?)', [req.user.id]); s = { reminder_repeat: 0, telegram_chat_id: null }; }
+        res.json({ settings: { reminder_repeat: s.reminder_repeat, telegram_chat_id: s.telegram_chat_id } });
+    });
+    
+    app.put('/api/settings', auth, (req, res) => {
+        const { reminder_repeat, telegram_chat_id } = req.body;
+        let s = dbGet('SELECT id FROM user_settings WHERE user_id=?', [req.user.id]);
+        if (!s) dbRun('INSERT INTO user_settings (user_id,reminder_repeat,telegram_chat_id) VALUES (?,?,?)', [req.user.id, reminder_repeat||0, telegram_chat_id||null]);
+        else dbRun('UPDATE user_settings SET reminder_repeat=?,telegram_chat_id=? WHERE user_id=?', [reminder_repeat||0, telegram_chat_id||null, req.user.id]);
+        saveDB();
+        res.json({ message: '設定已更新' });
+    });
+    
+    // ====== 家人未吃藥通知 ======
+    app.get('/api/family/check-missed', auth, (req, res) => {
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const ct = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        const family = dbAll('SELECT fm.related_user_id, u.name FROM family_members fm JOIN users u ON fm.related_user_id=u.id WHERE fm.user_id=?', [req.user.id]);
+        const missedList = [];
+        family.forEach(f => {
+            const meds = dbAll('SELECT * FROM medications WHERE user_id=?', [f.related_user_id]);
+            meds.forEach(m => {
+                let times = [];
+                try { times = JSON.parse(m.remind_time); if (!Array.isArray(times)) times = []; } catch(e) { times = []; }
+                times.forEach(t => {
+                    if (t < ct) {
+                        const log = dbGet('SELECT taken_status FROM medication_logs WHERE medication_id=? AND remind_time=? AND log_date=?', [m.id, t, today]);
+                        if (!log || !log.taken_status) {
+                            missedList.push({ name: f.name, drug_name: m.drug_name, time: t });
+                        }
+                    }
+                });
+            });
+        });
+        res.json({ missed: missedList });
+    });
+    
+    // ====== 健康數據趨勢 API ======
+    app.get('/api/health/trend', auth, (req, res) => {
+        const days = parseInt(req.query.days) || 30;
+        const since = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+        const records = dbAll('SELECT * FROM health_records WHERE user_id=? AND record_date>=? ORDER BY record_date ASC', [req.user.id, since]);
+        const trend = {
+            dates: records.map(r => r.record_date),
+            bp_sys: records.map(r => r.blood_pressure_sys),
+            bp_dia: records.map(r => r.blood_pressure_dia),
+            sugar: records.map(r => r.blood_sugar),
+            weight: records.map(r => r.weight)
+        };
+        res.json({ trend });
+    });
+
+    // ====== 管理員 API ======
+    function adminAuth(req, res, next) {
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ error: '無管理權限' });
+        }
+        next();
+    }
+
+    // 管理員儀表板摘要
+    app.get('/api/admin/stats', auth, adminAuth, (req, res) => {
+        const totalUsers = dbGet('SELECT COUNT(*) AS cnt FROM users')[0]?.cnt || 0;
+        const totalMeds = dbGet('SELECT COUNT(*) AS cnt FROM medications')[0]?.cnt || 0;
+        const todayLogs = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE log_date = ?', [new Date().toISOString().split('T')[0]])[0]?.cnt || 0;
+        const todayTaken = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE log_date = ? AND taken_status = 1', [new Date().toISOString().split('T')[0]])[0]?.cnt || 0;
+        const healthRecords = dbGet('SELECT COUNT(*) AS cnt FROM health_records')[0]?.cnt || 0;
+        res.json({
+            totalUsers, totalMeds, todayLogs, todayTaken,
+            todayAdherence: todayLogs > 0 ? Math.round(todayTaken / todayLogs * 100) : 0,
+            healthRecords
+        });
+    });
+
+    // 管理員查看所有用戶
+    app.get('/api/admin/users', auth, adminAuth, (req, res) => {
+        const users = dbAll(`
+            SELECT u.id, u.name, u.email, u.phone, u.age, u.role, u.created_at,
+                   (SELECT COUNT(*) FROM medications WHERE user_id = u.id) AS med_count,
+                   (SELECT COUNT(*) FROM medication_logs WHERE user_id = u.id) AS log_count
+            FROM users u ORDER BY u.created_at DESC
+        `);
+        for (const u of users) {
+            const todayLogs = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE user_id = ? AND log_date = ?', [u.id, new Date().toISOString().split('T')[0]])[0]?.cnt || 0;
+            const todayTaken = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE user_id = ? AND log_date = ? AND taken_status = 1', [u.id, new Date().toISOString().split('T')[0]])[0]?.cnt || 0;
+            u.today_adherence = todayLogs > 0 ? Math.round(todayTaken / todayLogs * 100) : '-';
+        }
+        res.json({ users });
+    });
+
+    // 管理員刪除用戶
+    app.delete('/api/admin/users/:id', auth, adminAuth, (req, res) => {
+        const uid = parseInt(req.params.id);
+        if (uid === req.user.id) return res.status(400).json({ error: '不能刪除自己' });
+        dbRun('DELETE FROM medication_logs WHERE user_id = ?', [uid]);
+        dbRun('DELETE FROM medications WHERE user_id = ?', [uid]);
+        dbRun('DELETE FROM health_records WHERE user_id = ?', [uid]);
+        dbRun('DELETE FROM family_members WHERE user_id = ? OR related_user_id = ?', [uid, uid]);
+        dbRun('DELETE FROM notifications WHERE user_id = ?', [uid]);
+        dbRun('DELETE FROM user_settings WHERE user_id = ?', [uid]);
+        dbRun('DELETE FROM users WHERE id = ?', [uid]);
+        saveDB();
+        res.json({ message: '用戶及相關資料已刪除' });
+    });
+
+    // 管理員查看特定用戶詳細資料
+    app.get('/api/admin/users/:id/detail', auth, adminAuth, (req, res) => {
+        const uid = parseInt(req.params.id);
+        const user = dbGet('SELECT id, name, email, phone, age, role, created_at FROM users WHERE id=?', [uid]);
+        if (!user) return res.status(404).json({ error: '用戶不存在' });
+        const medications = dbAll('SELECT * FROM medications WHERE user_id=? ORDER BY created_at DESC', [uid]);
+        const healthRecords = dbAll('SELECT * FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 30', [uid]);
+        const today = new Date().toISOString().split('T')[0];
+        const todayLogs = dbAll(`
+            SELECT ml.*, m.drug_name 
+            FROM medication_logs ml 
+            JOIN medications m ON ml.medication_id = m.id 
+            WHERE ml.user_id=? AND ml.log_date=? 
+            ORDER BY ml.remind_time`, [uid, today]);
+        const familyMembers = dbAll(`
+            SELECT fm.*, u.name AS related_name, u.email AS related_email
+            FROM family_members fm 
+            JOIN users u ON fm.related_user_id = u.id 
+            WHERE fm.user_id=?`, [uid]);
+        res.json({ user, medications, healthRecords, todayLogs, familyMembers });
+    });
+
+    // ====== 使用者帳號管理 ======
+    // 修改密碼
+    app.put('/api/user/password', auth, (req, res) => {
+        const { oldPassword, newPassword } = req.body;
+        if (!oldPassword || !newPassword) return res.status(400).json({ error: '請提供舊密碼和新密碼' });
+        if (newPassword.length < 6) return res.status(400).json({ error: '新密碼至少6位' });
+        const u = dbGet('SELECT password_hash FROM users WHERE id=?', [req.user.id]);
+        if (!u || u.password_hash !== hashPwd(oldPassword)) return res.status(401).json({ error: '舊密碼錯誤' });
+        dbRun('UPDATE users SET password_hash=? WHERE id=?', [hashPwd(newPassword), req.user.id]);
+        saveDB();
+        res.json({ message: '密碼修改成功' });
+    });
+
+    // 刪除自己的帳號
+    app.delete('/api/user/account', auth, (req, res) => {
+        const uid = req.user.id;
+        dbRun('DELETE FROM medication_logs WHERE user_id=?', [uid]);
+        dbRun('DELETE FROM medications WHERE user_id=?', [uid]);
+        dbRun('DELETE FROM health_records WHERE user_id=?', [uid]);
+        dbRun('DELETE FROM family_members WHERE user_id=? OR related_user_id=?', [uid, uid]);
+        dbRun('DELETE FROM notifications WHERE user_id=?', [uid]);
+        dbRun('DELETE FROM user_settings WHERE user_id=?', [uid]);
+        dbRun('DELETE FROM users WHERE id=?', [uid]);
+        saveDB();
+        res.json({ message: '帳號已永久刪除' });
+    });
+
+    // 匯出個人資料 CSV
+    app.get('/api/user/export', auth, (req, res) => {
+        const uid = req.user.id;
+        const user = dbGet('SELECT name, email, phone, age FROM users WHERE id=?', [uid]);
+        const meds = dbAll('SELECT drug_name, dosage, usage_notes, remind_time, created_at FROM medications WHERE user_id=?', [uid]);
+        const logs = dbAll(`
+            SELECT m.drug_name, ml.remind_time, ml.taken_status, ml.log_date
+            FROM medication_logs ml JOIN medications m ON ml.medication_id=m.id
+            WHERE ml.user_id=? ORDER BY ml.log_date DESC LIMIT 365`, [uid]);
+        const health = dbAll('SELECT record_date, blood_pressure_sys, blood_pressure_dia, blood_sugar, weight FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 90', [uid]);
+
+        let csv = '\uFEFF'; // BOM for Excel
+        csv += '--- 個人資料 ---\n姓名,Email,電話,年齡\n';
+        if (user) csv += `${user.name},${user.email},${user.phone||''},${user.age||''}\n\n`;
+        csv += '--- 用藥列表 ---\n藥名,劑量,服用須知,提醒時間,建立日期\n';
+        meds.forEach(m => { csv += `"${m.drug_name}","${m.dosage}","${m.usage_notes||''}","${(m.remind_time||'').replace(/[\[\]"]/g,'')}","${m.created_at||''}"\n`; });
+        csv += '\n--- 服藥紀錄(近一年) ---\n藥名,提醒時間,狀態,日期\n';
+        logs.forEach(l => { csv += `"${l.drug_name}",${l.remind_time},${l.taken_status?'已吃':'未吃'},${l.log_date}\n`; });
+        csv += '\n--- 健康數據(近90天) ---\n日期,收縮壓,舒張壓,血糖,體重\n';
+        health.forEach(h => { csv += `${h.record_date},${h.blood_pressure_sys||''},${h.blood_pressure_dia||''},${h.blood_sugar||''},${h.weight||''}\n`; });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=medremind_export_${new Date().toISOString().split('T')[0]}.csv`);
+        res.send(csv);
+    });
+
+    // 用藥日曆（指定月份）
+    app.get('/api/medications/calendar', auth, (req, res) => {
+        const { month } = req.query;
+        const target = month ? new Date(month + '-01') : new Date();
+        const year = target.getFullYear();
+        const mon = target.getMonth() + 1;
+        const startDate = `${year}-${String(mon).padStart(2,'0')}-01`;
+        const endDate = new Date(year, mon, 0).toISOString().split('T')[0];
+
+        const logs = dbAll(`
+            SELECT ml.log_date, ml.taken_status, ml.remind_time, m.drug_name
+            FROM medication_logs ml JOIN medications m ON ml.medication_id=m.id
+            WHERE ml.user_id=? AND ml.log_date >= ? AND ml.log_date <= ?
+            ORDER BY ml.log_date, ml.remind_time`, [req.user.id, startDate, endDate]);
+
+        // 按日期分組
+        const calendar = {};
+        logs.forEach(l => {
+            if (!calendar[l.log_date]) calendar[l.log_date] = { taken: 0, total: 0, details: [] };
+            calendar[l.log_date].total++;
+            if (l.taken_status) calendar[l.log_date].taken++;
+            calendar[l.log_date].details.push({ drug: l.drug_name, time: l.remind_time, taken: !!l.taken_status });
+        });
+        res.json({ year, month: mon, calendar });
+    });
+
+    // 健康數據統計
+    app.get('/api/health/stats', auth, (req, res) => {
+        const days = parseInt(req.query.days) || 30;
+        const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+
+        const bp = dbAll(`SELECT blood_pressure_sys, blood_pressure_dia, record_date FROM health_records WHERE user_id=? AND record_date >= ? AND blood_pressure_sys IS NOT NULL ORDER BY record_date`, [req.user.id, startDate]);
+        const sugar = dbAll(`SELECT blood_sugar, record_date FROM health_records WHERE user_id=? AND record_date >= ? AND blood_sugar IS NOT NULL ORDER BY record_date`, [req.user.id, startDate]);
+        const weight = dbAll(`SELECT weight, record_date FROM health_records WHERE user_id=? AND record_date >= ? AND weight IS NOT NULL ORDER BY record_date`, [req.user.id, startDate]);
+
+        const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length*10)/10 : null;
+        const max = arr => arr.length ? Math.max(...arr) : null;
+        const min = arr => arr.length ? Math.min(...arr) : null;
+
+        const bpSys = bp.map(r=>r.blood_pressure_sys);
+        const bpDia = bp.map(r=>r.blood_pressure_dia);
+        const sugarVals = sugar.map(r=>r.blood_sugar);
+        const weightVals = weight.map(r=>r.weight);
+
+        res.json({
+            bp: { count: bp.length, avgSystolic: avg(bpSys), avgDiastolic: avg(bpDia), maxSystolic: max(bpSys), minSystolic: min(bpSys), trend: bp.map(r=>({ date: r.record_date, sys: r.blood_pressure_sys, dia: r.blood_pressure_dia })) },
+            sugar: { count: sugar.length, avg: avg(sugarVals), max: max(sugarVals), min: min(sugarVals), trend: sugar.map(r=>({ date: r.record_date, value: r.blood_sugar })) },
+            weight: { count: weight.length, avg: avg(weightVals), max: max(weightVals), min: min(weightVals), trend: weight.map(r=>({ date: r.record_date, value: r.weight })) },
+            days
+        });
+    });
+
+    // ====== 管理員增強 API ======
+    // 管理員重設用戶密碼
+    app.put('/api/admin/users/:id/reset-password', auth, adminAuth, (req, res) => {
+        const uid = parseInt(req.params.id);
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: '新密碼至少6位' });
+        const user = dbGet('SELECT id, name FROM users WHERE id=?', [uid]);
+        if (!user) return res.status(404).json({ error: '用戶不存在' });
+        dbRun('UPDATE users SET password_hash=? WHERE id=?', [hashPwd(newPassword), uid]);
+        saveDB();
+        res.json({ message: `${user.name} 的密碼已重設`, newPassword });
+    });
+
+    // 管理員匯出用戶資料 CSV
+    app.get('/api/admin/users/:id/export', auth, adminAuth, (req, res) => {
+        const uid = parseInt(req.params.id);
+        const user = dbGet('SELECT name, email, phone, age FROM users WHERE id=?', [uid]);
+        if (!user) return res.status(404).json({ error: '用戶不存在' });
+        const meds = dbAll('SELECT drug_name, dosage, usage_notes, remind_time FROM medications WHERE user_id=?', [uid]);
+        const logs = dbAll(`SELECT m.drug_name, ml.remind_time, ml.taken_status, ml.log_date FROM medication_logs ml JOIN medications m ON ml.medication_id=m.id WHERE ml.user_id=? ORDER BY ml.log_date DESC LIMIT 365`, [uid]);
+        const health = dbAll('SELECT record_date, blood_pressure_sys, blood_pressure_dia, blood_sugar, weight FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 90', [uid]);
+
+        let csv = '\uFEFF';
+        csv += `姓名,Email,電話,年齡\n${user.name},${user.email},${user.phone||''},${user.age||''}\n\n`;
+        csv += '藥名,劑量,服用須知,提醒時間\n';
+        meds.forEach(m => { csv += `"${m.drug_name}","${m.dosage}","${m.usage_notes||''}","${(m.remind_time||'').replace(/[\[\]"]/g,'')}"\n`; });
+        csv += '\n藥名,提醒時間,狀態,日期\n';
+        logs.forEach(l => { csv += `"${l.drug_name}",${l.remind_time},${l.taken_status?'已吃':'未吃'},${l.log_date}\n`; });
+        csv += '\n日期,收縮壓,舒張壓,血糖,體重\n';
+        health.forEach(h => { csv += `${h.record_date},${h.blood_pressure_sys||''},${h.blood_pressure_dia||''},${h.blood_sugar||''},${h.weight||''}\n`; });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=${user.name}_export_${new Date().toISOString().split('T')[0]}.csv`);
+        res.send(csv);
+    });
+
+    // ====== 忘記密碼 ======
+    app.post('/api/forgot-password', (req, res) => {
+        const { email, phone, newPassword } = req.body;
+        if (!email || !phone || !newPassword) return res.status(400).json({ error: '請填寫 Email、手機號碼和新密碼' });
+        if (newPassword.length < 6) return res.status(400).json({ error: '新密碼至少6位' });
+        const u = dbGet('SELECT id, phone FROM users WHERE email=?', [email]);
+        if (!u) return res.status(404).json({ error: '找不到此 Email' });
+        if (!u.phone || u.phone.replace(/[^0-9]/g,'') !== phone.replace(/[^0-9]/g,'')) return res.status(401).json({ error: '手機號碼驗證失敗，請確認註冊時的手機號碼' });
+        dbRun('UPDATE users SET password_hash=? WHERE id=?', [hashPwd(newPassword), u.id]);
+        saveDB();
+        res.json({ message: '密碼已重設，請使用新密碼登入' });
+    });
+
+    // ====== 就診報告 ======
+    app.get('/api/report', auth, (req, res) => {
+        const uid = req.user.id;
+        const user = dbGet('SELECT name, email, phone, age FROM users WHERE id=?', [uid]);
+        const meds = dbAll('SELECT drug_name, dosage, usage_notes, remind_time FROM medications WHERE user_id=?', [uid]);
+        const today = new Date().toISOString().split('T')[0];
+        const start30 = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+        const logs = dbAll(`
+            SELECT ml.log_date, ml.taken_status, ml.remind_time, m.drug_name
+            FROM medication_logs ml JOIN medications m ON ml.medication_id=m.id
+            WHERE ml.user_id=? AND ml.log_date >= ? AND ml.log_date <= ?
+            ORDER BY ml.log_date DESC, ml.remind_time`, [uid, start30, today]);
+        const adherence = {};
+        logs.forEach(l => {
+            if (!adherence[l.log_date]) adherence[l.log_date] = { taken: 0, total: 0 };
+            adherence[l.log_date].total++;
+            if (l.taken_status) adherence[l.log_date].taken++;
+        });
+        const days = Object.keys(adherence).length;
+        const totalTaken = Object.values(adherence).reduce((s, d) => s + d.taken, 0);
+        const totalReminders = Object.values(adherence).reduce((s, d) => s + d.total, 0);
+        const health = dbAll('SELECT * FROM health_records WHERE user_id=? AND record_date >= ? ORDER BY record_date DESC', [uid, start30]);
+        const bp = health.filter(h => h.blood_pressure_sys).map(h => ({ date: h.record_date, sys: h.blood_pressure_sys, dia: h.blood_pressure_dia }));
+        const sugar = health.filter(h => h.blood_sugar).map(h => ({ date: h.record_date, value: h.blood_sugar }));
+        const weight = health.filter(h => h.weight).map(h => ({ date: h.record_date, value: h.weight }));
+        res.json({
+            user, medications: meds,
+            adherence: { days, totalTaken, totalReminders, rate: totalReminders > 0 ? Math.round(totalTaken / totalReminders * 100) : 0, daily: adherence },
+            health: { bp, sugar, weight },
+            generatedAt: new Date().toISOString()
+        });
+    });
+
+    // ====== 新手導覽狀態 ======
+    app.get('/api/user/onboarding', auth, (req, res) => {
+        const s = dbGet('SELECT onboarding_completed FROM user_settings WHERE user_id=?', [req.user.id]);
+        res.json({ completed: s ? !!s.onboarding_completed : false });
+    });
+
+    app.put('/api/user/onboarding', auth, (req, res) => {
+        dbRun('INSERT INTO user_settings (user_id, onboarding_completed) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET onboarding_completed=1', [req.user.id]);
+        saveDB();
+        res.json({ message: '已標記為完成' });
+    });
+
+    // ====== 用藥日記 ======
+    app.get('/api/medications/diary', auth, (req, res) => {
+        const medId = req.query.medication_id;
+        let sql = `SELECT md.*, m.drug_name FROM medication_diary md JOIN medications m ON md.medication_id=m.id WHERE md.user_id=?`;
+        const params = [req.user.id];
+        if (medId) { sql += ' AND md.medication_id=?'; params.push(medId); }
+        sql += ' ORDER BY md.created_at DESC LIMIT 50';
+        res.json({ entries: dbAll(sql, params) });
+    });
+
+    app.post('/api/medications/diary', auth, (req, res) => {
+        const { medication_id, mood, side_effects, notes } = req.body;
+        if (!medication_id) return res.status(400).json({ error: '請指定藥品' });
+        dbRun('INSERT INTO medication_diary (user_id, medication_id, mood, side_effects, notes) VALUES (?,?,?,?,?)',
+            [req.user.id, medication_id, mood || null, side_effects || null, notes || null]);
+        saveDB();
+        res.json({ message: '日記已記錄' });
+    });
+
+    // ====== 回診提醒 ======
+    app.get('/api/appointments', auth, (req, res) => {
+        const appointments = dbAll('SELECT * FROM appointments WHERE user_id=? ORDER BY appointment_date ASC', [req.user.id]);
+        res.json({ appointments });
+    });
+
+    app.post('/api/appointments', auth, (req, res) => {
+        const { title, appointment_date, clinic_name, notes } = req.body;
+        if (!title || !appointment_date) return res.status(400).json({ error: '請填寫標題和日期' });
+        dbRun('INSERT INTO appointments (user_id, title, appointment_date, clinic_name, notes) VALUES (?,?,?,?,?)',
+            [req.user.id, title, appointment_date, clinic_name || null, notes || null]);
+        saveDB();
+        res.json({ message: '回診已設定' });
+    });
+
+    app.delete('/api/appointments/:id', auth, (req, res) => {
+        dbRun('DELETE FROM appointments WHERE id=? AND user_id=?', [req.params.id, req.user.id]);
+        saveDB();
+        res.json({ message: '已刪除' });
+    });
+
+    // ====== 用藥遵從趨勢 ======
+    app.get('/api/medications/adherence-trend', auth, (req, res) => {
+        const days = parseInt(req.query.days) || 14;
+        const trends = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const date = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
+            const total = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE user_id=? AND log_date=?', [req.user.id, date])[0]?.cnt || 0;
+            const taken = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE user_id=? AND log_date=? AND taken_status=1', [req.user.id, date])[0]?.cnt || 0;
+            trends.push({ date, total, taken, rate: total > 0 ? Math.round(taken / total * 100) : null });
+        }
+        res.json({ trends });
+    });
+
+    // ====== 管理員分析面板 ======
+    app.get('/api/admin/analytics', auth, adminAuth, (req, res) => {
+        const today = new Date().toISOString().split('T')[0];
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+        const allUsers = dbAll('SELECT id, name FROM users WHERE role!="admin"');
+
+        // 逐日活躍與遵從率
+        const dailyStats = [];
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
+            const activeUsers = dbGet('SELECT COUNT(DISTINCT user_id) AS cnt FROM medication_logs WHERE log_date=?', [date])[0]?.cnt || 0;
+            const totalLogs = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE log_date=?', [date])[0]?.cnt || 0;
+            const takenLogs = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE log_date=? AND taken_status=1', [date])[0]?.cnt || 0;
+            dailyStats.push({ date, activeUsers, totalLogs, takenLogs, adherenceRate: totalLogs > 0 ? Math.round(takenLogs / totalLogs * 100) : 0 });
+        }
+
+        // 低遵從用戶（近7天 < 50%）
+        const atRisk = [];
+        for (const u of allUsers) {
+            const logs = dbGet('SELECT COUNT(*) AS total, SUM(taken_status) AS taken FROM medication_logs WHERE user_id=? AND log_date >= ?', [u.id, weekAgo])[0];
+            const rate = logs?.total > 0 ? Math.round((logs.taken || 0) / logs.total * 100) : 100;
+            if (rate < 50 && logs?.total > 0) atRisk.push({ id: u.id, name: u.name, rate, total: logs.total });
+        }
+
+        res.json({
+            totalUsers: allUsers.length,
+            activeToday: dailyStats[dailyStats.length - 1]?.activeUsers || 0,
+            dailyStats,
+            atRisk
+        });
+    });
+
+    // ====== 用藥歷史（軟刪除） ======
+    app.get('/api/medications/history', auth, (req, res) => {
+        const meds = dbAll('SELECT * FROM medications WHERE user_id=? AND is_active=0 ORDER BY end_date DESC', [req.user.id]);
+        res.json({ medications: meds });
+    });
+
+    // ====== 健康目標 ======
+    app.get('/api/health/goals', auth, (req, res) => {
+        const g = dbGet('SELECT bp_sys_goal, bp_dia_goal, sugar_goal, weight_goal FROM user_settings WHERE user_id=?', [req.user.id]);
+        res.json(g ? { goals: g } : { goals: { bp_sys_goal: null, bp_dia_goal: null, sugar_goal: null, weight_goal: null } });
+    });
+
+    app.put('/api/health/goals', auth, (req, res) => {
+        const { bp_sys_goal, bp_dia_goal, sugar_goal, weight_goal } = req.body;
+        // 確保每個值都有預設 null
+        const bps = bp_sys_goal !== undefined ? bp_sys_goal : null;
+        const bpd = bp_dia_goal !== undefined ? bp_dia_goal : null;
+        const sg = sugar_goal !== undefined ? sugar_goal : null;
+        const wg = weight_goal !== undefined ? weight_goal : null;
+        dbRun('INSERT INTO user_settings (user_id, bp_sys_goal, bp_dia_goal, sugar_goal, weight_goal) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET bp_sys_goal=?, bp_dia_goal=?, sugar_goal=?, weight_goal=?',
+            [req.user.id, bps, bpd, sg, wg, bps, bpd, sg, wg]);
+        saveDB();
+        res.json({ message: '目標已更新' });
+    });
+
+    // 用藥時間衝突檢查
+    app.post('/api/medications/check-conflict', auth, (req, res) => {
+        const { time_slots } = req.body;
+        if (!time_slots || time_slots.length === 0) return res.json({ conflicts: [] });
+        const existing = dbAll('SELECT drug_name, remind_time FROM medications WHERE user_id=? AND is_active=1', [req.user.id]);
+        const conflicts = [];
+        for (const med of existing) {
+            let times = [];
+            try { 
+                times = typeof med.remind_time === 'string' ? JSON.parse(med.remind_time || '[]') : (Array.isArray(med.remind_time) ? med.remind_time : []);
+                if (!Array.isArray(times)) times = [];
+            } catch(e) { times = []; }
+            for (const t of (times || [])) {
+                for (const nt of time_slots) {
+                    if (t === nt) conflicts.push({ drug: med.drug_name, time: t });
+                }
+            }
+        }
+        res.json({ conflicts });
+    });
+
+    // ====== 藥袋相簿 ======
+    app.get('/api/medications/photos', auth, (req, res) => {
+        const photos = dbAll('SELECT id, drug_name, medication_image, created_at FROM medications WHERE user_id=? AND medication_image IS NOT NULL ORDER BY created_at DESC', [req.user.id]);
+        res.json({ photos });
+    });
+
+    // ====== 補藥計算 ======
+    app.get('/api/medications/refill-status', auth, (req, res) => {
+        const meds = dbAll('SELECT id, drug_name, total_quantity, remaining, daily_amount, refill_threshold FROM medications WHERE user_id=? AND is_active=1', [req.user.id]);
+        const refills = meds.map(m => {
+            const daily = m.daily_amount || 1;
+            const remain = m.remaining || 0;
+            const daysLeft = daily > 0 ? Math.floor(remain / daily) : 0;
+            const refillDate = daysLeft > 0 ? new Date(Date.now() + daysLeft * 86400000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+            const isLow = daysLeft <= (m.refill_threshold || 7);
+            return { id: m.id, drug_name: m.drug_name, daily_amount: daily, remaining: remain, days_left: daysLeft, refill_date: refillDate, is_low: isLow };
+        });
+        res.json({ refills });
+    });
+
+    // ====== 家人留言 ======
+    app.get('/api/family/messages', auth, (req, res) => {
+        const targetUserId = req.query.user_id || req.user.id;
+        const msgs = dbAll(`SELECT fm.*, u.name AS sender_name FROM family_messages fm JOIN users u ON fm.sender_id=u.id WHERE fm.target_user_id=? ORDER BY fm.created_at DESC LIMIT 30`, [targetUserId]);
+        res.json({ messages: msgs });
+    });
+
+    app.post('/api/family/messages', auth, (req, res) => {
+        const { target_user_id, message } = req.body;
+        if (!target_user_id || !message) return res.status(400).json({ error: '請填寫對象和訊息' });
+        dbRun('INSERT INTO family_messages (sender_id, target_user_id, message) VALUES (?,?,?)', [req.user.id, target_user_id, message]);
+        saveDB();
+        res.json({ message: '留言已送出' });
+    });
+
+    // ====== 健康數據對比 ======
+    app.get('/api/health/compare', auth, (req, res) => {
+        const thisMonth = new Date().toISOString().substring(0, 7);
+        const lastMonth = new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 7);
+        const getStats = (month, uid) => {
+            const bp = dbAll('SELECT blood_pressure_sys, blood_pressure_dia FROM health_records WHERE user_id=? AND record_date LIKE ?', [uid, month + '%']);
+            const sugar = dbAll('SELECT blood_sugar FROM health_records WHERE user_id=? AND record_date LIKE ? AND blood_sugar IS NOT NULL', [uid, month + '%']);
+            const weight = dbAll('SELECT weight FROM health_records WHERE user_id=? AND record_date LIKE ? AND weight IS NOT NULL', [uid, month + '%']);
+            const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length*10)/10 : null;
+            return {
+                bp_sys_avg: avg(bp.map(r=>r.blood_pressure_sys)),
+                bp_dia_avg: avg(bp.map(r=>r.blood_pressure_dia)),
+                sugar_avg: avg(sugar.map(r=>r.blood_sugar)),
+                weight_avg: avg(weight.map(r=>r.weight)),
+                bp_count: bp.length, sugar_count: sugar.length, weight_count: weight.length
+            };
+        };
+        const current = getStats(thisMonth, req.user.id);
+        const previous = getStats(lastMonth, req.user.id);
+        const diff = (cur, prev) => cur !== null && prev !== null ? Math.round((cur - prev) * 10) / 10 : null;
+        res.json({
+            thisMonth, lastMonth,
+            current, previous,
+            changes: {
+                bp_sys: diff(current.bp_sys_avg, previous.bp_sys_avg),
+                bp_dia: diff(current.bp_dia_avg, previous.bp_dia_avg),
+                sugar: diff(current.sugar_avg, previous.sugar_avg),
+                weight: diff(current.weight_avg, previous.weight_avg)
+            }
+        });
+    });
+
+    // ====== App 密碼鎖 ======
+    app.put('/api/user/pin-lock', auth, (req, res) => {
+        const { pin, enabled } = req.body;
+        if (enabled && (!pin || !/^\d{4}$/.test(pin))) return res.status(400).json({ error: 'PIN 必須為 4 位數字' });
+        dbRun('INSERT INTO user_settings (user_id, pin_code, pin_enabled) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET pin_code=?, pin_enabled=?',
+            [req.user.id, pin || null, enabled ? 1 : 0, pin || null, enabled ? 1 : 0]);
+        saveDB();
+        res.json({ message: enabled ? '密碼鎖已啟用' : '密碼鎖已停用' });
+    });
+
+    app.get('/api/user/pin-lock', auth, (req, res) => {
+        const s = dbGet('SELECT pin_enabled FROM user_settings WHERE user_id=?', [req.user.id]);
+        res.json({ enabled: s ? !!s.pin_enabled : false });
+    });
+
+    app.post('/api/user/verify-pin', (req, res) => {
+        const { user_id, pin } = req.body;
+        if (!user_id || !pin) return res.status(400).json({ error: '請輸入 PIN' });
+        const s = dbGet('SELECT pin_code, pin_enabled FROM user_settings WHERE user_id=?', [user_id]);
+        if (!s || !s.pin_enabled) return res.json({ valid: true });
+        res.json({ valid: s.pin_code === pin });
+    });
+
+    // ====== 提醒延後 ======
+    app.post('/api/medications/:id/snooze', auth, (req, res) => {
+        const medId = req.params.id;
+        const { remind_time, snooze_minutes } = req.body;
+        const until = new Date(Date.now() + (snooze_minutes || 10) * 60000).toISOString();
+        dbRun('INSERT INTO medication_logs (user_id, medication_id, remind_time, log_date, taken_status) VALUES (?,?,?,?,0)',
+            [req.user.id, medId, remind_time, new Date().toISOString().split('T')[0]]);
+        saveDB();
+        res.json({ message: '已延後 ' + (snooze_minutes || 10) + ' 分鐘', snoozedUntil: until });
+    });
+
+    // ====== 一週用藥卡 ======
+    app.get('/api/medications/weekly-card', auth, (req, res) => {
+        const startOfWeek = new Date();
+        const dayOfWeek = startOfWeek.getDay();
+        const monday = new Date(startOfWeek);
+        monday.setDate(startOfWeek.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        const weekdays = ['一','二','三','四','五','六','日'];
+        const dates = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(monday);
+            d.setDate(monday.getDate() + i);
+            dates.push(d.toISOString().split('T')[0]);
+        }
+        const meds = dbAll('SELECT * FROM medications WHERE user_id=? AND is_active=1', [req.user.id]);
+        const logs = dbAll(`SELECT medication_id, log_date, taken_status, remind_time FROM medication_logs WHERE user_id=? AND log_date >= ? AND log_date <= ?`,
+            [req.user.id, dates[0], dates[6]]);
+        // 按藥品和日期建立對照表
+        const grid = meds.map(m => {
+            const row = { drug_name: m.drug_name, dosage: m.dosage, days: [] };
+            for (const date of dates) {
+                const dayLogs = logs.filter(l => l.medication_id === m.id && l.log_date === date);
+                row.days.push(dayLogs.length > 0 ? dayLogs.map(l => ({ time: l.remind_time, taken: !!l.taken_status })) : []);
+            }
+            return row;
+        });
+        res.json({ weekStart: dates[0], weekEnd: dates[6], weekdays, dates, grid });
+    });
+
+    // ====== 飲食交互檢查 ======
+    app.get('/api/drugs/food-interactions', auth, (req, res) => {
+        const drugName = req.query.name;
+        const interactions = [
+            { drug: '阿斯匹靈', food: '酒精', warning: '不可飲酒，增加胃出血風險' },
+            { drug: '阿斯匹靈', food: '葡萄柚', warning: '避免葡萄柚汁，可能影響藥效' },
+            { drug: '血壓藥', food: '葡萄柚', warning: '避免葡萄柚/柚子，可能使血壓過低' },
+            { drug: '降血脂藥', food: '葡萄柚', warning: '避免葡萄柚，增加肌肉損傷風險' },
+            { drug: '抗生素', food: '牛奶', warning: '避免與牛奶/鈣片同服，影響吸收' },
+            { drug: '抗生素', food: '酒精', warning: '服藥期間不可飲酒' },
+            { drug: '降血糖藥', food: '酒精', warning: '飲酒可能導致低血糖' },
+            { drug: '止痛藥', food: '酒精', warning: '不可飲酒，增加肝損傷風險' },
+            { drug: '甲狀腺藥', food: '牛奶', warning: '與牛奶/豆漿間隔 4 小時以上' },
+            { drug: '鐵劑', food: '茶', warning: '避免與茶/咖啡同服，影響鐵吸收' },
+            { drug: '安眠藥', food: '酒精', warning: '絕對不可飲酒，可能致命' },
+            { drug: '胃藥', food: '酒精', warning: '避免飲酒，刺激胃黏膜' },
+        ];
+        if (drugName) {
+            const results = interactions.filter(i =>
+                i.drug.includes(drugName) || drugName.includes(i.drug) ||
+                i.drug === drugName || i.drug.includes(drugName.substring(0,2))
+            );
+            return res.json({ interactions: results });
+        }
+        // 檢查使用者所有用藥
+        const userMeds = dbAll('SELECT drug_name FROM medications WHERE user_id=? AND is_active=1', [req.user.id]);
+        const allResults = [];
+        for (const med of userMeds) {
+            for (const inter of interactions) {
+                if (med.drug_name.includes(inter.drug) || inter.drug.includes(med.drug_name)) {
+                    allResults.push({ drug: med.drug_name, food: inter.food, warning: inter.warning });
+                }
+            }
+        }
+        res.json({ interactions: allResults });
+    });
+
+    // ====== 每日心情 ======
+    app.get('/api/mood', auth, (req, res) => {
+        const date = req.query.date || new Date().toISOString().split('T')[0];
+        const mood = dbGet('SELECT mood, notes FROM mood_logs WHERE user_id=? AND log_date=?', [req.user.id, date]);
+        const week = dbAll('SELECT log_date, mood FROM mood_logs WHERE user_id=? AND log_date >= ? ORDER BY log_date ASC',
+            [req.user.id, new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]]);
+        res.json({ today: mood, week });
+    });
+
+    app.post('/api/mood', auth, (req, res) => {
+        const { mood, notes } = req.body;
+        const date = new Date().toISOString().split('T')[0];
+        dbRun('INSERT OR REPLACE INTO mood_logs (user_id, log_date, mood, notes) VALUES (?,?,?,?)',
+            [req.user.id, date, mood, notes || null]);
+        saveDB();
+        res.json({ message: '心情已記錄' });
+    });
+
+    // ====== 備份還原 ======
+    app.get('/api/backup/download', auth, (req, res) => {
+        saveDB();
+        const buffer = fs.readFileSync(DB_FILE);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', 'attachment; filename=medremind_backup_' + new Date().toISOString().split('T')[0] + '.db');
+        res.send(buffer);
+    });
+
+    app.post('/api/backup/restore', auth, upload.single('backup'), (req, res) => {
+        // 讀取上傳的 DB 檔案並合併資料
+        // 注意：簡化版 - 直接替換整個 DB
+        if (!req.file) {
+            return res.status(400).json({ error: '請上傳備份檔案' });
+        }
+        try {
+            const backupData = req.file.buffer;
+            // 驗證是否為有效 SQLite 檔案
+            const backupDB = new initSqlJs.Database(backupData);
+            const userCheck = backupDB.exec('SELECT COUNT(*) FROM users');
+            if (!userCheck || !userCheck.length) {
+                backupDB.close();
+                return res.status(400).json({ error: '備份檔案無效' });
+            }
+            backupDB.close();
+            // 寫入備份
+            const backupPath = DB_FILE + '.restore';
+            fs.writeFileSync(backupPath, backupData);
+            // 重新載入
+            db.close();
+            db = new SQL.Database(fs.readFileSync(backupPath));
+            saveDB();
+            fs.unlinkSync(backupPath);
+            res.json({ message: '備份已還原，請重新登入' });
+        } catch (e) {
+            console.error('Restore error:', e);
+            res.status(500).json({ error: '備份檔案損毀或格式錯誤' });
+        }
+    });
+
+    // ====== 家人查看長輩健康數據 ======
+    app.get('/api/family/:fid/health', auth, (req, res) => {
+        const rel = dbGet('SELECT user_id, related_user_id, relationship FROM family_members WHERE id=? AND relationship IS NOT NULL', [req.params.fid]);
+        const elderId = rel.user_id;
+        const records = dbAll('SELECT * FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 10', [elderId]);
+        const goals = dbGet('SELECT bp_sys_goal, bp_dia_goal, sugar_goal, weight_goal FROM user_settings WHERE user_id=?', [elderId]);
+        res.json({ elderId, records, goals });
+    });
+
+    // ====== 沒吃藥即時通知（標記未讀通知） ======
+    app.post('/api/family/trigger-missed-alert', auth, (req, res) => {
+        const { elder_id, elder_name, drug_name, remind_time } = req.body;
+        dbRun('INSERT INTO notifications (user_id, type, title, message, is_read) VALUES (?,?,?,?,0)',
+            [req.user.id, 'missed_alert', '⚠️ 未吃藥提醒', elder_name + ' 錯過了 ' + remind_time + ' 的 ' + drug_name]);
+        saveDB();
+        res.json({ message: '通知已發送' });
+    });
+
+    // ====== 批次打卡 ======
+    app.post('/api/medications/batch-checkin', auth, (req, res) => {
+        const { medication_ids, remind_time } = req.body;
+        if (!medication_ids || medication_ids.length === 0) return res.status(400).json({ error: '請選擇要打卡的藥品' });
+        const today = new Date().toISOString().split('T')[0];
+        let count = 0;
+        for (const medId of medication_ids) {
+            const med = dbGet('SELECT id, drug_name FROM medications WHERE id=? AND user_id=?', [medId, req.user.id]);
+            if (!med) continue;
+            dbRun('INSERT INTO medication_logs (medication_id, user_id, remind_time, taken_status, taken_at, log_date) VALUES (?,?,?,1,CURRENT_TIMESTAMP,?)',
+                [medId, req.user.id, remind_time || new Date().toTimeString().substring(0,5), today]);
+            dbRun('UPDATE medications SET remaining = CASE WHEN remaining > 0 THEN remaining - 1 ELSE 0 END WHERE id=? AND remaining > 0 AND user_id=?', [medId, req.user.id]);
+            count++;
+        }
+        saveDB();
+        res.json({ message: '已批次打卡 ' + count + ' 筆用藥' });
+    });
+
+    // ====== 匯出日曆（.ics 格式） ======
+    app.get('/api/medications/export-ics', auth, (req, res) => {
+        const meds = dbAll('SELECT drug_name, dosage, remind_time, duration_days, end_date FROM medications WHERE user_id=? AND is_active=1', [req.user.id]);
+        let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MedRemember//TW//\r\n';
+        const now = new Date().toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+        for (const med of meds) {
+            let times = [];
+            try {
+                times = typeof med.remind_time === 'string' ? JSON.parse(med.remind_time || '[]') : (Array.isArray(med.remind_time) ? med.remind_time : []);
+                if (!Array.isArray(times)) times = [];
+            } catch(e) { times = []; }
+            for (const t of times) {
+                const [h, m] = t.split(':');
+                const start = new Date();
+                start.setHours(parseInt(h), parseInt(m), 0, 0);
+                const end = new Date(start.getTime() + 15 * 60000);
+                ics += 'BEGIN:VEVENT\r\n';
+                ics += 'UID:' + med.id + '-' + t.replace(':','') + '@medremind\r\n';
+                ics += 'DTSTAMP:' + now + '\r\n';
+                ics += 'DTSTART:' + start.toISOString().replace(/[-:]/g,'').split('.')[0] + '\r\n';
+                ics += 'DTEND:' + end.toISOString().replace(/[-:]/g,'').split('.')[0] + '\r\n';
+                ics += 'SUMMARY:💊 ' + med.drug_name + ' ' + med.dosage + '\r\n';
+                ics += 'RRULE:FREQ=DAILY\r\n';
+                ics += 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:吃藥提醒\\n' + med.drug_name + ' ' + med.dosage + '\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\n';
+                ics += 'END:VEVENT\r\n';
+            }
+        }
+        ics += 'END:VCALENDAR';
+        res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename=medremind_schedule.ics');
+        res.send(ics);
+    });
+
+    // ====== 簡化模式 ======
+    app.put('/api/user/simple-mode', auth, (req, res) => {
+        const { enabled } = req.body;
+        dbRun('INSERT INTO user_settings (user_id, simple_mode) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET simple_mode=?',
+            [req.user.id, enabled ? 1 : 0, enabled ? 1 : 0]);
+        saveDB();
+        res.json({ message: enabled ? '簡化模式已啟用' : '簡化模式已停用' });
+    });
+
+    app.get('/api/user/simple-mode', auth, (req, res) => {
+        const s = dbGet('SELECT simple_mode FROM user_settings WHERE user_id=?', [req.user.id]);
+        res.json({ enabled: s ? !!s.simple_mode : false });
+    });
+
+    // ====== 最常錯過分析 ======
+    app.get('/api/medications/miss-report', auth, (req, res) => {
+        const days = parseInt(req.query.days) || 30;
+        const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+        // 用藥統計
+        const drugStats = dbAll(`
+            SELECT m.drug_name, ml.remind_time,
+                   COUNT(*) AS total, SUM(ml.taken_status) AS taken
+            FROM medication_logs ml JOIN medications m ON ml.medication_id=m.id
+            WHERE ml.user_id=? AND ml.log_date >= ?
+            GROUP BY m.drug_name
+            ORDER BY (COUNT(*) - SUM(ml.taken_status)) DESC`, [req.user.id, startDate]);
+        // 時段統計
+        const timeStats = dbAll(`
+            SELECT ml.remind_time,
+                   COUNT(*) AS total, SUM(ml.taken_status) AS taken
+            FROM medication_logs ml
+            WHERE ml.user_id=? AND ml.log_date >= ?
+            GROUP BY ml.remind_time
+            ORDER BY (COUNT(*) - SUM(ml.taken_status)) DESC`, [req.user.id, startDate]);
+        res.json({
+            drugStats: drugStats.map(d => ({ ...d, missed: d.total - (d.taken || 0), rate: d.total > 0 ? Math.round((d.taken || 0) / d.total * 100) : 0 })),
+            timeStats: timeStats.map(t => ({ ...t, missed: t.total - (t.taken || 0), rate: t.total > 0 ? Math.round((t.taken || 0) / t.total * 100) : 0 })),
+            days
+        });
+    });
+
+    // ====== 智慧提醒建議 ======
+    app.get('/api/medications/smart-suggest', auth, (req, res) => {
+        const days = parseInt(req.query.days) || 14;
+        const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+        const logs = dbAll(`
+            SELECT m.drug_name, ml.remind_time, ml.taken_at
+            FROM medication_logs ml JOIN medications m ON ml.medication_id=m.id
+            WHERE ml.user_id=? AND ml.log_date >= ? AND ml.taken_status=1 AND ml.taken_at IS NOT NULL
+            ORDER BY ml.taken_at`, [req.user.id, startDate]);
+        // 分析每個提醒時間的實際打卡時間偏移
+        const timeGroups = {};
+        logs.forEach(l => {
+            const scheduled = l.remind_time;
+            const actual = l.taken_at.split('T')[1] ? l.taken_at.split('T')[1].substring(0, 5) : scheduled;
+            if (!timeGroups[scheduled]) timeGroups[scheduled] = { times: [], offsets: [] };
+            timeGroups[scheduled].times.push(actual);
+            const sMin = parseInt(scheduled.split(':')[0]) * 60 + parseInt(scheduled.split(':')[1]);
+            const aMin = parseInt(actual.split(':')[0]) * 60 + parseInt(actual.split(':')[1]);
+            timeGroups[scheduled].offsets.push(aMin - sMin);
+        });
+        const suggestions = [];
+        for (const [scheduled, data] of Object.entries(timeGroups)) {
+            if (data.offsets.length < 3) continue;
+            const avgOffset = Math.round(data.offsets.reduce((a,b)=>a+b,0) / data.offsets.length);
+            if (Math.abs(avgOffset) < 5) continue;
+            const newTime = new Date();
+            const oldMin = parseInt(scheduled.split(':')[0]) * 60 + parseInt(scheduled.split(':')[1]);
+            newTime.setHours(0, oldMin + avgOffset, 0, 0);
+            const newTimeStr = String(newTime.getHours()).padStart(2,'0') + ':' + String(newTime.getMinutes()).padStart(2,'0');
+            suggestions.push({ scheduled, avgOffset, newTime: newTimeStr, samples: data.offsets.length, direction: avgOffset > 0 ? '延後' : '提前' });
+        }
+        res.json({ suggestions });
+    });
+
+    // ====== BMI 與身高 ======
+    app.put('/api/user/height', auth, (req, res) => {
+        const { height } = req.body;
+        if (!height || height < 50 || height > 250) return res.status(400).json({ error: '請輸入有效身高（50-250 cm）' });
+        dbRun('INSERT INTO user_settings (user_id, height_cm) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET height_cm=?',
+            [req.user.id, height, height]);
+        saveDB();
+        res.json({ message: '身高已更新' });
+    });
+
+    // ====== 常用診所通訊錄 ======
+    app.get('/api/clinics', auth, (req, res) => {
+        const clinics = dbAll('SELECT * FROM clinic_contacts WHERE user_id=? ORDER BY name ASC', [req.user.id]);
+        res.json({ clinics });
+    });
+
+    app.post('/api/clinics', auth, (req, res) => {
+        const { name, phone, address, notes } = req.body;
+        if (!name) return res.status(400).json({ error: '請輸入診所名稱' });
+        dbRun('INSERT INTO clinic_contacts (user_id, name, phone, address, notes) VALUES (?,?,?,?,?)',
+            [req.user.id, name, phone || null, address || null, notes || null]);
+        saveDB();
+        res.json({ message: '診所已新增' });
+    });
+
+    app.delete('/api/clinics/:id', auth, (req, res) => {
+        dbRun('DELETE FROM clinic_contacts WHERE id=? AND user_id=?', [req.params.id, req.user.id]);
+        saveDB();
+        res.json({ message: '已刪除' });
+    });
+
+    // ====== 家人週報 ======
+    app.get('/api/report/weekly', auth, (req, res) => {
+        const uid = req.user.id;
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+        const today = new Date().toISOString().split('T')[0];
+        // 用藥遵從
+        const logs = dbAll('SELECT log_date, taken_status FROM medication_logs WHERE user_id=? AND log_date >= ?', [uid, weekAgo]);
+        const adherence = {};
+        logs.forEach(l => {
+            if (!adherence[l.log_date]) adherence[l.log_date] = { taken: 0, total: 0 };
+            adherence[l.log_date].total++;
+            if (l.taken_status) adherence[l.log_date].taken++;
+        });
+        const totalTaken = Object.values(adherence).reduce((s,d) => s + d.taken, 0);
+        const totalReminders = Object.values(adherence).reduce((s,d) => s + d.total, 0);
+        const rate = totalReminders > 0 ? Math.round(totalTaken / totalReminders * 100) : 0;
+        // 心情
+        const moods = dbAll('SELECT log_date, mood FROM mood_logs WHERE user_id=? AND log_date >= ? ORDER BY log_date', [uid, weekAgo]);
+        // 健康
+        const bp = dbAll('SELECT blood_pressure_sys, blood_pressure_dia, record_date FROM health_records WHERE user_id=? AND record_date >= ? AND blood_pressure_sys IS NOT NULL ORDER BY record_date DESC LIMIT 3', [uid, weekAgo]);
+        const sugar = dbAll('SELECT blood_sugar, record_date FROM health_records WHERE user_id=? AND record_date >= ? AND blood_sugar IS NOT NULL ORDER BY record_date DESC LIMIT 3', [uid, weekAgo]);
+        const user = dbGet('SELECT name, age FROM users WHERE id=?', [uid]);
+        res.json({
+            user, weekStart: weekAgo, weekEnd: today,
+            adherence: { rate, totalTaken, totalReminders },
+            moods, bp, sugar,
+            generatedAt: new Date().toISOString()
+        });
+    });
+
+    // ====== 啟動 ======
+    app.listen(PORT, () => {
+        console.log(`💊 藥記得 App 伺服器已啟動：http://localhost:${PORT}`);
+        console.log(`🔑 測試帳號：wang@example.com / 123456`);
+        console.log(`🔑 測試帳號：li@example.com / 123456`);
+        console.log(`🔧 管理員帳號：Re1226 / 1226Roger86`);
+    });
+}
+init().catch(e => { console.error('初始化失敗:', e); process.exit(1); });

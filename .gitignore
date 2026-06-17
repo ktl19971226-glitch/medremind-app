@@ -1,0 +1,7 @@
+
+# === 安全文件 ===
+.env
+.env.local
+.env.*.local
+medremind_backup.db
+node_modules/

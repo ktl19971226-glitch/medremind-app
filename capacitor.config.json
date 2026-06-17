@@ -1,0 +1,6 @@
+{
+  "appId": "app.yaojidecare",
+  "appName": "藥記得",
+  "webDir": "public",
+  "bundledWebRuntime": false
+}

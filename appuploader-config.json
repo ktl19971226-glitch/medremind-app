@@ -1,0 +1,11 @@
+{
+  "bundleId": "app.yaojidecare",
+  "appName": "藥記得",
+  "projectDir": "/home/ubuntu/.openclaw/workspace/medremind-app",
+  "certificatePath": "/home/ubuntu/.openclaw/workspace/medremind-app/signing/medremind.p12",
+  "provisioningProfilePath": "/home/ubuntu/.openclaw/workspace/medremind-app/signing/medremind.mobileprovision",
+  "buildType": "adhoc",
+  "scheme": "App",
+  "configuration": "Release",
+  "outputPath": "/home/ubuntu/.openclaw/workspace/medremind-app/build_output"
+}

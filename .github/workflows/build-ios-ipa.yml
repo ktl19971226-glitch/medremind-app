@@ -1,0 +1,78 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type'
+        required: true
+        default: 'ad-hoc'
+        type: choice
+        options:
+          - ad-hoc
+          - development
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Add iOS platform
+        run: npx cap add ios || true
+      
+      - name: Sync iOS
+        run: npx cap sync ios
+      
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios/App
+          pod install
+      
+      - name: Create signing certificates
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles/
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/medremind.mobileprovision
+      
+      - name: Import code signing certificate
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.CERTIFICATE_PASSWORD }}
+      
+      - name: Build iOS Archive
+        run: |
+          cd ios/App
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath ${{ github.workspace }}/build/medremind.xcarchive \
+            -allowProvisioningUpdates \
+            CODE_SIGN_STYLE=Automatic
+      
+      - name: Export IPA
+        run: |
+          cd ${{ github.workspace }}/build
+          xcodebuild -exportArchive \
+            -archivePath medremind.xcarchive \
+            -exportPath . \
+            -exportOptionsPlist exportOptions.plist
+      
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: medremind-ipa
+          path: ${{ github.workspace }}/build/*.ipa
+          retention-days: 30
+

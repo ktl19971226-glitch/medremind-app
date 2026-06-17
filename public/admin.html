@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🔧 藥記得 - 管理後台</title>
+  <style>
+    :root {
+      --green: #27AE60; --blue: #3498DB; --red: #E74C3C; --orange: #F39C12;
+      --bg: #f5f7fa; --card-bg: #ffffff; --text: #2c3e50; --text-light: #7f8c8d; --border: #e0e6ed;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.6;
+    }
+    .header {
+      background: var(--green); color: white; padding: 14px 20px; display: flex;
+      align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100;
+    }
+    .header h1 { font-size: 20px; }
+    .header button { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+    .container { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+    .login-box { max-width: 400px; margin: 80px auto; padding: 32px 24px; background: white; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    .login-box h2 { text-align: center; margin-bottom: 24px; color: var(--green); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; }
+    .form-group input { width: 100%; padding: 12px 16px; border: 2px solid var(--border); border-radius: 10px; font-size: 16px; }
+    .btn { padding: 10px 20px; border-radius: 10px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; }
+    .btn-primary { background: var(--green); color: white; width: 100%; }
+    .btn-danger { background: var(--red); color: white; }
+    .btn-outline { background: white; border: 2px solid var(--green); color: var(--green); }
+    .btn-sm { padding: 5px 12px; font-size: 12px; width: auto; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 24px; }
+    .stat-card { background: var(--card-bg); border-radius: 12px; padding: 16px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: default; }
+    .stat-value { font-size: 26px; font-weight: 700; color: var(--green); }
+    .stat-label { font-size: 13px; color: var(--text-light); margin-top: 2px; }
+    .section-title { font-size: 18px; font-weight: 600; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    th { background: #e8f5e9; padding: 10px 12px; text-align: left; font-weight: 600; font-size: 14px; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .badge-admin { background: #e8f5e9; color: var(--green); }
+    .badge-user { background: #e3f2fd; color: var(--blue); }
+    .badge-taken { background: #e8f5e9; color: var(--green); }
+    .badge-missed { background: #fde8e8; color: var(--red); }
+    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 10px 20px; border-radius: 10px; font-size: 14px; z-index: 200; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 150; display: flex; align-items: center; justify-content: center; }
+    .modal { background: white; border-radius: 16px; padding: 24px; width: 93%; max-width: 600px; max-height: 85vh; overflow-y: auto; }
+    .modal h2 { margin-bottom: 16px; font-size: 20px; }
+    .clickable { cursor: pointer; color: var(--blue); text-decoration: underline; }
+    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .info-label { color: var(--text-light); }
+  </style>
+</head>
+<body>
+<div id="login-page">
+  <div class="login-box">
+    <h2>🔧 管理後台登入</h2>
+    <div class="form-group">
+      <label>管理員帳號</label>
+      <input type="text" id="login-email" placeholder="管理員帳號">
+    </div>
+    <div class="form-group">
+      <label>密碼</label>
+      <input type="password" id="login-password" placeholder="密碼" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button onclick="doLogin()" class="btn btn-primary">登入</button>
+    <p style="text-align:center;margin-top:12px;font-size:13px;color:var(--text-light);">僅限管理員帳號登入</p>
+  </div>
+</div>
+
+<div id="dashboard" style="display:none;">
+  <div class="header">
+    <h1>🔧 藥記得管理後台</h1>
+    <div>
+      <span id="admin-name" style="margin-right:12px;"></span>
+      <button onclick="doLogout()">登出</button>
+    </div>
+  </div>
+  <div class="container">
+
+    <div class="section-title">📊 系統摘要</div>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-value" id="s-users">-</div><div class="stat-label">總用戶數</div></div>
+      <div class="stat-card"><div class="stat-value" id="s-meds">-</div><div class="stat-label">總用藥筆數</div></div>
+      <div class="stat-card"><div class="stat-value" id="s-logs">-</div><div class="stat-label">今日服藥紀錄</div></div>
+      <div class="stat-card"><div class="stat-value" id="s-adh">-</div><div class="stat-label">今日遵從率</div></div>
+      <div class="stat-card"><div class="stat-value" id="s-health">-</div><div class="stat-label">健康數據</div></div>
+    </div>
+
+    <!-- 管理員分析面板 -->
+    <div class="section-title">📊 近7天分析</div>
+    <div class="card" style="margin-bottom:16px;">
+        <canvas id="admin-trend-chart" width="700" height="180" style="width:100%;height:180px;border-radius:8px;background:#f9fafb;"></canvas>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+        <h3 style="margin-bottom:8px;">⚠️ 低遵從用戶（近7天 <50%）</h3>
+        <div id="at-risk-list" style="font-size:14px;"></div>
+    </div>
+
+    <div class="section-title">👥 用戶列表</div>
+    <table>
+      <thead><tr><th>姓名</th><th>Email</th><th>角色</th><th>用藥</th><th>今日遵從</th><th>註冊日</th><th>操作</th></tr></thead>
+      <tbody id="users-table"><tr><td colspan="7" style="text-align:center;color:var(--text-light);">載入中...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+const API_URL = '';
+let token = '';
+
+function showToast(msg, dur = 2000) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), dur);
+}
+
+async function api(url, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  try {
+    const res = await fetch(API_URL + url, { ...opts, headers });
+    if (res.status === 403) { doLogout(); showToast('權限不足，請重新登入'); }
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (jsonErr) {
+      console.error('JSON parse error:', jsonErr);
+      data = { error: '伺服器回應格式錯誤' };
+    }
+    return { status: res.status, data };
+  } catch (fetchErr) {
+    console.error('API request error:', fetchErr);
+    return { status: 0, data: { error: '網路連線失敗：' + fetchErr.message } };
+  }
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value.trim();
+  if (!email || !password) return showToast('請輸入帳號密碼');
+  const { status, data } = await api('/api/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+  if (status !== 200) return showToast(data.error || '登入失敗');
+  if (data.user.role !== 'admin') return showToast('非管理員帳號，無法登入後台');
+  token = data.token;
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('admin-name').textContent = data.user.name;
+  loadDashboard();
+}
+
+function doLogout() {
+  token = '';
+  document.getElementById('login-page').style.display = 'block';
+  document.getElementById('dashboard').style.display = 'none';
+}
+
+async function loadDashboard() {
+  // 系統摘要
+  const { data: stats } = await api('/api/admin/stats');
+  if (stats) {
+    document.getElementById('s-users').textContent = stats.totalUsers;
+    document.getElementById('s-meds').textContent = stats.totalMeds;
+    document.getElementById('s-logs').textContent = stats.todayLogs;
+    document.getElementById('s-adh').textContent = stats.todayAdherence + '%';
+    document.getElementById('s-health').textContent = stats.healthRecords;
+  }
+  // 載入分析面板
+  loadAnalytics();
+  // 用戶列表
+  const { data: users } = await api('/api/admin/users');
+  if (users && users.users) {
+    document.getElementById('users-table').innerHTML = users.users.map(u => `
+      <tr>
+        <td><span class="clickable" onclick="showUserDetail(${u.id})">${u.name}</span></td>
+        <td>${u.email}</td>
+        <td><span class="badge badge-${u.role==='admin'?'admin':'user'}">${u.role==='admin'?'管理員':'使用者'}</span></td>
+        <td>${u.med_count}</td>
+        <td>${typeof u.today_adherence==='number' ? u.today_adherence+'%' : u.today_adherence}</td>
+        <td>${(u.created_at||'').split('T')[0]}</td>
+        <td>${u.role!=='admin' ? `<button onclick="deleteUser(${u.id},'${u.name}')" class="btn btn-danger btn-sm" style="margin-right:4px;">刪除</button><button onclick="showResetPassword(${u.id},'${u.name}')" class="btn btn-outline btn-sm" style="margin-right:4px;">改密</button><button onclick="exportUserCSV(${u.id},'${u.name}')" class="btn btn-outline btn-sm">匯出</button>` : '-'}</td>
+      </tr>
+    `).join('');
+  }
+}
+
+async function deleteUser(id, name) {
+  if (!confirm('確定要永久刪除「' + name + '」及其所有用藥、健康、家庭資料？此操作無法復原。')) return;
+  const { status, data } = await api('/api/admin/users/' + id, { method: 'DELETE' });
+  if (status === 200) { showToast('用戶已刪除'); loadDashboard(); }
+  else showToast(data.error || '刪除失敗');
+}
+
+// 管理員重設密碼
+function showResetPassword(uid, name) {
+  const newPwd = prompt('為「' + name + '」重設密碼：\n請輸入新密碼（至少6位）：');
+  if (!newPwd) return;
+  if (newPwd.length < 6) return showToast('密碼至少6位');
+  api('/api/admin/users/' + uid + '/reset-password', { method: 'PUT', body: JSON.stringify({ newPassword: newPwd }) }).then(({ status, data }) => {
+    if (status === 200) showToast(name + ' 密碼已重設為：' + (data.newPassword || newPwd));
+    else showToast(data.error || '重設失敗');
+  });
+}
+
+// 管理員匯出 CSV
+function exportUserCSV(uid, name) {
+  const a = document.createElement('a');
+  a.href = '/api/admin/users/' + uid + '/export';
+  const tok = token;
+  // 用 fetch 加 auth header 下載
+  try { fetch(a.href, { headers: { 'Authorization': 'Bearer ' + tok } }).then(res => {
+    if (!res.ok) return showToast('匯出失敗');
+    return res.blob();
+  }).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const dl = document.createElement('a'); dl.href = url; dl.download = name + '_export.csv'; dl.click();
+    URL.revokeObjectURL(url);
+    showToast(name + ' 資料已匯出');
+  }).catch(() => showToast('匯出失敗'));
+}
+
+async function showUserDetail(uid) {
+  showToast('載入中...', 1000);
+  const { status, data } = await api('/api/admin/users/' + uid + '/detail');
+  if (status !== 200) return showToast(data.error || '載入失敗');
+
+  const u = data.user;
+  // 近期健康數據
+  let healthHTML = '';
+  if (data.healthRecords && data.healthRecords.length > 0) {
+    healthHTML = '<div style="margin-top:16px;"><strong>❤️ 近期健康數據（最近 30 筆）</strong></div>' +
+      data.healthRecords.slice(0, 10).map(r => `
+        <div class="info-row">
+          <span>${r.record_date}</span>
+          <span>${r.blood_pressure_sys&&r.blood_pressure_dia ? '血壓 '+r.blood_pressure_sys+'/'+r.blood_pressure_dia+' mmHg' : ''} ${r.blood_sugar ? '血糖 '+r.blood_sugar+' mg/dL' : ''} ${r.weight ? '體重 '+r.weight+' kg' : ''}</span>
+        </div>
+      `).join('');
+  }
+
+  // 今日服藥
+  let todayHTML = '';
+  if (data.todayLogs && data.todayLogs.length > 0) {
+    todayHTML = '<div style="margin-top:16px;"><strong>📋 今日服藥紀錄</strong></div>' +
+      data.todayLogs.map(l => `
+        <div class="info-row">
+          <span>${l.drug_name} - ${l.remind_time}</span>
+          <span class="badge badge-${l.taken_status?'taken':'missed'}">${l.taken_status?'已服用':'未服用'}</span>
+        </div>
+      `).join('');
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>👤 ${u.name} 詳細資料</h2>
+      <div class="info-row"><span class="info-label">Email</span><span>${u.email}</span></div>
+      <div class="info-row"><span class="info-label">電話</span><span>${u.phone || '-'}</span></div>
+      <div class="info-row"><span class="info-label">年齡</span><span>${u.age || '-'}</span></div>
+      <div class="info-row"><span class="info-label">角色</span><span>${u.role==='admin'?'管理員':'使用者'}</span></div>
+      <div class="info-row"><span class="info-label">註冊日</span><span>${(u.created_at||'').split('T')[0]}</span></div>
+      ${todayHTML}
+
+      <div style="margin-top:16px;"><strong>💊 用藥列表（${data.medications ? data.medications.length : 0} 筆）</strong></div>
+      ${(data.medications||[]).map(m => `
+        <div class="info-row">
+          <span>${m.drug_name} ${m.dosage}</span>
+          <span>${(m.remind_time||'').replace(/[\[\]\"]/g,'')}</span>
+        </div>
+      `).join('') || '<div style="color:var(--text-light);font-size:14px;">尚無用藥</div>'}
+
+      ${healthHTML}
+
+      <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-outline" style="width:100%;margin-top:16px;">關閉</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+// 管理員分析面板
+async function loadAnalytics() {
+    const { status, data } = await api('/api/admin/analytics');
+    if (status !== 200) return;
+    
+    // 趨勢圖
+    const canvas = document.getElementById('admin-trend-chart');
+    if (canvas && data.dailyStats && data.dailyStats.length > 1) {
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+        const pad = { top: 25, right: 20, bottom: 25, left: 40 };
+        const cw = W - pad.left - pad.right, ch = H - pad.top - pad.bottom;
+        const vals = data.dailyStats.map(s => s.adherenceRate);
+        const max = 100, min = Math.max(0, Math.min(...vals) - 10);
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.top + ch * i / 4;
+            ctx.strokeStyle = '#e0e6ed'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+            ctx.fillStyle = '#7f8c8d'; ctx.font = '14px sans-serif'; ctx.textAlign = 'right';
+            ctx.fillText(Math.round(max - (max - min) * i / 4) + '%', pad.left - 6, y + 4);
+        }
+        ctx.strokeStyle = '#27AE60'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.beginPath();
+        data.dailyStats.forEach((s, i) => {
+            const x = pad.left + cw * i / (data.dailyStats.length - 1);
+            const y = pad.top + ch - ((s.adherenceRate - min) / (max - min)) * ch;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        data.dailyStats.forEach((s, i) => {
+            const x = pad.left + cw * i / (data.dailyStats.length - 1);
+            const y = pad.top + ch - ((s.adherenceRate - min) / (max - min)) * ch;
+            ctx.fillStyle = '#27AE60'; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+        });
+        // 日期標籤
+        ctx.fillStyle = '#7f8c8d'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+        data.dailyStats.forEach((s, i) => {
+            if (i % 2 === 0 || i === data.dailyStats.length - 1) {
+                const x = pad.left + cw * i / (data.dailyStats.length - 1);
+                ctx.fillText(s.date.substring(5), x, H - 5);
+            }
+        });
+    }
+
+    // 低遵從用戶
+    if (data.atRisk && data.atRisk.length > 0) {
+        document.getElementById('at-risk-list').innerHTML = data.atRisk.map(u =>
+            '<div style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">' +
+            '<span>👤 <b>' + u.name + '</b></span><span style="color:var(--red);">' + u.rate + '% (' + u.total + '次)</span></div>'
+        ).join('');
+    } else {
+        document.getElementById('at-risk-list').innerHTML = '<div style="color:var(--green);text-align:center;padding:8px;">✅ 所有用戶遵從率正常</div>';
+    }
+}
+</script>
+</body>
+</html>

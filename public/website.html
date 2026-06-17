@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>藥記得｜AI 用藥提醒與家人照護平台</title>
+    <meta name="description" content="藥記得是為長輩與家人打造的 AI 用藥提醒、藥袋辨識、健康紀錄與家人照護平台。">
+    <meta property="og:title" content="藥記得｜AI 用藥提醒與家人照護平台">
+    <meta property="og:description" content="讓長輩按時用藥，讓家人放心照護。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.yaojidecare.app/">
+    <meta property="og:image" content="https://www.yaojidecare.app/icon-512.png">
+    <link rel="icon" href="/icon-192.png">
+    <style>
+        :root {
+            --green: #1f9d6a;
+            --deep-green: #11654a;
+            --blue: #2367d1;
+            --orange: #f59e0b;
+            --ink: #14213d;
+            --text: #243243;
+            --muted: #64748b;
+            --line: #d8e1ea;
+            --soft: #f6faf8;
+            --white: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+            color: var(--text);
+            background: var(--white);
+            line-height: 1.6;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 20;
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(216,225,234,0.8);
+        }
+
+        .nav {
+            max-width: 1120px;
+            margin: 0 auto;
+            min-height: 68px;
+            padding: 0 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 800;
+            color: var(--ink);
+            font-size: 19px;
+            white-space: nowrap;
+        }
+
+        .brand img {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 22px;
+            font-size: 15px;
+            color: var(--muted);
+        }
+
+        .nav-links a:hover {
+            color: var(--green);
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: var(--green);
+            color: white;
+            box-shadow: 0 10px 20px rgba(31,157,106,0.22);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--ink);
+            border-color: var(--line);
+        }
+
+        .hero {
+            min-height: 88vh;
+            padding: 116px 22px 58px;
+            background:
+                linear-gradient(90deg, rgba(246,250,248,0.98) 0%, rgba(246,250,248,0.92) 45%, rgba(246,250,248,0.70) 100%),
+                url('/icon-512.png') right 9% center / min(34vw, 420px) no-repeat,
+                linear-gradient(135deg, #f6faf8 0%, #eef6ff 48%, #fff7e6 100%);
+            display: flex;
+            align-items: center;
+        }
+
+        .hero-inner {
+            width: 100%;
+            max-width: 1120px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+            gap: 48px;
+            align-items: center;
+        }
+
+        .hero-copy {
+            position: relative;
+            z-index: 2;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--deep-green);
+            font-weight: 800;
+            font-size: 14px;
+            margin-bottom: 14px;
+        }
+
+        h1 {
+            color: var(--ink);
+            font-size: 54px;
+            line-height: 1.08;
+            letter-spacing: 0;
+            margin-bottom: 18px;
+        }
+
+        .lead {
+            max-width: 620px;
+            color: #405064;
+            font-size: 20px;
+            margin-bottom: 26px;
+        }
+
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        .trust-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            max-width: 640px;
+        }
+
+        .trust-item {
+            border-left: 3px solid var(--green);
+            padding: 8px 10px;
+            background: rgba(255,255,255,0.78);
+        }
+
+        .trust-item strong {
+            display: block;
+            color: var(--ink);
+            font-size: 18px;
+        }
+
+        .trust-item span {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .phone-stage {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .phone {
+            width: min(340px, 88vw);
+            border: 12px solid #111827;
+            border-radius: 34px;
+            background: #f7fafc;
+            box-shadow: 0 28px 80px rgba(20,33,61,0.20);
+            overflow: hidden;
+        }
+
+        .phone-head {
+            background: linear-gradient(135deg, var(--green), var(--blue));
+            color: white;
+            padding: 22px 18px 18px;
+        }
+
+        .phone-head .small {
+            opacity: .86;
+            font-size: 13px;
+        }
+
+        .phone-head .big {
+            font-size: 24px;
+            font-weight: 850;
+            margin-top: 4px;
+        }
+
+        .phone-body {
+            padding: 14px;
+        }
+
+        .app-panel {
+            background: white;
+            border: 1px solid #e4ebf2;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .app-panel.primary {
+            border-color: rgba(31,157,106,0.35);
+            background: #f0fbf6;
+        }
+
+        .app-panel-title {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .app-panel-main {
+            color: var(--ink);
+            font-size: 17px;
+            font-weight: 800;
+        }
+
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .app-grid span {
+            display: block;
+            background: white;
+            border: 1px solid #e4ebf2;
+            border-radius: 10px;
+            padding: 9px 6px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        section {
+            padding: 76px 22px;
+        }
+
+        .section-inner {
+            max-width: 1120px;
+            margin: 0 auto;
+        }
+
+        .section-head {
+            max-width: 720px;
+            margin-bottom: 30px;
+        }
+
+        .section-head h2 {
+            color: var(--ink);
+            font-size: 34px;
+            line-height: 1.2;
+            letter-spacing: 0;
+            margin-bottom: 10px;
+        }
+
+        .section-head p {
+            color: var(--muted);
+            font-size: 17px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .feature {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 20px;
+            background: white;
+        }
+
+        .feature .icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 14px;
+            color: white;
+            font-size: 21px;
+            font-weight: 900;
+        }
+
+        .feature:nth-child(3n+1) .icon { background: var(--green); }
+        .feature:nth-child(3n+2) .icon { background: var(--blue); }
+        .feature:nth-child(3n+3) .icon { background: var(--orange); }
+
+        .feature h3 {
+            color: var(--ink);
+            font-size: 19px;
+            margin-bottom: 8px;
+        }
+
+        .feature p {
+            color: var(--muted);
+            font-size: 15px;
+        }
+
+        .band {
+            background: var(--soft);
+        }
+
+        .workflow {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .step {
+            border-top: 4px solid var(--green);
+            background: white;
+            border-radius: 8px;
+            padding: 18px;
+            min-height: 170px;
+            border-left: 1px solid var(--line);
+            border-right: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .step-num {
+            color: var(--green);
+            font-size: 13px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+
+        .step h3 {
+            color: var(--ink);
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .step p {
+            color: var(--muted);
+            font-size: 15px;
+        }
+
+        .security-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            align-items: stretch;
+        }
+
+        .security-panel {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 24px;
+            background: white;
+        }
+
+        .security-panel h3 {
+            color: var(--ink);
+            margin-bottom: 12px;
+            font-size: 22px;
+        }
+
+        .check-list {
+            list-style: none;
+        }
+
+        .check-list li {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            color: var(--text);
+        }
+
+        .check-list li::before {
+            content: "✓";
+            color: var(--green);
+            font-weight: 900;
+        }
+
+        .cta {
+            background: linear-gradient(135deg, var(--ink), #1f513f);
+            color: white;
+            padding: 64px 22px;
+        }
+
+        .cta-inner {
+            max-width: 1120px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+        }
+
+        .cta h2 {
+            font-size: 32px;
+            line-height: 1.25;
+            letter-spacing: 0;
+            margin-bottom: 8px;
+        }
+
+        .cta p {
+            color: rgba(255,255,255,0.76);
+            font-size: 17px;
+        }
+
+        footer {
+            padding: 28px 22px;
+            background: #0f172a;
+            color: rgba(255,255,255,0.72);
+            font-size: 14px;
+        }
+
+        .footer-inner {
+            max-width: 1120px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 900px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero {
+                min-height: auto;
+                padding-top: 100px;
+            }
+
+            .hero-inner {
+                grid-template-columns: 1fr;
+                gap: 28px;
+            }
+
+            h1 {
+                font-size: 40px;
+            }
+
+            .lead {
+                font-size: 18px;
+            }
+
+            .feature-grid,
+            .workflow,
+            .security-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .trust-row {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-inner {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .nav {
+                padding: 0 14px;
+            }
+
+            .nav-actions .btn-secondary {
+                display: none;
+            }
+
+            h1 {
+                font-size: 34px;
+            }
+
+            section {
+                padding: 58px 16px;
+            }
+
+            .hero {
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+
+            .section-head h2 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <nav class="nav" aria-label="主選單">
+            <a class="brand" href="#top" aria-label="藥記得首頁">
+                <img src="/icon-192.png" alt="">
+                <span>藥記得</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features">功能</a>
+                <a href="#workflow">使用流程</a>
+                <a href="#security">安全與信任</a>
+                <a href="#plans">版本規劃</a>
+            </div>
+            <div class="nav-actions">
+                <a class="btn btn-secondary" href="https://yaojidecare.app/">登入</a>
+                <a class="btn btn-primary" href="https://yaojidecare.app/">開始使用</a>
+            </div>
+        </nav>
+    </header>
+
+    <main id="top">
+        <section class="hero">
+            <div class="hero-inner">
+                <div class="hero-copy">
+                    <div class="eyebrow">AI 用藥提醒與家人照護平台</div>
+                    <h1>藥記得</h1>
+                    <p class="lead">讓長輩按時吃藥，讓家人即時掌握照護狀態。從藥袋辨識、今日提醒、補藥提示到健康紀錄，整理成一個每天真的用得上的照護 App。</p>
+                    <div class="hero-actions">
+                        <a class="btn btn-primary" href="https://yaojidecare.app/">立即登入 App</a>
+                        <a class="btn btn-secondary" href="#features">查看功能</a>
+                    </div>
+                    <div class="trust-row" aria-label="產品重點">
+                        <div class="trust-item"><strong>AI</strong><span>藥袋辨識與風險提示</span></div>
+                        <div class="trust-item"><strong>家庭</strong><span>邀請碼與照護摘要</span></div>
+                        <div class="trust-item"><strong>PWA</strong><span>可加入手機主畫面</span></div>
+                    </div>
+                </div>
+                <div class="phone-stage" aria-label="藥記得 App 預覽">
+                    <div class="phone">
+                        <div class="phone-head">
+                            <div class="small">今天下一件事</div>
+                            <div class="big">早上 08:00 吃降血壓藥</div>
+                        </div>
+                        <div class="phone-body">
+                            <div class="app-panel primary">
+                                <div class="app-panel-title">今日用藥</div>
+                                <div class="app-panel-main">Amlodipine 5mg</div>
+                                <p style="font-size:13px;color:#64748b;margin-top:4px;">1 顆，飯後服用</p>
+                            </div>
+                            <div class="app-panel">
+                                <div class="app-panel-title">家人照護</div>
+                                <div class="app-panel-main">媽媽今日已完成 2 / 3 次</div>
+                            </div>
+                            <div class="app-grid">
+                                <span>通知</span>
+                                <span>照片</span>
+                                <span>健康</span>
+                                <span>補藥</span>
+                                <span>週報</span>
+                                <span>安全</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="features">
+            <div class="section-inner">
+                <div class="section-head">
+                    <h2>把用藥提醒、照片、家人照護與健康紀錄放在同一個地方</h2>
+                    <p>藥記得不是只有鬧鐘，而是把長輩每天會遇到的用藥確認、漏吃提醒、補藥與家人協作整理成完整流程。</p>
+                </div>
+                <div class="feature-grid">
+                    <article class="feature">
+                        <div class="icon">藥</div>
+                        <h3>今日用藥提醒</h3>
+                        <p>首頁直接顯示下一次該吃什麼、幾點吃、劑量多少，長輩只要完成打卡。</p>
+                    </article>
+                    <article class="feature">
+                        <div class="icon">AI</div>
+                        <h3>AI 藥袋辨識</h3>
+                        <p>拍下藥袋後協助整理藥名與用藥資訊，再由使用者確認修正後保存。</p>
+                    </article>
+                    <article class="feature">
+                        <div class="icon">家</div>
+                        <h3>家人照護</h3>
+                        <p>用邀請碼或連結加入家人，集中查看未打卡、健康紀錄與照護摘要。</p>
+                    </article>
+                    <article class="feature">
+                        <div class="icon">圖</div>
+                        <h3>藥物照片卡</h3>
+                        <p>今日用藥顯示藥袋或藥品照片，讓長輩用圖像快速確認吃哪一顆。</p>
+                    </article>
+                    <article class="feature">
+                        <div class="icon">鈴</div>
+                        <h3>通知中心</h3>
+                        <p>漏吃、補藥、家人提醒與健康異常集中管理，可標記已讀、已處理或稍後提醒。</p>
+                    </article>
+                    <article class="feature">
+                        <div class="icon">報</div>
+                        <h3>健康與就診報告</h3>
+                        <p>整理血壓、血糖、體重、心情與症狀，回診前快速產生可閱讀的摘要。</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="workflow" class="band">
+            <div class="section-inner">
+                <div class="section-head">
+                    <h2>三分鐘建立第一個照護流程</h2>
+                    <p>第一次使用不需要複雜設定，先把第一顆藥、提醒時間與家人邀請建立起來，就能開始每天使用。</p>
+                </div>
+                <div class="workflow">
+                    <article class="step">
+                        <div class="step-num">STEP 01</div>
+                        <h3>新增第一顆藥</h3>
+                        <p>輸入藥名、劑量、提醒時間，也可以上傳藥袋照片輔助確認。</p>
+                    </article>
+                    <article class="step">
+                        <div class="step-num">STEP 02</div>
+                        <h3>設定每日提醒</h3>
+                        <p>早上、中午、晚上、睡前或自訂時間都能建立，首頁會自動整理下一件事。</p>
+                    </article>
+                    <article class="step">
+                        <div class="step-num">STEP 03</div>
+                        <h3>邀請家人加入</h3>
+                        <p>用邀請碼或連結讓家人加入照護，不需要長輩手動輸入複雜資料。</p>
+                    </article>
+                    <article class="step">
+                        <div class="step-num">STEP 04</div>
+                        <h3>持續追蹤回報</h3>
+                        <p>打卡、補藥、健康紀錄與週報會累積成家人可理解的照護資訊。</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="security">
+            <div class="section-inner">
+                <div class="section-head">
+                    <h2>為健康資訊設計的透明說明</h2>
+                    <p>藥記得清楚區分提醒工具與醫療診斷，並讓使用者知道資料如何保存、如何匯出與刪除。</p>
+                </div>
+                <div class="security-grid">
+                    <div class="security-panel">
+                        <h3>醫療安全</h3>
+                        <ul class="check-list">
+                            <li>AI 辨識結果需要使用者確認，不取代醫師或藥師判斷。</li>
+                            <li>風險提醒提供一般資訊，不能作為診斷或處方依據。</li>
+                            <li>緊急不適時應立即聯絡當地緊急醫療服務。</li>
+                        </ul>
+                    </div>
+                    <div class="security-panel">
+                        <h3>資料管理</h3>
+                        <ul class="check-list">
+                            <li>用藥、健康與家人照護資料保存在帳號資料庫。</li>
+                            <li>設定頁支援匯出個人資料與刪除帳號。</li>
+                            <li>提供隱私權政策、使用者條款與詳細說明文件。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="plans" class="band">
+            <div class="section-inner">
+                <div class="section-head">
+                    <h2>從免費提醒工具，延伸到家庭照護進階版</h2>
+                    <p>目前 App 已先開放完整 MVP 預覽，未來可接 Apple、Google 或網站付款，逐步擴充家庭照護與報告能力。</p>
+                </div>
+                <div class="feature-grid">
+                    <article class="feature">
+                        <div class="icon">免</div>
+                        <h3>免費版</h3>
+                        <p>基本用藥提醒、健康紀錄、基本 AI 掃描與個人備份，適合個人先開始使用。</p>
+                    </article>
+                    <article class="feature">
+                        <div class="icon">進</div>
+                        <h3>進階版</h3>
+                        <p>家人通知、家庭月報、AI 風險摘要、多照護對象與 PDF 報告。</p>
+                    </article>
+                    <article class="feature">
+                        <div class="icon">上</div>
+                        <h3>上架準備</h3>
+                        <p>PWA、詳細說明、醫療安全聲明、資料保存說明與企業官網已逐步補齊。</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta">
+            <div class="cta-inner">
+                <div>
+                    <h2>現在就開始建立第一個用藥照護流程</h2>
+                    <p>登入藥記得，新增第一顆藥，讓提醒、照片與家人照護開始運作。</p>
+                </div>
+                <a class="btn btn-primary" href="https://yaojidecare.app/">登入藥記得 App</a>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-inner">
+            <div>© 2026 藥記得 yaojidecare.app</div>
+            <div class="footer-links">
+                <a href="/privacy.html">隱私權政策</a>
+                <a href="/terms.html">使用者條款</a>
+                <a href="https://yaojidecare.app/">App 登入</a>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
