@@ -31,11 +31,11 @@ jobs:
           security create-keychain -p temp temp.keychain
           security default-keychain -s temp.keychain
           security unlock-keychain -p temp temp.keychain
-          # 空白密碼
           security import signing.p12 -k temp.keychain -P "" -A 2>&1
           security set-key-partition-list -S apple-tool:,apple: -s -k temp temp.keychain
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles/
           cp signing.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          echo "✓ Signing ready"
 
       - name: Build
         run: |
@@ -48,7 +48,7 @@ jobs:
             -sdk iphoneos \
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM=N7T77R4X9X \
+            DEVELOPMENT_TEAM=7Q3USC33A5 \
             -allowProvisioningUpdates
 
       - name: Export
