@@ -37,8 +37,9 @@ jobs:
           # Use an explicit p12 password in CI; empty-password p12 imports are unreliable on macOS runners.
           perl -e 'alarm shift; exec @ARGV' 90 security import signing.p12 -k "$KEYCHAIN_PATH" -P temp -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/xcodebuild 2>&1
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k temp "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles/
-          cp signing.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          cp signing.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/d509a4f7-c2b9-4c12-ad0a-873a5b17dfae.mobileprovision
           echo "✓ Signing ready"
 
       - name: Build
@@ -53,8 +54,10 @@ jobs:
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=7Q3USC33A5 \
+            CODE_SIGN_IDENTITY="Apple Development" \
             PRODUCT_BUNDLE_IDENTIFIER=app.yaojidecare \
-            PROVISIONING_PROFILE_SPECIFIER=藥記得
+            PROVISIONING_PROFILE_SPECIFIER=藥記得 \
+            PROVISIONING_PROFILE=d509a4f7-c2b9-4c12-ad0a-873a5b17dfae
 
       - name: Export
         run: |
