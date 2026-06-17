@@ -1,6 +1,9 @@
 name: Build iOS IPA
 
 on:
+  push:
+    paths:
+      - 'trigger-build.txt'
   workflow_dispatch:
 
 jobs:
@@ -16,7 +19,7 @@ jobs:
           node --version
           npm install
 
-      - name: Sync iOS (Capacitor)
+      - name: Sync iOS
         run: npx cap sync ios 2>&1
 
       - name: Prepare signing
@@ -46,7 +49,6 @@ jobs:
 
       - name: Export IPA
         run: |
-          ls -la $GITHUB_WORKSPACE/build/
           xcodebuild -exportArchive \
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             -exportPath $GITHUB_WORKSPACE/build \
