@@ -26,19 +26,11 @@ jobs:
 
       - name: List iOS project
         run: |
-          echo "=== ios/App contents ==="
+          echo "=== ios/App ==="
           ls -la ios/App/
-          echo "=== xcworkspace ==="
-          ls -la ios/App/App.xcworkspace/ 2>/dev/null || echo "NO xcworkspace"
-          echo "=== xcodeproj ==="
-          ls -la ios/App/App.xcodeproj/ 2>/dev/null || echo "NO xcodeproj"
-          echo "=== Podfile ==="
-          cat ios/App/Podfile 2>/dev/null || echo "NO Podfile"
-
-      - name: Install CocoaPods
-        run: |
+          echo "=== Schemes ==="
           cd ios/App
-          pod install 2>&1
+          xcodebuild -list -project App.xcodeproj 2>&1 | head -20
 
       - name: Prepare signing
         run: |
@@ -56,14 +48,14 @@ jobs:
         run: |
           cd ios/App
           xcodebuild archive \
-            -workspace App.xcworkspace \
+            -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=N7T77R4X9X \
-            -allowProvisioningUpdates 2>&1 | tail -30
+            -allowProvisioningUpdates 2>&1 | tail -40
 
       - name: Export IPA
         run: |
