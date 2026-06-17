@@ -8,23 +8,16 @@ jobs:
     runs-on: macos-latest
     
     steps:
-      - name: Checkout code
+      - name: Checkout
+        run: git clone --depth 1 https://github.com/ktl19971226-glitch/medremind-app.git .
+
+      - name: Install deps
         run: |
-          git clone --depth 1 https://github.com/ktl19971226-glitch/medremind-app.git .
-          
-      - name: Setup Node.js 22
-        run: |
-          brew install node@22 2>/dev/null || true
           node --version
-          npm --version
+          npm install
 
-      - name: Install npm deps
-        run: npm install
-
-      - name: Setup iOS platform
-        run: |
-          npx cap add ios 2>&1
-          npx cap sync ios 2>&1
+      - name: Sync iOS (Capacitor)
+        run: npx cap sync ios 2>&1
 
       - name: Prepare signing
         run: |
@@ -38,7 +31,7 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles/
           cp signing.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
 
-      - name: Build iOS Archive
+      - name: Build iOS
         run: |
           cd ios/App
           xcodebuild archive \
@@ -49,25 +42,19 @@ jobs:
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=N7T77R4X9X \
-            -allowProvisioningUpdates 2>&1 | tail -50
+            -allowProvisioningUpdates 2>&1 | tail -40
 
       - name: Export IPA
         run: |
+          ls -la $GITHUB_WORKSPACE/build/
           xcodebuild -exportArchive \
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             -exportPath $GITHUB_WORKSPACE/build \
             -exportOptionsPlist exportOptions.plist 2>&1
 
-      - name: Package IPA
-        run: |
-          ls -la $GITHUB_WORKSPACE/build/
-          find $GITHUB_WORKSPACE/build -name "*.ipa" -exec cp {} medremind.ipa \;
-          ls -la medremind.ipa 2>/dev/null || echo "No IPA found"
-          echo "IPA_PATH=$GITHUB_WORKSPACE/medremind.ipa" >> $GITHUB_ENV
-
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: medremind-ipa
-          path: medremind.ipa
+          path: build/*.ipa
           retention-days: 30

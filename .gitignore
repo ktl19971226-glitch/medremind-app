@@ -1,7 +1,10 @@
-
-# === 安全文件 ===
+node_modules/
 .env
 .env.local
-.env.*.local
-medremind_backup.db
-node_modules/
+*.db
+
+# iOS build artifacts
+ios/App/build/
+ios/App/Pods/
+ios/App/*.xcworkspace
+ios/App/Podfile.lock
