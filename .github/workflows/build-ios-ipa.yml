@@ -53,7 +53,8 @@ jobs:
             -archivePath $GITHUB_WORKSPACE/build/medremind.xcarchive \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=7Q3USC33A5 \
-            -allowProvisioningUpdates
+            PRODUCT_BUNDLE_IDENTIFIER=app.yaojidecare \
+            PROVISIONING_PROFILE_SPECIFIER=藥記得
 
       - name: Export
         run: |
