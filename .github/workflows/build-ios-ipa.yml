@@ -31,7 +31,8 @@ jobs:
           security create-keychain -p temp temp.keychain
           security default-keychain -s temp.keychain
           security unlock-keychain -p temp temp.keychain
-          security import signing.p12 -k temp.keychain -P "" -A 2>&1
+          # 無密碼 p12 不帶 -P 參數
+          security import signing.p12 -k temp.keychain -A 2>&1
           security set-key-partition-list -S apple-tool:,apple: -s -k temp temp.keychain
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles/
           cp signing.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
