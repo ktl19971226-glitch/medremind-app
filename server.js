@@ -11,6 +11,7 @@ const helmet = require('helmet');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 const PORT = Number(process.env.PORT || 8050);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -23,6 +24,12 @@ const CREATE_DEMO_DATA = process.env.CREATE_DEMO_DATA === 'true' || process.env.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const ADMIN_NAME = process.env.ADMIN_NAME || '系統管理員';
+const APP_BASE_URL = (process.env.APP_BASE_URL || 'https://yaojidecare.app').replace(/\/+$/, '');
+const EMAIL_FROM = process.env.EMAIL_FROM || 'Yaojide <admin@yaojidecare.app>';
+const EMAIL_MODE = process.env.EMAIL_MODE || (process.env.NODE_ENV === 'production' ? 'sendmail' : 'log');
+const SENDMAIL_PATH = process.env.SENDMAIL_PATH || '/usr/sbin/sendmail';
+const EMAIL_VERIFY_TTL_MINUTES = Number(process.env.EMAIL_VERIFY_TTL_MINUTES || 60 * 24);
+const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8050,http://localhost:3000')
     .split(',')
     .map(origin => origin.trim())
@@ -45,6 +52,91 @@ function verifyPwd(password, storedHash) {
 }
 function isLegacyHash(storedHash) {
     return storedHash && !storedHash.startsWith('$2a$') && !storedHash.startsWith('$2b$') && !storedHash.startsWith('$2y$');
+}
+
+function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+}
+
+function escapeHTML(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function createRawToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function hashToken(token) {
+    return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function expiresAt(minutes) {
+    return new Date(Date.now() + minutes * 60000).toISOString();
+}
+
+function encodeHeader(value) {
+    return `=?UTF-8?B?${Buffer.from(String(value), 'utf8').toString('base64')}?=`;
+}
+
+function sendEmail({ to, subject, html }) {
+    const safeTo = normalizeEmail(to);
+    const fromMatch = String(EMAIL_FROM).match(/<([^>]+)>/) || String(EMAIL_FROM).match(/([^\s<>]+@[^\s<>]+)/);
+    const envelopeFrom = fromMatch ? fromMatch[1] : 'admin@yaojidecare.app';
+    const body = String(html || '').trim();
+    const message = [
+        `From: ${EMAIL_FROM}`,
+        `To: ${safeTo}`,
+        `Subject: ${encodeHeader(subject)}`,
+        'MIME-Version: 1.0',
+        'Content-Type: text/html; charset=UTF-8',
+        'Content-Transfer-Encoding: 8bit',
+        '',
+        body
+    ].join('\n');
+
+    if (EMAIL_MODE === 'log') {
+        console.log(`📧 Email log mode -> ${safeTo}: ${subject}\n${body}`);
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+        const child = spawn(SENDMAIL_PATH, ['-odq', '-f', envelopeFrom, '-t', '-i']);
+        let stderr = '';
+        const timer = setTimeout(() => {
+            child.kill('SIGTERM');
+            reject(new Error('sendmail timed out'));
+        }, 8000);
+        child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+        child.on('error', error => {
+            clearTimeout(timer);
+            reject(error);
+        });
+        child.on('close', code => {
+            clearTimeout(timer);
+            if (code === 0) resolve();
+            else reject(new Error(stderr || `sendmail exited with code ${code}`));
+        });
+        child.stdin.end(message);
+    });
+}
+
+function authMailTemplate(title, intro, actionText, actionUrl, expiresText) {
+    const safeUrl = escapeHTML(actionUrl);
+    return `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2937;">
+            <h2 style="margin:0 0 12px;color:#0f766e;">${escapeHTML(title)}</h2>
+            <p style="line-height:1.7;">${escapeHTML(intro)}</p>
+            <p style="margin:28px 0;">
+                <a href="${safeUrl}" style="background:#0f766e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block;">${escapeHTML(actionText)}</a>
+            </p>
+            <p style="font-size:14px;line-height:1.7;color:#6b7280;">如果按鈕無法開啟，請複製以下連結到瀏覽器：<br><a href="${safeUrl}">${safeUrl}</a></p>
+            <p style="font-size:13px;color:#9ca3af;">${escapeHTML(expiresText)}</p>
+        </div>`;
 }
 
 // 簡易速率限制（每 IP 每分鐘最多 60 次請求）
@@ -142,6 +234,12 @@ async function init() {
         "ALTER TABLE medications ADD COLUMN refill_threshold INTEGER DEFAULT 7",
         "ALTER TABLE medications ADD COLUMN medication_image TEXT",
         "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'",
+        "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN email_verified_at DATETIME",
+        "ALTER TABLE users ADD COLUMN email_verification_token_hash TEXT",
+        "ALTER TABLE users ADD COLUMN email_verification_expires_at DATETIME",
+        "ALTER TABLE users ADD COLUMN password_reset_token_hash TEXT",
+        "ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME",
         "ALTER TABLE user_settings ADD COLUMN simple_mode INTEGER DEFAULT 0",
         "ALTER TABLE user_settings ADD COLUMN pin_code TEXT",
         "ALTER TABLE user_settings ADD COLUMN pin_enabled INTEGER DEFAULT 0",
@@ -168,6 +266,9 @@ async function init() {
     for (const migration of migrations) {
         try { db.run(migration); } catch(e) {}
     }
+    dbRun(`UPDATE users
+        SET email_verified=1, email_verified_at=COALESCE(email_verified_at, created_at)
+        WHERE email_verified=0 AND email_verification_token_hash IS NULL`);
     saveDB();
 
     function logMedicationChange(userId, medicationId, drugName, changeType, beforeValue, afterValue) {
@@ -183,6 +284,48 @@ async function init() {
         const total = logs.total || 0;
         const taken = logs.taken || 0;
         return { days, total, taken, missed: Math.max(0, total - taken), rate: total > 0 ? Math.round(taken / total * 100) : 100 };
+    }
+
+    async function sendVerificationEmail(user) {
+        const rawToken = createRawToken();
+        const link = `${APP_BASE_URL}/api/verify-email?token=${encodeURIComponent(rawToken)}`;
+        dbRun(
+            'UPDATE users SET email_verification_token_hash=?, email_verification_expires_at=? WHERE id=?',
+            [hashToken(rawToken), expiresAt(EMAIL_VERIFY_TTL_MINUTES), user.id]
+        );
+        saveDB();
+        await sendEmail({
+            to: user.email,
+            subject: '請驗證您的藥記得 Email',
+            html: authMailTemplate(
+                '驗證您的藥記得帳號',
+                `${user.name || '您好'}，請點擊下方按鈕完成 Email 驗證，完成後即可登入藥記得。`,
+                '完成 Email 驗證',
+                link,
+                `此驗證連結將於 ${EMAIL_VERIFY_TTL_MINUTES} 分鐘後失效。`
+            )
+        });
+    }
+
+    async function sendPasswordResetEmail(user) {
+        const rawToken = createRawToken();
+        const link = `${APP_BASE_URL}/reset-password?token=${encodeURIComponent(rawToken)}`;
+        dbRun(
+            'UPDATE users SET password_reset_token_hash=?, password_reset_expires_at=? WHERE id=?',
+            [hashToken(rawToken), expiresAt(PASSWORD_RESET_TTL_MINUTES), user.id]
+        );
+        saveDB();
+        await sendEmail({
+            to: user.email,
+            subject: '重設您的藥記得密碼',
+            html: authMailTemplate(
+                '重設您的藥記得密碼',
+                `${user.name || '您好'}，請點擊下方按鈕設定新密碼。如果不是您本人操作，可以忽略這封信。`,
+                '設定新密碼',
+                link,
+                `此重設連結將於 ${PASSWORD_RESET_TTL_MINUTES} 分鐘後失效。`
+            )
+        });
     }
 
     function buildMedicationRisk(meds) {
@@ -260,11 +403,12 @@ async function init() {
     }
 
     if (ADMIN_EMAIL && ADMIN_PASSWORD) {
-        const existingAdmin = dbGet('SELECT id FROM users WHERE email=?', [ADMIN_EMAIL]);
+        const adminEmail = normalizeEmail(ADMIN_EMAIL);
+        const existingAdmin = dbGet('SELECT id FROM users WHERE email=?', [adminEmail]);
         if (existingAdmin) {
-            dbRun("UPDATE users SET name=?, password_hash=?, role='admin' WHERE id=?", [ADMIN_NAME, hashPwd(ADMIN_PASSWORD), existingAdmin.id]);
+            dbRun("UPDATE users SET name=?, password_hash=?, role='admin', email_verified=1, email_verified_at=COALESCE(email_verified_at, CURRENT_TIMESTAMP), email_verification_token_hash=NULL, email_verification_expires_at=NULL WHERE id=?", [ADMIN_NAME, hashPwd(ADMIN_PASSWORD), existingAdmin.id]);
         } else {
-            dbRun("INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,'admin')", [ADMIN_NAME, ADMIN_EMAIL, hashPwd(ADMIN_PASSWORD)]);
+            dbRun("INSERT INTO users (name,email,password_hash,role,email_verified,email_verified_at) VALUES (?,?,?,'admin',1,CURRENT_TIMESTAMP)", [ADMIN_NAME, adminEmail, hashPwd(ADMIN_PASSWORD)]);
         }
         saveDB();
         console.log('✅ 管理員帳號已設定');
@@ -272,32 +416,68 @@ async function init() {
     // setInterval(saveDB, 30000); // 暫停定時保存
     
     // ====== 用戶 API ======
-    app.post('/api/register', (req, res) => {
-        const { name, email, phone, password, age } = req.body;
+    app.post('/api/register', async (req, res) => {
+        const { name, phone, password, age } = req.body;
+        const email = normalizeEmail(req.body.email);
         if (!name || !email || !password) return res.status(400).json({ error: '姓名、Email 和密碼為必填' });
+        if (password.length < 6) return res.status(400).json({ error: '密碼至少需要6位' });
         if (dbGet('SELECT id FROM users WHERE email = ?', [email])) return res.status(400).json({ error: '此 Email 已被註冊' });
         if (phone && dbGet('SELECT id FROM users WHERE phone = ?', [phone])) return res.status(400).json({ error: '此手機號碼已被註冊' });
-        const hash = hashPwd(password);
-        dbRun('INSERT INTO users (name,email,phone,password_hash,age) VALUES (?,?,?,?,?)', [name, email, phone||null, hash, age||null]);
-        const idRow = dbGet('SELECT last_insert_rowid() AS id');
-        const id = idRow ? idRow.id : null;
-        if (!id) return res.status(500).json({ error: '註冊失敗，請重試' });
-        const token = jwt.sign({ id, name, email, role: 'user' }, JWT_SECRET, { expiresIn: '30d' });
-        saveDB();
-        res.json({ message:'註冊成功', token, user:{ id, name, email, phone, age, role: 'user' } });
+        try {
+            const hash = hashPwd(password);
+            const inserted = dbRun(
+                'INSERT INTO users (name,email,phone,password_hash,age,email_verified) VALUES (?,?,?,?,?,0)',
+                [name, email, phone||null, hash, age||null]
+            );
+            const id = inserted ? inserted.id : null;
+            if (!id) return res.status(500).json({ error: '註冊失敗，請重試' });
+            await sendVerificationEmail({ id, name, email });
+            res.json({ message:'註冊成功，請到信箱完成 Email 驗證後再登入' });
+        } catch (e) {
+            console.error('Register email send failed:', e);
+            res.status(500).json({ error: '註冊失敗或驗證信寄送失敗，請稍後再試' });
+        }
     });
     
     app.post('/api/login', (req, res) => {
-        const { email, password } = req.body;
+        const email = normalizeEmail(req.body.email);
+        const { password } = req.body;
         if (!email || !password) return res.status(400).json({ error: '請輸入 Email 和密碼' });
         const u = dbGet('SELECT * FROM users WHERE email = ?', [email]);
         if (!u || !verifyPwd(password, u.password_hash)) return res.status(401).json({ error: 'Email 或密碼錯誤' });
+        if ((u.role || 'user') !== 'admin' && !u.email_verified) {
+            return res.status(403).json({ error: '請先到信箱完成 Email 驗證後再登入' });
+        }
         if (isLegacyHash(u.password_hash)) {
             dbRun('UPDATE users SET password_hash=? WHERE id=?', [hashPwd(password), u.id]);
             saveDB();
         }
         const token = jwt.sign({ id:u.id, name:u.name, email:u.email, role: u.role || 'user' }, JWT_SECRET, { expiresIn: '30d' });
         res.json({ message:'登入成功', token, user:{ id:u.id, name:u.name, email:u.email, phone:u.phone, age:u.age, role: u.role || 'user' } });
+    });
+
+    app.post('/api/resend-verification', async (req, res) => {
+        const email = normalizeEmail(req.body.email);
+        if (!email) return res.status(400).json({ error: '請輸入 Email' });
+        const u = dbGet('SELECT id,name,email,email_verified FROM users WHERE email=?', [email]);
+        if (u && !u.email_verified) {
+            try { await sendVerificationEmail(u); }
+            catch (e) { console.error('Resend verification failed:', e); }
+        }
+        res.json({ message: '如果此 Email 尚未驗證，系統已寄出新的驗證信' });
+    });
+
+    app.get('/api/verify-email', (req, res) => {
+        const token = String(req.query.token || '');
+        const tokenHash = token ? hashToken(token) : '';
+        const u = tokenHash ? dbGet('SELECT id,name FROM users WHERE email_verification_token_hash=?', [tokenHash]) : null;
+        const invalidPage = (message, status = 400) => res.status(status).send(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>驗證失敗</title><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;line-height:1.7;"><h2>驗證失敗</h2><p>${escapeHTML(message)}</p><p><a href="/">回到藥記得</a></p></body></html>`);
+        if (!u) return invalidPage('驗證連結無效，請重新註冊或重新寄送驗證信。');
+        const valid = dbGet('SELECT id FROM users WHERE id=? AND email_verification_expires_at > ?', [u.id, new Date().toISOString()]);
+        if (!valid) return invalidPage('驗證連結已過期，請回到登入頁重新寄送驗證信。');
+        dbRun('UPDATE users SET email_verified=1, email_verified_at=CURRENT_TIMESTAMP, email_verification_token_hash=NULL, email_verification_expires_at=NULL WHERE id=?', [u.id]);
+        saveDB();
+        res.send(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email 已驗證</title><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;line-height:1.7;"><h2>Email 已驗證完成</h2><p>${escapeHTML(u.name)}，您的藥記得帳號已可登入。</p><p><a href="/" style="display:inline-block;background:#0f766e;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;">回到藥記得登入</a></p></body></html>`);
     });
     
     app.get('/api/user/profile', auth, (req, res) => {
@@ -1090,16 +1270,91 @@ async function init() {
     });
 
     // ====== 忘記密碼 ======
-    app.post('/api/forgot-password', (req, res) => {
-        const { email, phone, newPassword } = req.body;
-        if (!email || !phone || !newPassword) return res.status(400).json({ error: '請填寫 Email、手機號碼和新密碼' });
+    async function requestPasswordReset(req, res) {
+        const email = normalizeEmail(req.body.email);
+        if (!email) return res.status(400).json({ error: '請輸入 Email' });
+        const generic = { message: '如果此 Email 已註冊，系統會寄出密碼重設信' };
+        const u = dbGet('SELECT id,name,email,email_verified FROM users WHERE email=?', [email]);
+        if (u) {
+            try {
+                if (u.email_verified) await sendPasswordResetEmail(u);
+                else await sendVerificationEmail(u);
+            } catch (e) {
+                console.error('Password reset email failed:', e);
+                return res.status(500).json({ error: '信件寄送失敗，請稍後再試' });
+            }
+        }
+        res.json(generic);
+    }
+
+    app.post('/api/password-reset/request', requestPasswordReset);
+    app.post('/api/forgot-password', requestPasswordReset);
+
+    app.get('/reset-password', (req, res) => {
+        const token = escapeHTML(req.query.token || '');
+        res.send(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>重設藥記得密碼</title>
+    <style>
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:24px;color:#1f2937}
+        .card{max-width:420px;margin:48px auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;box-shadow:0 8px 24px rgba(15,23,42,.08)}
+        h1{font-size:24px;margin:0 0 16px;color:#0f766e}
+        label{display:block;margin:12px 0 6px;font-weight:600}
+        input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:8px;font-size:16px}
+        button{width:100%;margin-top:16px;padding:12px;border:0;border-radius:8px;background:#0f766e;color:#fff;font-size:16px;font-weight:700}
+        .msg{margin-top:12px;line-height:1.6}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>重設密碼</h1>
+        <p>請輸入新的藥記得登入密碼。</p>
+        <form id="reset-form">
+            <input type="hidden" id="token" value="${token}">
+            <label for="password">新密碼</label>
+            <input type="password" id="password" minlength="6" required autocomplete="new-password">
+            <label for="password2">再次輸入新密碼</label>
+            <input type="password" id="password2" minlength="6" required autocomplete="new-password">
+            <button type="submit">更新密碼</button>
+        </form>
+        <div class="msg" id="msg"></div>
+    </div>
+    <script>
+        document.getElementById('reset-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const msg = document.getElementById('msg');
+            const newPassword = document.getElementById('password').value;
+            const password2 = document.getElementById('password2').value;
+            if (newPassword.length < 6) { msg.textContent = '新密碼至少6位'; return; }
+            if (newPassword !== password2) { msg.textContent = '兩次密碼不一致'; return; }
+            const response = await fetch('/api/password-reset/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: document.getElementById('token').value, newPassword })
+            });
+            const data = await response.json().catch(() => ({}));
+            msg.textContent = data.message || data.error || '更新失敗';
+            if (response.ok) setTimeout(() => { location.href = '/'; }, 1500);
+        });
+    </script>
+</body>
+</html>`);
+    });
+
+    app.post('/api/password-reset/confirm', (req, res) => {
+        const token = String(req.body.token || '');
+        const newPassword = String(req.body.newPassword || '');
+        if (!token) return res.status(400).json({ error: '重設連結無效' });
         if (newPassword.length < 6) return res.status(400).json({ error: '新密碼至少6位' });
-        const u = dbGet('SELECT id, phone FROM users WHERE email=?', [email]);
-        if (!u) return res.status(404).json({ error: '找不到此 Email' });
-        if (!u.phone || u.phone.replace(/[^0-9]/g,'') !== phone.replace(/[^0-9]/g,'')) return res.status(401).json({ error: '手機號碼驗證失敗，請確認註冊時的手機號碼' });
-        dbRun('UPDATE users SET password_hash=? WHERE id=?', [hashPwd(newPassword), u.id]);
+        const tokenHash = hashToken(token);
+        const u = dbGet('SELECT id FROM users WHERE password_reset_token_hash=? AND password_reset_expires_at > ?', [tokenHash, new Date().toISOString()]);
+        if (!u) return res.status(400).json({ error: '重設連結無效或已過期，請重新申請' });
+        dbRun('UPDATE users SET password_hash=?, password_reset_token_hash=NULL, password_reset_expires_at=NULL WHERE id=?', [hashPwd(newPassword), u.id]);
         saveDB();
-        res.json({ message: '密碼已重設，請使用新密碼登入' });
+        res.json({ message: '密碼已更新，請重新登入' });
     });
 
     // ====== 就診報告 ======

@@ -2077,10 +2077,10 @@
             });
 
             if (status === 200) {
-                setToken(data.token);
-                currentUser = data.user;
-                showMainApp();
-                showToast(t('註冊成功!'));
+                document.getElementById('register-form').style.display = 'none';
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('login-email').value = email;
+                showToast(data.message || '註冊成功，請到信箱完成 Email 驗證後再登入');
             } else {
                 showToast(data.error || '註冊失敗');
             }
@@ -2108,12 +2108,10 @@
                 <div class="modal-overlay" id="fp-modal">
                     <div class="modal">
                         <h3>🔑 忘記密碼</h3>
-                        <p style="font-size:14px;color:var(--text-light);margin-bottom:12px;">請輸入註冊時使用的 Email 和手機號碼進行驗證</p>
+                        <p style="font-size:14px;color:var(--text-light);margin-bottom:12px;">請輸入註冊時使用的 Email，系統會寄出密碼重設連結。</p>
                         <div class="form-group"><label>註冊 Email</label><input type="email" id="fp-email" class="form-input" placeholder="輸入 Email"></div>
-                        <div class="form-group"><label>註冊手機號碼</label><input type="tel" id="fp-phone" class="form-input" placeholder="09xx-xxx-xxx"></div>
-                        <div class="form-group"><label>設定新密碼（至少6位）</label><input type="password" id="fp-new-pw" class="form-input" placeholder="新密碼"></div>
                         <div style="display:flex;gap:8px;margin-top:12px;">
-                            <button onclick="forgotPassword()" class="btn btn-primary">重設密碼</button>
+                            <button onclick="forgotPassword()" class="btn btn-primary">寄出重設信</button>
                             <button onclick="document.getElementById('fp-modal').remove()" class="btn btn-outline">取消</button>
                         </div>
                     </div>
@@ -2123,15 +2121,12 @@
 
         async function forgotPassword() {
             const email = document.getElementById('fp-email').value.trim();
-            const phone = document.getElementById('fp-phone').value.trim();
-            const pw = document.getElementById('fp-new-pw').value.trim();
-            if (!email || !phone || !pw) return showToast('請填寫所有欄位');
-            if (pw.length < 6) return showToast('新密碼至少6位');
-            const { status, data } = await api('/api/forgot-password', { method: 'POST', body: JSON.stringify({ email, phone, newPassword: pw }) });
+            if (!email) return showToast('請輸入 Email');
+            const { status, data } = await api('/api/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) });
             if (status === 200) {
                 document.getElementById('fp-modal').remove();
-                showToast('密碼已重設，請使用新密碼登入');
-            } else showToast(data.error || '重設失敗');
+                showToast(data.message || '如果此 Email 已註冊，系統會寄出密碼重設信');
+            } else showToast(data.error || '寄送失敗');
         }
 
         // 顯示主應用

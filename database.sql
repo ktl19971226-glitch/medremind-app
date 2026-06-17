@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     age INTEGER,
     role TEXT DEFAULT 'user',
+    email_verified INTEGER DEFAULT 0,
+    email_verified_at DATETIME,
+    email_verification_token_hash TEXT,
+    email_verification_expires_at DATETIME,
+    password_reset_token_hash TEXT,
+    password_reset_expires_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
