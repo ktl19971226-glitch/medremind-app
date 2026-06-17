@@ -44,8 +44,9 @@ jobs:
 
       - name: Build
         run: |
-          set -ex
+          set -x
           cd ios/App
+          set +e
           xcodebuild archive \
             -project App.xcodeproj \
             -scheme App \
@@ -57,7 +58,15 @@ jobs:
             CODE_SIGN_IDENTITY="iPhone Developer" \
             PRODUCT_BUNDLE_IDENTIFIER=app.yaojidecare \
             PROVISIONING_PROFILE_SPECIFIER=藥記得 \
-            PROVISIONING_PROFILE=d509a4f7-c2b9-4c12-ad0a-873a5b17dfae
+            PROVISIONING_PROFILE=d509a4f7-c2b9-4c12-ad0a-873a5b17dfae 2>&1 | tee "$RUNNER_TEMP/xcodebuild-archive.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "---- Xcode archive error summary ----"
+            grep -n -E "error:|Provisioning profile|requires a provisioning profile|doesn't include signing certificate|No signing certificate|CodeSign|failed|The following build commands failed" "$RUNNER_TEMP/xcodebuild-archive.log" | tail -80 || true
+            summary=$(grep -n -E "error:|Provisioning profile|requires a provisioning profile|doesn't include signing certificate|No signing certificate|CodeSign|failed|The following build commands failed" "$RUNNER_TEMP/xcodebuild-archive.log" | tail -20 | python3 -c 'import sys; print(sys.stdin.read().replace("%","%25").replace("\r","%0D").replace("\n","%0A"))')
+            echo "::error title=Xcode archive failed::$summary"
+            exit "$status"
+          fi
 
       - name: Export
         run: |
