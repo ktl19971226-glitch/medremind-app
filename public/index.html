@@ -3945,7 +3945,7 @@
                 '<div style="font-size:12px;color:var(--text-light);margin-top:8px;">' + escapeHTML(data.disclaimer || '此回覆不能取代醫療專業建議。') + '</div>';
         }
 
-        // ========== 照護版 v2：緊急卡 / 風險 / 異動 / 月報 ==========
+        // ========== 照護版 v2：緊急卡 / 風險 / 異動 ==========
         function showEmergencyCard() {
             api('/api/emergency-card').then(({ data }) => {
                 const contacts = data.contacts || [];
@@ -4007,20 +4007,6 @@
                     (changes.length ? changes.map(c => '<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;"><b>' + escapeHTML(label[c.change_type] || c.change_type) + '</b> · ' + escapeHTML(c.drug_name || '未命名') + '<br><span style="color:var(--text-light);font-size:12px;">' + new Date(c.created_at).toLocaleString('zh-TW') + '</span></div>').join('') : '<div style="color:var(--text-light);text-align:center;padding:18px;">尚無異動紀錄</div>') +
                     '<button onclick="document.getElementById(\'chg-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:12px;">關閉</button></div></div>';
                 document.getElementById('chg-modal')?.addEventListener('click', e => { if (e.target.id === 'chg-modal') e.target.remove(); });
-            });
-        }
-
-        function showMonthlyReport() {
-            api('/api/report/monthly').then(({ data }) => {
-                document.getElementById('modal-container').innerHTML =
-                    '<div class="modal-overlay" id="mon-modal"><div class="modal" style="max-height:90vh;"><h3>📄 家庭月報</h3>' +
-                    '<div style="font-size:12px;color:var(--text-light);">' + data.period.start + ' ~ ' + data.period.end + '</div>' +
-                    '<div style="background:#e8f5e9;padding:12px;border-radius:8px;margin:10px 0;"><b>' + escapeHTML(data.user?.name || '') + '</b><br>用藥遵從率 <span style="font-size:28px;font-weight:700;color:var(--green);">' + data.adherence.rate + '%</span><br><span style="font-size:13px;">已服用 ' + data.adherence.taken + ' / ' + data.adherence.total + ' 次</span></div>' +
-                    '<div style="font-size:14px;">健康紀錄：' + (data.health || []).length + ' 筆 · 用藥異動：' + (data.changes || []).length + ' 筆 · 補藥提醒：' + (data.lowStock || []).length + ' 項</div>' +
-                    ((data.lowStock || []).length ? '<h4 style="margin-top:12px;">📦 需補藥</h4>' + data.lowStock.map(r => '<div style="font-size:14px;">' + escapeHTML(r.drug_name) + ' 剩約 ' + r.days_left + ' 天</div>').join('') : '') +
-                    ((data.changes || []).length ? '<h4 style="margin-top:12px;">🕘 本月異動</h4>' + data.changes.slice(0,8).map(c => '<div style="font-size:14px;">' + escapeHTML(c.drug_name || '') + ' · ' + escapeHTML(c.change_type) + '</div>').join('') : '') +
-                    '<div style="display:flex;gap:8px;margin-top:12px;"><button onclick="window.print()" class="btn btn-primary" style="flex:1;">列印/PDF</button><button onclick="document.getElementById(\'mon-modal\').remove()" class="btn btn-outline" style="flex:1;">關閉</button></div></div></div>';
-                document.getElementById('mon-modal')?.addEventListener('click', e => { if (e.target.id === 'mon-modal') e.target.remove(); });
             });
         }
 
@@ -4160,7 +4146,7 @@
                     items: [
                         '健康頁可記錄血壓、血糖、體重、心情與症狀，方便回診時回顧。',
                         '就診報告會整理近期用藥、打卡紀錄、健康趨勢與風險提醒。',
-                        '資料越完整，週報、月報與家人摘要會越有參考價值。'
+                        '資料越完整，就診報告與家人摘要會越有參考價值。'
                     ]
                 },
                 {
@@ -4176,7 +4162,7 @@
                     title: '8. 免費版與進階版',
                     items: [
                         '免費版保留基本用藥提醒、健康紀錄與基本 AI 掃描。',
-                        '進階版規劃包含家人通知、家庭月報、AI 風險摘要、多照護對象與 PDF 報告。',
+                        '進階版規劃包含家人通知、AI 風險摘要、多照護對象與 PDF 報告。',
                         '目前進階版為 MVP 預覽，之後可接 Apple、Google 或網站付款。'
                     ]
                 },

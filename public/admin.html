@@ -214,10 +214,11 @@ function exportUserCSV(uid, name) {
   a.href = '/api/admin/users/' + uid + '/export';
   const tok = token;
   // 用 fetch 加 auth header 下載
-  try { fetch(a.href, { headers: { 'Authorization': 'Bearer ' + tok } }).then(res => {
+  fetch(a.href, { headers: { 'Authorization': 'Bearer ' + tok } }).then(res => {
     if (!res.ok) return showToast('匯出失敗');
     return res.blob();
   }).then(blob => {
+    if (!blob) return;
     const url = URL.createObjectURL(blob);
     const dl = document.createElement('a'); dl.href = url; dl.download = name + '_export.csv'; dl.click();
     URL.revokeObjectURL(url);
