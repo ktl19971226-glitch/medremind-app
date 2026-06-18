@@ -1,5 +1,5 @@
 // 藥記得 - Enhanced Service Worker
-const CACHE_NAME = 'medremind-v15';
+const CACHE_NAME = 'medremind-v16';
 const STATIC_ASSETS = [
     '/privacy.html',
     '/terms.html',

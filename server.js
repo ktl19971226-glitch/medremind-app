@@ -961,6 +961,9 @@ async function init() {
             if (!response.ok) {
                 const errText = await response.text();
                 console.error('Gemini API 錯誤:', response.status, errText);
+                if (response.status === 403 && /leaked|API key/i.test(errText)) {
+                    throw new Error('Gemini API Key 已失效，請更換新的 API Key');
+                }
                 throw new Error(`Gemini API 回應 ${response.status}`);
             }
             

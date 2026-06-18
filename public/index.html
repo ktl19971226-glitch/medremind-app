@@ -2409,13 +2409,13 @@
                 });
                 const aiData = await aiRes.json();
 
-            if (aiData.success && aiData.ai_result) {
+                if (aiData.success && aiData.ai_result) {
                     window._aiResult = aiData.ai_result;
                     showAIResult(resultDiv, aiData.ai_result);
                     return;
                 }
-                // AI 失敗,fallback 到 OCR
-                showToast(t('AI 辨識中,改用文字掃描...'));
+                // AI 失敗時自動改用 OCR，避免使用者卡住。
+                showToast('AI 目前不可用，已改用文字掃描');
             } catch (e) {
                 console.log('AI scan error, fallback to OCR:', e.message);
             }
