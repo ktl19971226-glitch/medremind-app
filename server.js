@@ -243,6 +243,14 @@ function auth(req, res, next) {
     catch (e) { res.status(403).json({ error: '登入已過期' }); }
 }
 
+function hasFamilyAccess(viewerId, targetUserId) {
+    if (Number(viewerId) === Number(targetUserId)) return true;
+    return !!dbGet(
+        'SELECT id FROM family_members WHERE (user_id=? AND related_user_id=?) OR (user_id=? AND related_user_id=?)',
+        [viewerId, targetUserId, targetUserId, viewerId]
+    );
+}
+
 // ====== 初始化 ======
 async function init() {
     const SQL = await initSqlJs();
@@ -1755,14 +1763,21 @@ async function init() {
 
     // ====== 家人留言 ======
     app.get('/api/family/messages', auth, (req, res) => {
-        const targetUserId = req.query.user_id || req.user.id;
+        const targetUserId = parseInt(req.query.user_id || req.user.id);
+        if (!targetUserId || !hasFamilyAccess(req.user.id, targetUserId)) {
+            return res.status(403).json({ error: '無權限查看留言' });
+        }
         const msgs = dbAll(`SELECT fm.*, u.name AS sender_name FROM family_messages fm JOIN users u ON fm.sender_id=u.id WHERE fm.target_user_id=? ORDER BY fm.created_at DESC LIMIT 30`, [targetUserId]);
         res.json({ messages: msgs });
     });
 
     app.post('/api/family/messages', auth, (req, res) => {
-        const { target_user_id, message } = req.body;
+        const target_user_id = parseInt(req.body.target_user_id);
+        const { message } = req.body;
         if (!target_user_id || !message) return res.status(400).json({ error: '請填寫對象和訊息' });
+        if (!hasFamilyAccess(req.user.id, target_user_id)) {
+            return res.status(403).json({ error: '無權限留言給此用戶' });
+        }
         dbRun('INSERT INTO family_messages (sender_id, target_user_id, message) VALUES (?,?,?)', [req.user.id, target_user_id, message]);
         saveDB();
         res.json({ message: '留言已送出' });
@@ -1897,7 +1912,7 @@ async function init() {
     });
 
     // ====== 備份還原 ======
-    app.get('/api/backup/download', auth, (req, res) => {
+    app.get('/api/backup/download', auth, adminAuth, (req, res) => {
         saveDB();
         const buffer = fs.readFileSync(DB_FILE);
         res.setHeader('Content-Type', 'application/octet-stream');
@@ -1905,7 +1920,7 @@ async function init() {
         res.send(buffer);
     });
 
-    app.post('/api/backup/restore', auth, upload.single('backup'), (req, res) => {
+    app.post('/api/backup/restore', auth, adminAuth, upload.single('backup'), (req, res) => {
         // 讀取上傳的 DB 檔案並合併資料
         // 注意：簡化版 - 直接替換整個 DB
         if (!req.file) {
@@ -1938,12 +1953,15 @@ async function init() {
 
     // ====== 家人查看長輩健康數據 ======
     app.get('/api/family/:fid/health', auth, (req, res) => {
-        const rel = dbGet('SELECT user_id, related_user_id, relationship FROM family_members WHERE id=? AND relationship IS NOT NULL', [req.params.fid]);
-        if (!rel) return res.status(404).json({ error: '找不到家庭關聯' });
-        const elderId = rel.user_id;
-        const records = dbAll('SELECT * FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 10', [elderId]);
-        const goals = dbGet('SELECT bp_sys_goal, bp_dia_goal, sugar_goal, weight_goal FROM user_settings WHERE user_id=?', [elderId]);
-        res.json({ elderId, records, goals });
+        const rel = dbGet(
+            'SELECT user_id, related_user_id, relationship FROM family_members WHERE id=? AND relationship IS NOT NULL AND (user_id=? OR related_user_id=?)',
+            [req.params.fid, req.user.id, req.user.id]
+        );
+        if (!rel) return res.status(403).json({ error: '無權限查看此家庭資料' });
+        const targetUserId = Number(rel.user_id) === Number(req.user.id) ? rel.related_user_id : rel.user_id;
+        const records = dbAll('SELECT * FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 10', [targetUserId]);
+        const goals = dbGet('SELECT bp_sys_goal, bp_dia_goal, sugar_goal, weight_goal FROM user_settings WHERE user_id=?', [targetUserId]);
+        res.json({ elderId: targetUserId, records, goals });
     });
 
     // ====== 沒吃藥即時通知（標記未讀通知） ======
