@@ -247,8 +247,8 @@ async function init() {
         "ALTER TABLE medications ADD COLUMN refill_threshold INTEGER DEFAULT 7",
         "ALTER TABLE medications ADD COLUMN medication_image TEXT",
         "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'",
-        "ALTER TABLE users ADD COLUMN device_identifier_hash TEXT UNIQUE",
-        "ALTER TABLE users ADD COLUMN account_code TEXT UNIQUE",
+        "ALTER TABLE users ADD COLUMN device_identifier_hash TEXT",
+        "ALTER TABLE users ADD COLUMN account_code TEXT",
         "ALTER TABLE users ADD COLUMN account_source TEXT DEFAULT 'email'",
         "ALTER TABLE users ADD COLUMN last_device_login_at DATETIME",
         "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
@@ -278,7 +278,9 @@ async function init() {
             used_by INTEGER,
             used_at DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`
+        )`,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_device_identifier_hash ON users(device_identifier_hash) WHERE device_identifier_hash IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_account_code ON users(account_code) WHERE account_code IS NOT NULL"
     ];
     for (const migration of migrations) {
         try { db.run(migration); } catch(e) {}
