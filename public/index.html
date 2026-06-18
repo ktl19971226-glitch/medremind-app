@@ -1139,6 +1139,11 @@
             width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--green);
             border-radius: 50%; animation: spin 0.6s linear infinite; margin: 0 auto;
         }
+        .inline-spinner {
+            display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(52, 152, 219, 0.25);
+            border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite;
+            vertical-align: -3px; margin-right: 8px;
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
 
@@ -2521,7 +2526,7 @@
             // 照片預覽
             const reader = new FileReader();
             reader.onload = function(e) {
-                resultDiv.innerHTML = '<div style="padding:12px;background:#f0f8ff;border-radius:8px;font-size:15px;"><img src="' + e.target.result + '" style="width:100%;max-height:150px;object-fit:contain;border-radius:8px;margin-bottom:8px;"><div style="color:var(--blue);font-weight:600;">' + t('AI 正在精準辨識藥袋...') + '</div></div>';
+                resultDiv.innerHTML = '<div style="padding:12px;background:#f0f8ff;border-radius:8px;font-size:15px;"><img src="' + e.target.result + '" style="width:100%;max-height:150px;object-fit:contain;border-radius:8px;margin-bottom:8px;"><div style="color:var(--blue);font-weight:600;display:flex;align-items:center;justify-content:center;gap:2px;"><span class="inline-spinner" aria-hidden="true"></span><span>' + t('AI 正在精準辨識藥袋...') + '</span></div></div>';
             };
             reader.readAsDataURL(file);
 
