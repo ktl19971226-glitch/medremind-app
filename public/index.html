@@ -1224,9 +1224,9 @@
                             <label>用戶名稱</label>
                             <input type="text" id="device-user-name" class="form-input" maxlength="60" placeholder="例如：王大明" onkeydown="if(event.key==='Enter') submitDeviceName()">
                         </div>
-                        <button onclick="submitDeviceName()" class="btn btn-primary">建立我的藥記得編號</button>
+                        <button id="device-name-submit-btn" onclick="submitDeviceName()" class="btn btn-primary">建立我的藥記得編號</button>
                     </div>
-                    <button onclick="startDeviceLogin(true)" class="btn btn-primary">重新建立裝置連線</button>
+                    <button id="device-reconnect-btn" onclick="startDeviceLogin(true)" class="btn btn-primary">重新建立裝置連線</button>
                     <a class="login-home-link" href="https://www.yaojidecare.app/">前往藥記得官方網站</a>
                     <div class="login-links">
                         <a href="/privacy.html" style="color:var(--text-light);">🔒 隱私權政策</a>
@@ -1662,7 +1662,26 @@
     <script>
         // ====== 多語系系統 ======
         const LANG_KEY = 'medremind_lang';
-        let currentLang = localStorage.getItem(LANG_KEY) || 'zh-TW';
+        const SUPPORTED_LANGS = ['zh-TW', 'en', 'id', 'th', 'vi', 'fil'];
+
+        function detectPreferredLanguage() {
+            const saved = localStorage.getItem(LANG_KEY);
+            if (SUPPORTED_LANGS.includes(saved)) return saved;
+
+            const languages = (typeof navigator !== 'undefined' && (navigator.languages || [navigator.language]))
+                ? (navigator.languages || [navigator.language])
+                : [];
+            const normalized = languages.map(lang => String(lang || '').toLowerCase());
+            if (normalized.some(lang => lang.startsWith('zh'))) return 'zh-TW';
+            if (normalized.some(lang => lang.startsWith('id') || lang.startsWith('in'))) return 'id';
+            if (normalized.some(lang => lang.startsWith('th'))) return 'th';
+            if (normalized.some(lang => lang.startsWith('vi'))) return 'vi';
+            if (normalized.some(lang => lang.startsWith('fil') || lang.startsWith('tl'))) return 'fil';
+            if (normalized.some(lang => lang.startsWith('en'))) return 'en';
+            return 'zh-TW';
+        }
+
+        let currentLang = detectPreferredLanguage();
 
         const TR = {
             '登出': { 'zh-TW':'登出','en':'Logout','id':'Keluar','th':'ออก','vi':'Đăng xuất','fil':'Logout' },
@@ -1726,6 +1745,14 @@
             '已加入家庭成員': { 'zh-TW':'已加入家庭成員','en':'Family member added','id':'Anggota ditambahkan','th':'เพิ่มสมาชิกแล้ว','vi':'Đã thêm thành viên','fil':'Member added' },
             '已自動填入:': { 'zh-TW':'已自動填入:','en':'Auto-filled: ','id':'Terisi: ','th':'เติมให้: ','vi':'Đã điền: ','fil':'Auto-filled: ' },
             'AI 辨識中,改用文字掃描...': { 'zh-TW':'AI 辨識中,改用文字掃描...','en':'AI failed, trying OCR...','id':'AI gagal, coba OCR...','th':'AI ไม่สําเร็จ ใช้ OCR...','vi':'AI lỗi, thử OCR...','fil':'AI failed, try OCR...' },
+            '建立我的藥記得編號': { 'zh-TW':'建立我的藥記得編號','en':'Create My MedRemind ID','id':'Buat ID MedRemind Saya','th':'สร้างรหัส MedRemind ของฉัน','vi':'Tạo mã MedRemind của tôi','fil':'Gumawa ng MedRemind ID' },
+            '重新建立裝置連線': { 'zh-TW':'重新建立裝置連線','en':'Reconnect Device','id':'Sambungkan Ulang Perangkat','th':'เชื่อมต่ออุปกรณ์ใหม่','vi':'Kết nối lại thiết bị','fil':'Reconnect Device' },
+            '正在建立裝置帳號...': { 'zh-TW':'正在建立裝置帳號...','en':'Creating device account...','id':'Membuat akun perangkat...','th':'กำลังสร้างบัญชีอุปกรณ์...','vi':'Đang tạo tài khoản thiết bị...','fil':'Gumagawa ng device account...' },
+            '已取得編號': { 'zh-TW':'已取得編號','en':'ID created','id':'ID dibuat','th':'สร้างรหัสแล้ว','vi':'Đã tạo mã','fil':'ID created' },
+            '第一次使用請輸入用戶名稱': { 'zh-TW':'第一次使用請輸入用戶名稱','en':'Enter your name for first use','id':'Masukkan nama untuk pertama kali','th':'กรุณาใส่ชื่อสำหรับการใช้งานครั้งแรก','vi':'Nhập tên cho lần đầu sử dụng','fil':'Ilagay ang pangalan sa unang gamit' },
+            '裝置帳號建立失敗，請稍後重試': { 'zh-TW':'裝置帳號建立失敗，請稍後重試','en':'Device account failed. Try again later','id':'Gagal membuat akun perangkat','th':'สร้างบัญชีอุปกรณ์ไม่สำเร็จ','vi':'Tạo tài khoản thiết bị thất bại','fil':'Device account failed' },
+            '裝置登入失敗': { 'zh-TW':'裝置登入失敗','en':'Device login failed','id':'Login perangkat gagal','th':'เข้าสู่ระบบอุปกรณ์ไม่สำเร็จ','vi':'Đăng nhập thiết bị thất bại','fil':'Device login failed' },
+            '請輸入用戶名稱': { 'zh-TW':'請輸入用戶名稱','en':'Enter your name','id':'Masukkan nama','th':'กรุณาใส่ชื่อ','vi':'Nhập tên người dùng','fil':'Ilagay ang pangalan' },
             '的用藥記錄嗎?': { 'zh-TW':'的用藥記錄嗎?','en':' medication record?','id':'?','th':'?','vi':'?','fil':'?' },
 
             '家人 Email': { 'zh-TW':'家人 Email','en':'Family Email','id':'Email Keluarga','th':'อีเมลครอบครัว','vi':'Email gia đình','fil':'Family Email' },
@@ -1756,9 +1783,13 @@
         }
 
         function changeLanguage(lang) {
+            if (!SUPPORTED_LANGS.includes(lang)) lang = 'zh-TW';
             currentLang = lang;
             localStorage.setItem(LANG_KEY, lang);
-            document.getElementById('lang-selector').value = lang;
+            const headerSelector = document.getElementById('lang-selector');
+            const settingsSelector = document.getElementById('settings-lang-selector');
+            if (headerSelector) headerSelector.value = lang;
+            if (settingsSelector) settingsSelector.value = lang;
             // 重新渲染所有動態文字
             updateStaticTexts();
             const activePage = document.querySelector('.page.active');
@@ -1782,9 +1813,11 @@
             // 登出按鈕
             const logoutBtn = document.querySelector('.logout-btn');
             if (logoutBtn) logoutBtn.textContent = t('登出');
-            // 登入/註冊表單
-            const loginBtn = document.querySelector('#login-form .btn-primary');
-            if (loginBtn) loginBtn.textContent = '重新建立裝置連線';
+            // 裝置登入表單
+            const nameSubmitBtn = document.getElementById('device-name-submit-btn');
+            if (nameSubmitBtn) nameSubmitBtn.textContent = t('建立我的藥記得編號');
+            const reconnectBtn = document.getElementById('device-reconnect-btn');
+            if (reconnectBtn) reconnectBtn.textContent = t('重新建立裝置連線');
             // 頁面標題
             const medsTitle = document.getElementById('meds-page-title');
             if (medsTitle) medsTitle.textContent = t('我的用藥');
@@ -1805,6 +1838,9 @@
         // 初始化語言選擇器
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('lang-selector').value = currentLang;
+            const settingsSelector = document.getElementById('settings-lang-selector');
+            if (settingsSelector) settingsSelector.value = currentLang;
+            updateStaticTexts();
             initDarkMode();
         });
         
@@ -1955,7 +1991,7 @@
                 localStorage.removeItem(DEVICE_ID_KEY);
             }
             toggleDeviceNameForm(false);
-            setDeviceStatus('正在建立裝置帳號...');
+            setDeviceStatus(t('正在建立裝置帳號...'));
             const deviceId = await getDeviceIdentifier();
             const meta = await getDeviceMeta();
             const payload = { device_id: deviceId, platform: meta.platform, model: meta.model };
@@ -1968,23 +2004,23 @@
             if (status === 200) {
                 setToken(data.token);
                 currentUser = data.user;
-                setDeviceStatus('已取得編號 ' + (currentUser.account_code || ''));
+                setDeviceStatus(t('已取得編號') + ' ' + (currentUser.account_code || ''));
                 showMainApp();
                 return;
             }
             if (status === 409 && data.require_name) {
-                setDeviceStatus('第一次使用請輸入用戶名稱');
+                setDeviceStatus(t('第一次使用請輸入用戶名稱'));
                 toggleDeviceNameForm(true);
                 return;
             }
-            setDeviceStatus(data.error || '裝置帳號建立失敗，請稍後重試');
-            showToast(data.error || '裝置登入失敗');
+            setDeviceStatus(data.error || t('裝置帳號建立失敗，請稍後重試'));
+            showToast(data.error || t('裝置登入失敗'));
         }
 
         function submitDeviceName() {
             const input = document.getElementById('device-user-name');
             const name = (input?.value || '').trim();
-            if (!name) return showToast('請輸入用戶名稱');
+            if (!name) return showToast(t('請輸入用戶名稱'));
             startDeviceLogin(false, name);
         }
 
