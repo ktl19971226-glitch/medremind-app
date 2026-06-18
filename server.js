@@ -201,7 +201,13 @@ app.use(cors({
     },
     credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '6mb' }));
+app.use((err, req, res, next) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+        return res.status(413).json({ error: '照片檔案太大，請改用較小照片或重新拍攝' });
+    }
+    next(err);
+});
 app.use('/api/', rateLimiter(60));  // API 速率限制
 app.get('/', (req, res, next) => {
     const host = String(req.headers.host || '').split(':')[0].toLowerCase();
