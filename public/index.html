@@ -200,36 +200,6 @@
             line-height: 1.2;
         }
 
-        .focus-card {
-            background: var(--surface);
-            border: 1px solid rgba(39,174,96,0.22);
-            border-left: 4px solid var(--green);
-            border-radius: var(--radius);
-            padding: 16px;
-            margin: 0 0 14px;
-            box-shadow: var(--shadow);
-        }
-
-        .focus-card .focus-label {
-            font-size: 12px;
-            color: var(--text-light);
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
-
-        .focus-card .focus-title {
-            font-size: 24px;
-            line-height: 1.2;
-            font-weight: 800;
-            color: var(--text);
-        }
-
-        .focus-card .focus-subtitle {
-            font-size: 14px;
-            color: var(--text-light);
-            margin-top: 4px;
-        }
-
         .med-photo {
             width: 54px;
             height: 54px;
@@ -1311,12 +1281,6 @@
                     </div>
                 </div>
 
-                <div class="focus-card" id="today-focus-card">
-                    <div class="focus-label">下一件事</div>
-                    <div class="focus-title" id="focus-title">載入中...</div>
-                    <div class="focus-subtitle" id="focus-subtitle">正在整理今日用藥</div>
-                </div>
-
                 <!-- 今日用藥排程 -->
                 <div id="today-schedule"></div>
 
@@ -1783,9 +1747,6 @@
             '下一次提醒': { 'zh-TW':'下一次提醒','en':'Next Reminder','id':'Pengingat Berikutnya','th':'เตือนครั้งถัดไป','vi':'Nhắc tiếp theo','fil':'Next Reminder' },
             '補藥項目': { 'zh-TW':'補藥項目','en':'Refills','id':'Isi Ulang','th':'รายการเติมยา','vi':'Cần lấy thuốc','fil':'Refills' },
             '今日健康': { 'zh-TW':'今日健康','en':'Today Health','id':'Kesehatan Hari Ini','th':'สุขภาพวันนี้','vi':'Sức khỏe hôm nay','fil':'Today Health' },
-            '下一件事': { 'zh-TW':'下一件事','en':'Next Step','id':'Langkah Berikutnya','th':'สิ่งถัดไป','vi':'Việc tiếp theo','fil':'Next Step' },
-            '載入中...': { 'zh-TW':'載入中...','en':'Loading...','id':'Memuat...','th':'กำลังโหลด...','vi':'Đang tải...','fil':'Loading...' },
-            '正在整理今日用藥': { 'zh-TW':'正在整理今日用藥','en':'Preparing today’s medications','id':'Menyiapkan obat hari ini','th':'กำลังจัดยาวันนี้','vi':'Đang chuẩn bị thuốc hôm nay','fil':'Preparing today’s medications' },
             '常用工具': { 'zh-TW':'常用工具','en':'Common Tools','id':'Alat Umum','th':'เครื่องมือที่ใช้บ่อย','vi':'Công cụ thường dùng','fil':'Common Tools' },
             '照護與紀錄': { 'zh-TW':'照護與紀錄','en':'Care and Records','id':'Perawatan dan Catatan','th':'การดูแลและบันทึก','vi':'Chăm sóc và hồ sơ','fil':'Care and Records' },
             '批次打卡': { 'zh-TW':'批次打卡','en':'Batch Check-in','id':'Catat Sekaligus','th':'บันทึกหลายรายการ','vi':'Điểm danh hàng loạt','fil':'Batch Check-in' },
@@ -2325,8 +2286,6 @@
                 grouped[item.medication_id].times.push(item);
             });
 
-            updateTodayFocus(data.schedule);
-
             container.innerHTML = Object.values(grouped).map(med => {
                 const timeButtons = med.times.map(t => {
                     let btnClass = 'take-btn';
@@ -2352,25 +2311,6 @@
                         <div class="time-buttons">${timeButtons}</div>
                     </div>`;
             }).join('');
-        }
-
-        function updateTodayFocus(schedule) {
-            const title = document.getElementById('focus-title');
-            const subtitle = document.getElementById('focus-subtitle');
-            if (!title || !subtitle) return;
-            const now = new Date();
-            const currentMinutes = now.getHours() * 60 + now.getMinutes();
-            const next = (schedule || [])
-                .filter(item => !item.taken)
-                .map(item => ({ ...item, minutes: parseInt(item.time.split(':')[0]) * 60 + parseInt(item.time.split(':')[1]) }))
-                .sort((a, b) => Math.abs(a.minutes - currentMinutes) - Math.abs(b.minutes - currentMinutes))[0];
-            if (!next) {
-                title.textContent = '今天都完成了';
-                subtitle.textContent = '用藥打卡狀況良好';
-                return;
-            }
-            title.textContent = next.time + ' ' + next.drug_name;
-            subtitle.textContent = next.dosage + (next.is_past ? ' · 已超過提醒時間，請確認是否已服用' : ' · 下一次提醒');
         }
 
         async function updateCareStrip() {
@@ -4133,14 +4073,14 @@
                     items: [
                         '第一次使用請先新增第一顆藥，輸入藥名、劑量、提醒時間與剩餘庫存。',
                         '如果有藥袋照片，可以在新增用藥時上傳，之後今日用藥卡會一起顯示。',
-                        '設定完成後回到首頁，照著「下一件事」卡片按下已吃藥即可。'
+                        '設定完成後回到首頁，在今日用藥卡按下已吃藥即可。'
                     ]
                 },
                 {
                     id: 'home',
                     title: '2. 首頁與今日用藥',
                     items: [
-                        '「下一件事」會自動顯示最近一筆待服用藥物、時間與劑量。',
+                        '今日用藥卡會顯示用藥時間、藥名與劑量。',
                         '今日用藥卡可以逐項打卡，打卡後會寫入紀錄並自動扣庫存。',
                         '庫存低於門檻時會顯示補藥提醒，避免藥快吃完才發現。'
                     ]
