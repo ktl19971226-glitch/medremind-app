@@ -1144,7 +1144,6 @@
         body.simple-mode .header .logout-btn { display: block; }
         body.simple-mode #home-page .install-banner,
         body.simple-mode #home-page .quick-panel,
-        body.simple-mode #home-page #pharmacy-results,
         body.simple-mode #home-page > .card,
         body.simple-mode #home-page > .btn { display: none !important; }
         body.simple-mode #home-page .summary-card,
@@ -1153,7 +1152,6 @@
         body.simple-mode #stock-alert-container,
         body.simple-mode #refill-alert-container { display: block; }
         body.simple-mode #today-schedule .card { display: block; }
-        body.simple-mode #mood-buttons { display: flex !important; }
         body.simple-mode .take-btn { font-size: 22px !important; padding: 16px !important; margin: 4px 0 !important; width: 100% !important; }
         body.desktop-mode .bottom-nav { display: none; }
         body.desktop-mode { padding-bottom: 16px; }
@@ -1176,8 +1174,8 @@
 
         /* 列印樣式 */
         @media print {
-            .header, .bottom-nav, .btn, button, .nav-item, #stock-alert-container, #pharmacy-results,
-            #adherence-trend-container button, .modal-overlay { display: none !important; }
+            .header, .bottom-nav, .btn, button, .nav-item, #stock-alert-container,
+            .modal-overlay { display: none !important; }
             body { font-size: 14px; background: white; color: black; padding: 0; }
             .container { max-width: 100%; padding: 0; }
             .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
@@ -1338,17 +1336,6 @@
                         <button onclick="showNotificationCenter()" class="quick-action"><span class="icon">🔔</span><span>通知</span></button>
                     </div>
                 </div>
-                <button onclick="findNearbyPharmacies()" class="btn btn-outline" style="margin-top:8px;width:100%;">🗺️ 附近藥局</button>
-                <div id="pharmacy-results" style="margin-top:8px;"></div>
-
-                <!-- 用藥遵從趨勢 -->
-                <div class="card" style="margin-top:12px;">
-                    <h3 style="margin-bottom:8px;">📊 用藥遵從趨勢（近14天）</h3>
-                    <div id="adherence-trend-container">
-                        <button class="btn btn-outline" style="width:100%;" onclick="loadAdherenceTrend()">查看遵從趨勢</button>
-                    </div>
-                </div>
-
                 <!-- 回診提醒 -->
                 <div class="card" style="margin-top:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1364,23 +1351,8 @@
                 <!-- 藥袋相簿 -->
                 <button onclick="showPhotoGallery()" class="btn btn-outline" style="width:100%;margin-top:8px;">📸 藥袋相簿</button>
 
-                <!-- 每日心情 -->
-                <div class="card" style="margin-top:8px;">
-                    <h3 style="margin-bottom:8px;">😊 今日心情</h3>
-                    <div style="display:flex;justify-content:space-around;" id="mood-buttons">
-                        <button onclick="setMood('😊','開心')" class="btn btn-outline btn-sm" style="flex:1;font-size:28px;padding:8px;">😊</button>
-                        <button onclick="setMood('😐','普通')" class="btn btn-outline btn-sm" style="flex:1;font-size:28px;padding:8px;">😐</button>
-                        <button onclick="setMood('😢','不好')" class="btn btn-outline btn-sm" style="flex:1;font-size:28px;padding:8px;">😢</button>
-                        <button onclick="setMood('😷','不舒服')" class="btn btn-outline btn-sm" style="flex:1;font-size:28px;padding:8px;">😷</button>
-                    </div>
-                    <div id="today-mood" style="text-align:center;margin-top:4px;font-size:14px;color:var(--text-light);"></div>
-                </div>
-
-                <!-- 智慧建議 + 錯過分析 -->
-                <button onclick="showMissReport()" class="btn btn-outline" style="width:100%;margin-top:8px;">📊 錯過分析</button>
-                <button onclick="showSmartSuggest()" class="btn btn-outline" style="width:100%;margin-top:8px;">🤖 智慧提醒建議</button>
+                <!-- AI 與照護工具 -->
                 <button onclick="showAIAssistant()" class="btn btn-outline" style="width:100%;margin-top:8px;">🤖 AI 問藥小幫手</button>
-                <button onclick="showWeeklyReport()" class="btn btn-outline" style="width:100%;margin-top:8px;">📋 家人週報</button>
                 <button onclick="showClinicContacts()" class="btn btn-outline" style="width:100%;margin-top:8px;">🏥 常用診所</button>
                 <button onclick="showSubscriptionInfo()" class="btn btn-outline" style="width:100%;margin-top:8px;">⭐ 進階版功能</button>
             </div>
@@ -2159,7 +2131,6 @@
             checkStockAlerts();
             loadAppointments();
             loadRefillAlerts();
-            loadTodayMood();
             updateCareStrip();
             updateNotificationBadge();
         }
@@ -3234,52 +3205,6 @@
                 }, 1000);
             }
         }
-        // ========== 附近藥局 ==========
-        async function findNearbyPharmacies() {
-            const container = document.getElementById('pharmacy-results');
-            container.innerHTML = '<div class="card" style="text-align:center;padding:20px;">📍 取得位置中...</div>';
-            
-            if (!navigator.geolocation) {
-                container.innerHTML = '<div class="card" style="text-align:center;padding:20px;color:var(--red);">❌ 瀏覽器不支援定位</div>';
-                return;
-            }
-            
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                const { latitude: lat, longitude: lon } = pos.coords;
-                const query = `[out:json];node[amenity=pharmacy](around:3000,${lat},${lon});out 10;`;
-                try {
-                    const resp = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
-                    const data = await resp.json();
-                    if (!data.elements || data.elements.length === 0) {
-                        container.innerHTML = '<div class="card" style="text-align:center;padding:20px;">😕 附近 3km 沒有找到藥局</div>';
-                        return;
-                    }
-                    const list = data.elements.map(p => {
-                        const name = p.tags.name || '藥局';
-                        const addr = p.tags['addr:street'] || p.tags['addr:full'] || '';
-                        const dist = Math.round(getDistance(lat, lon, p.lat, p.lon) * 1000);
-                        return `<div style="padding:12px;background:var(--card-bg);border-radius:12px;margin-bottom:8px;box-shadow:var(--shadow);">
-                            <div style="font-weight:600;">💊 ${name}</div>
-                            <div style="font-size:13px;color:var(--text-light);">📍 ${dist}m · ${addr}</div>
-                        </div>`;
-                    }).join('');
-                    container.innerHTML = `<div class="card"><h4 style="margin-bottom:8px;">🗺️ 附近藥局</h4>${list}</div>`;
-                } catch(e) {
-                    container.innerHTML = '<div class="card" style="text-align:center;padding:20px;color:var(--red);">❌ 搜尋失敗</div>';
-                }
-            }, () => {
-                container.innerHTML = '<div class="card" style="text-align:center;padding:20px;color:var(--red);">❌ 無法取得位置，請允許定位權限</div>';
-            });
-        }
-        
-        function getDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        }
-
         // ========== 藥物交互作用檢查 UI ==========
         function showDrugInteractionCheck() {
             api('/api/medications').then(({ data }) => {
@@ -3386,53 +3311,6 @@
                 const meds = data.schedule.map(s => s.drug_name + '，時間' + s.time).join('；');
                 speakReminder('今天的用藥提醒：' + meds);
             });
-        }
-
-        // ========== 用藥遵從趨勢圖 ==========
-        async function loadAdherenceTrend() {
-            const { data } = await api('/api/medications/adherence-trend?days=14');
-            if (!data.trends) return;
-            const container = document.getElementById('adherence-trend-container');
-            const values = data.trends.map(t => t.rate).filter(v => v !== null);
-            if (values.length < 2) { container.innerHTML = '<div style="color:var(--text-light);text-align:center;padding:12px;">數據不足</div>'; return; }
-            const canvas = document.createElement('canvas');
-            canvas.width = container.clientWidth * 2 || 600;
-            canvas.height = 160;
-            canvas.style.width = '100%';
-            canvas.style.height = '160px';
-            canvas.style.borderRadius = '8px';
-            canvas.style.background = '#f9fafb';
-            const ctx = canvas.getContext('2d');
-            const W = canvas.width, H = canvas.height;
-            const pad = { top: 20, right: 15, bottom: 25, left: 35 };
-            const cw = W - pad.left - pad.right, ch = H - pad.top - pad.bottom;
-            const max = 100, min = Math.max(0, Math.min(...values) - 10);
-            // 網格
-            for (let i = 0; i <= 4; i++) {
-                const y = pad.top + ch * i / 4;
-                ctx.strokeStyle = '#e0e6ed'; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-                ctx.fillStyle = '#7f8c8d'; ctx.font = '16px sans-serif'; ctx.textAlign = 'right';
-                ctx.fillText(Math.round(max - (max - min) * i / 4) + '%', pad.left - 6, y + 5);
-            }
-            // 線
-            ctx.strokeStyle = '#27AE60'; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.beginPath();
-            const valid = data.trends.filter(t => t.rate !== null);
-            valid.forEach((t, i) => {
-                const x = pad.left + cw * i / (valid.length - 1);
-                const y = pad.top + ch - ((t.rate - min) / (max - min)) * ch;
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-            // 點
-            valid.forEach((t, i) => {
-                const x = pad.left + cw * i / (valid.length - 1);
-                const y = pad.top + ch - ((t.rate - min) / (max - min)) * ch;
-                ctx.fillStyle = t.rate >= 80 ? '#27AE60' : t.rate >= 50 ? '#F39C12' : '#E74C3C';
-                ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
-            });
-            container.innerHTML = '';
-            container.appendChild(canvas);
         }
 
         // ========== 回診提醒 ==========
@@ -3780,23 +3658,6 @@
             });
         }
 
-        // ========== 每日心情 ==========
-        function setMood(mood, notes) {
-            api('/api/mood', { method:'POST', body:JSON.stringify({ mood, notes }) }).then(({ status }) => {
-                if (status === 200) {
-                    document.getElementById('today-mood').textContent = '今日：' + mood + ' ' + notes;
-                    showToast('心情已記錄 ' + mood);
-                }
-            });
-        }
-        function loadTodayMood() {
-            api('/api/mood').then(({ data }) => {
-                if (data.today && data.today.mood) {
-                    document.getElementById('today-mood').textContent = '今日：' + data.today.mood + (data.today.notes ? ' ' + data.today.notes : '');
-                }
-            });
-        }
-
         // ========== 備份還原 ==========
         function downloadBackup() {
             const a = document.createElement('a');
@@ -3913,49 +3774,6 @@
             api('/api/user/simple-mode', { method:'PUT', body:JSON.stringify({ enabled }) });
             if (enabled) switchPage('home');
             showToast(enabled ? '👴 簡化模式已啟用' : '簡化模式已停用');
-        }
-
-        // ========== 最常錯過分析 ==========
-        function showMissReport() {
-            api('/api/medications/miss-report?days=30').then(({ data }) => {
-                let html = '<div class="modal-overlay" id="mr-modal"><div class="modal"><h3>📊 近30天錯過分析</h3>';
-                if ((data.drugStats || []).length > 0) {
-                    html += '<h4 style="margin:12px 0 4px;">💊 藥品排名</h4>';
-                    data.drugStats.forEach(d => {
-                        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;">' +
-                            '<span>' + d.drug_name + '</span><span>錯過 <b style="color:var(--red);">' + d.missed + '</b> 次 / 共 ' + d.total + ' 次 (' + d.rate + '%)</span></div>';
-                    });
-                }
-                if ((data.timeStats || []).length > 0) {
-                    html += '<h4 style="margin:12px 0 4px;">⏰ 時段排名</h4>';
-                    data.timeStats.forEach(t => {
-                        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;">' +
-                            '<span>' + t.remind_time + '</span><span>錯過 <b style="color:var(--red);">' + t.missed + '</b> 次 / 共 ' + t.total + ' 次 (' + t.rate + '%)</span></div>';
-                    });
-                }
-                if ((data.drugStats || []).length === 0) html += '<div style="color:var(--text-light);text-align:center;padding:16px;">數據不足</div>';
-                html += '<button onclick="document.getElementById(\'mr-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:12px;">關閉</button></div></div>';
-                document.getElementById('modal-container').innerHTML = html;
-                document.getElementById('mr-modal')?.addEventListener('click', e => { if (e.target.id === 'mr-modal') e.target.remove(); });
-            });
-        }
-
-        // ========== 智慧提醒建議 ==========
-        function showSmartSuggest() {
-            api('/api/medications/smart-suggest?days=14').then(({ data }) => {
-                const s = data.suggestions || [];
-                document.getElementById('modal-container').innerHTML =
-                    '<div class="modal-overlay" id="ss-modal"><div class="modal"><h3>🤖 智慧提醒建議</h3>' +
-                    (s.length === 0
-                        ? '<div style="color:var(--green);text-align:center;padding:16px;">✅ 目前的提醒時間很適合你！</div>'
-                        : s.map(r =>
-                            '<div style="padding:10px;background:#e8f5e9;border-radius:8px;margin:8px 0;">' +
-                            '<div style="font-size:14px;">⏰ ' + r.scheduled + ' → 建議改為 <b>' + r.newTime + '</b></div>' +
-                            '<div style="font-size:13px;color:var(--text-light);">過去實際打卡平均' + r.direction + ' ' + Math.abs(r.avgOffset) + ' 分鐘（共 ' + r.samples + ' 筆樣本）</div></div>'
-                        ).join('')) +
-                    '<button onclick="document.getElementById(\'ss-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:12px;">關閉</button></div></div>';
-                document.getElementById('ss-modal')?.addEventListener('click', e => { if (e.target.id === 'ss-modal') e.target.remove(); });
-            });
         }
 
         // ========== AI 問藥小幫手 ==========
@@ -4255,30 +4073,6 @@
                 '<div style="display:flex;gap:8px;margin-top:12px;"><button onclick="showSafetyInfo()" class="btn btn-outline" style="flex:1;">醫療安全</button><button onclick="document.getElementById(\'help-modal\').remove()" class="btn btn-primary" style="flex:1;">關閉</button></div>' +
                 '</div></div>';
             document.getElementById('help-modal')?.addEventListener('click', e => { if (e.target.id === 'help-modal') e.target.remove(); });
-        }
-
-        // ========== 家人週報 ==========
-        function showWeeklyReport() {
-            api('/api/report/weekly').then(({ data }) => {
-                document.getElementById('modal-container').innerHTML =
-                    '<div class="modal-overlay" id="wr-modal"><div class="modal" style="max-height:90vh;"><h3>📋 家人週報</h3>' +
-                    '<div style="font-size:12px;color:var(--text-light);margin-bottom:8px;">' + data.weekStart + ' ~ ' + data.weekEnd + '</div>' +
-                    '<div style="background:#e8f5e9;padding:10px;border-radius:8px;margin-bottom:12px;">' +
-                    '<div><strong>用藥遵從率：</strong><span style="font-size:24px;font-weight:700;color:var(--green);">' + data.adherence.rate + '%</span></div>' +
-                    '<div style="font-size:14px;">已服用 ' + data.adherence.totalTaken + ' / ' + data.adherence.totalReminders + ' 次</div></div>' +
-                    ((data.moods || []).length > 0
-                        ? '<div style="margin-bottom:8px;"><strong>😊 心情：</strong>' + data.moods.map(m => m.log_date.substring(5) + ' ' + m.mood).join(' · ') + '</div>'
-                        : '') +
-                    ((data.bp || []).length > 0
-                        ? '<div style="margin-bottom:8px;"><strong>🩺 血壓：</strong>' + data.bp.map(b => b.blood_pressure_sys + '/' + b.blood_pressure_dia).join(' · ') + ' mmHg</div>'
-                        : '') +
-                    ((data.sugar || []).length > 0
-                        ? '<div style="margin-bottom:8px;"><strong>🩸 血糖：</strong>' + data.sugar.map(s => s.blood_sugar).join(' · ') + ' mg/dL</div>'
-                        : '') +
-                    '<button onclick="window.print()" class="btn btn-primary" style="width:100%;margin-top:8px;">🖨️ 列印</button>' +
-                    '<button onclick="document.getElementById(\'wr-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:8px;">關閉</button></div></div>';
-                document.getElementById('wr-modal')?.addEventListener('click', e => { if (e.target.id === 'wr-modal') e.target.remove(); });
-            });
         }
 
         // ========== BMI 儀表 ==========
