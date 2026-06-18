@@ -75,6 +75,19 @@ function hashToken(token) {
     return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
+function hashDeviceIdentifier(identifier) {
+    return crypto.createHash('sha256').update(String(identifier)).digest('hex');
+}
+
+function makeAccountCode(id) {
+    return `YJ-${String(id).padStart(6, '0')}`;
+}
+
+function publicEmail(user) {
+    const email = user && user.email ? String(user.email) : '';
+    return email.endsWith('@device.yaojidecare.local') ? null : email;
+}
+
 function expiresAt(minutes) {
     return new Date(Date.now() + minutes * 60000).toISOString();
 }
@@ -234,6 +247,10 @@ async function init() {
         "ALTER TABLE medications ADD COLUMN refill_threshold INTEGER DEFAULT 7",
         "ALTER TABLE medications ADD COLUMN medication_image TEXT",
         "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'",
+        "ALTER TABLE users ADD COLUMN device_identifier_hash TEXT UNIQUE",
+        "ALTER TABLE users ADD COLUMN account_code TEXT UNIQUE",
+        "ALTER TABLE users ADD COLUMN account_source TEXT DEFAULT 'email'",
+        "ALTER TABLE users ADD COLUMN last_device_login_at DATETIME",
         "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN email_verified_at DATETIME",
         "ALTER TABLE users ADD COLUMN email_verification_token_hash TEXT",
@@ -416,6 +433,67 @@ async function init() {
     // setInterval(saveDB, 30000); // 暫停定時保存
     
     // ====== 用戶 API ======
+    app.post('/api/device-login', (req, res) => {
+        const deviceId = String(req.body.device_id || '').trim();
+        const platform = String(req.body.platform || 'web').trim().substring(0, 40);
+        const model = String(req.body.model || '').trim().substring(0, 80);
+        const displayName = String(req.body.name || '').trim().substring(0, 60);
+
+        if (!/^[A-Za-z0-9._:-]{8,160}$/.test(deviceId)) {
+            return res.status(400).json({ error: '裝置識別碼無效' });
+        }
+
+        const deviceHash = hashDeviceIdentifier(deviceId);
+        let user = dbGet('SELECT * FROM users WHERE device_identifier_hash=?', [deviceHash]);
+
+        if (!user) {
+            const email = `device-${deviceHash.slice(0, 20)}@device.yaojidecare.local`;
+            const name = displayName || '藥記得用戶';
+            const inserted = dbRun(
+                `INSERT INTO users
+                    (name,email,phone,password_hash,role,email_verified,email_verified_at,device_identifier_hash,account_source,last_device_login_at)
+                 VALUES (?,?,?,?, 'user', 1, CURRENT_TIMESTAMP, ?, 'device', CURRENT_TIMESTAMP)`,
+                [name, email, null, hashPwd(crypto.randomBytes(24).toString('hex')), deviceHash]
+            );
+            const id = inserted ? inserted.id : null;
+            if (!id) return res.status(500).json({ error: '建立裝置帳號失敗' });
+            const accountCode = makeAccountCode(id);
+            dbRun('UPDATE users SET account_code=?, name=? WHERE id=?', [accountCode, `${name} ${accountCode}`, id]);
+            user = dbGet('SELECT * FROM users WHERE id=?', [id]);
+        } else {
+            dbRun('UPDATE users SET last_device_login_at=CURRENT_TIMESTAMP WHERE id=?', [user.id]);
+            if (!user.account_code) {
+                dbRun('UPDATE users SET account_code=? WHERE id=?', [makeAccountCode(user.id), user.id]);
+            }
+            user = dbGet('SELECT * FROM users WHERE id=?', [user.id]);
+        }
+
+        dbRun('INSERT INTO user_settings (user_id) VALUES (?) ON CONFLICT(user_id) DO NOTHING', [user.id]);
+        saveDB();
+
+        const token = jwt.sign(
+            { id: user.id, name: user.name, email: user.email, role: user.role || 'user', device: true },
+            JWT_SECRET,
+            { expiresIn: '365d' }
+        );
+        res.json({
+            message: '裝置登入成功',
+            token,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: publicEmail(user),
+                phone: user.phone,
+                age: user.age,
+                role: user.role || 'user',
+                account_code: user.account_code || makeAccountCode(user.id),
+                account_source: user.account_source || 'device',
+                platform,
+                model
+            }
+        });
+    });
+
     app.post('/api/register', async (req, res) => {
         const { name, phone, password, age } = req.body;
         const email = normalizeEmail(req.body.email);
@@ -481,7 +559,8 @@ async function init() {
     });
     
     app.get('/api/user/profile', auth, (req, res) => {
-        const u = dbGet('SELECT id,name,email,phone,age FROM users WHERE id=?', [req.user.id]);
+        const u = dbGet('SELECT id,name,email,phone,age,role,account_code,account_source FROM users WHERE id=?', [req.user.id]);
+        if (u) u.email = publicEmail(u);
         res.json(u ? { user:u } : { error:'用戶不存在' });
     });
     

@@ -1200,7 +1200,7 @@
                 </a>
                 <div class="login-eyebrow">AI 用藥提醒與家人照護平台</div>
                 <h1>每天吃對藥，家人即時放心。</h1>
-                <p>登入後即可管理今日用藥、藥袋照片、補藥提醒、健康紀錄與家人照護摘要。</p>
+                <p>開啟後自動建立裝置帳號，不需要註冊或輸入密碼，即可管理今日用藥、藥袋照片、補藥提醒、健康紀錄與家人照護摘要。</p>
                 <div class="login-proof-grid">
                     <div class="login-proof"><strong>今日提醒</strong><span>下一次用藥、劑量與打卡集中在首頁。</span></div>
                     <div class="login-proof"><strong>AI 辨識</strong><span>藥袋照片協助帶入資料，使用前再確認。</span></div>
@@ -1211,55 +1211,22 @@
                 <div class="login-card-header">
                     <img src="/icon-192.png" alt="">
                     <div class="app-title">藥記得</div>
-                    <div class="login-subtitle">登入 App，繼續管理用藥與家人照護</div>
+                    <div class="login-subtitle">正在建立此手機的藥記得編號</div>
                 </div>
                 <div id="login-form">
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" id="login-email" class="form-input" placeholder="輸入您的 Email" autocomplete="email">
+                    <div style="text-align:center;padding:12px 0 18px;">
+                        <div class="spinner" style="margin-bottom:12px;"></div>
+                        <div id="device-login-status" style="font-weight:700;color:var(--green);">正在讀取裝置識別碼...</div>
+                        <div style="font-size:13px;color:var(--text-light);line-height:1.6;margin-top:8px;">
+                            系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>密碼</label>
-                        <input type="password" id="login-password" class="form-input" placeholder="輸入密碼" autocomplete="current-password">
-                    </div>
-                    <button onclick="handleLogin()" class="btn btn-primary">登入</button>
-                    <div class="toggle-link auth-toggle" onclick="toggleAuthForm()">還沒有帳號?立即註冊 →</div>
-                    <div class="toggle-link forgot-link" onclick="showForgotPassword()">🔑 忘記密碼?</div>
+                    <button onclick="startDeviceLogin(true)" class="btn btn-primary">重新建立裝置連線</button>
                     <a class="login-home-link" href="https://www.yaojidecare.app/">前往藥記得官方網站</a>
                     <div class="login-links">
                         <a href="/privacy.html" style="color:var(--text-light);">🔒 隱私權政策</a>
                         <a href="/terms.html" style="color:var(--text-light);">📄 使用者條款</a>
                     </div>
-                </div>
-                <div id="register-form" style="display:none;">
-                    <div class="form-group">
-                        <label>姓名</label>
-                        <input type="text" id="reg-name" class="form-input" placeholder="您的姓名">
-                    </div>
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" id="reg-email" class="form-input" placeholder="Email 地址">
-                    </div>
-                    <div class="form-group">
-                        <label>手機號碼(選填)</label>
-                        <input type="tel" id="reg-phone" class="form-input" placeholder="09xx-xxx-xxx">
-                    </div>
-                    <div class="form-group">
-                        <label>年齡(選填)</label>
-                        <input type="number" id="reg-age" class="form-input" placeholder="年齡">
-                    </div>
-                    <div class="form-group">
-                        <label>密碼</label>
-                        <input type="password" id="reg-password" class="form-input" placeholder="設定密碼(至少6位)">
-                    </div>
-                    <div class="form-group">
-                        <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;cursor:pointer;">
-                            <input type="checkbox" id="reg-agree" style="margin-top:3px;width:18px;height:18px;">
-                            <span>我已閱讀並同意 <a href="/terms.html" target="_blank" style="color:var(--blue);">使用者條款</a> 及 <a href="/privacy.html" target="_blank" style="color:var(--blue);">隱私權政策</a></span>
-                        </label>
-                    </div>
-                    <button onclick="handleRegister()" class="btn btn-primary">註冊</button>
-                    <div class="toggle-link auth-toggle" onclick="toggleAuthForm()">← 已有帳號?直接登入</div>
                 </div>
             </section>
         </div>
@@ -1282,7 +1249,7 @@
                 <a id="admin-header-link" href="/admin.html" style="display:none;background:rgba(255,255,255,0.2);color:white;padding:6px 12px;border-radius:8px;font-size:13px;text-decoration:none;">🔧 後台</a>
                 <button class="notification-btn" onclick="showNotificationCenter()" title="通知中心">🔔<span class="notification-badge" id="notification-badge">0</span></button>
                 <span class="user-info" id="header-username"></span>
-                <button class="logout-btn" onclick="handleLogout()">登出</button>
+                <button class="logout-btn" onclick="refreshDeviceSession()">重整</button>
             </div>
         </div>
 
@@ -1665,8 +1632,12 @@
                 <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="document.getElementById('restore-input').click()">📥 還原備份</button>
                 <input type="file" id="restore-input" accept=".db" style="display:none;" onchange="restoreBackup(event)">
 
-                <!-- 帳號管理 -->
-                <button class="btn btn-outline" style="width:100%;margin-top:12px;" onclick="showChangePassword()">🔑 修改密碼</button>
+                <!-- 裝置資料管理 -->
+                <div class="card" style="margin-top:12px;">
+                    <div style="font-size:16px;font-weight:700;margin-bottom:6px;">📱 裝置編號</div>
+                    <div style="font-size:22px;color:var(--green);font-weight:800;" id="settings-account-code">--</div>
+                    <div style="font-size:13px;color:var(--text-light);margin-top:4px;">此編號由藥記得產生，用來代替傳統帳號。</div>
+                </div>
                 <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="exportMyData()">📥 匯出個人資料 (CSV)</button>
                 <div class="card" style="margin-top:8px;">
                     <div style="font-size:14px;color:var(--text-light);">📱 版本 2.1 PWA Ready</div>
@@ -1684,7 +1655,7 @@
                     </div>
                 </div>
 
-                <button class="btn btn-danger" style="width:100%;margin-top:12px;" onclick="deleteMyAccount()">🗑️ 永久刪除帳號</button>
+                <button class="btn btn-danger" style="width:100%;margin-top:12px;" onclick="deleteMyAccount()">🗑️ 永久刪除此裝置資料</button>
             </div>
         </div>
 
@@ -1836,12 +1807,7 @@
             if (logoutBtn) logoutBtn.textContent = t('登出');
             // 登入/註冊表單
             const loginBtn = document.querySelector('#login-form .btn-primary');
-            if (loginBtn) loginBtn.textContent = t('登入');
-            const regBtn = document.querySelector('#register-form .btn-primary');
-            if (regBtn) regBtn.textContent = t('註冊');
-            const toggleLinks = document.querySelectorAll('.auth-toggle');
-            if (toggleLinks[0]) toggleLinks[0].textContent = t('還沒有帳號?立即註冊 →');
-            if (toggleLinks[1]) toggleLinks[1].textContent = t('← 已有帳號?直接登入');
+            if (loginBtn) loginBtn.textContent = '重新建立裝置連線';
             // 頁面標題
             const medsTitle = document.getElementById('meds-page-title');
             if (medsTitle) medsTitle.textContent = t('我的用藥');
@@ -1890,6 +1856,8 @@
         const isNative = window.location.protocol === 'capacitor:' || window.location.protocol === 'file:';
         const API = isNative ? 'http://220.135.250.9:8050' : '';
         const INSTALL_DISMISSED_KEY = 'medremind_install_dismissed';
+        const DEVICE_ID_KEY = 'medremind_device_identifier';
+        const AUTH_TOKEN_KEY = 'medremind_auth_token';
         let deferredInstallPrompt = null;
 
         window.addEventListener('beforeinstallprompt', (event) => {
@@ -1933,16 +1901,95 @@
         // Token 管理
         function setToken(token) {
             authToken = token;
-            // Token 64c153054f9b5f8c7aef HttpOnly Cookie
+            if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
         }
 
         function getToken() {
-            return authToken || authToken;
+            return authToken || localStorage.getItem(AUTH_TOKEN_KEY) || '';
         }
 
         function clearToken() {
             authToken = '';
-            // Cookie 670381ea52d56e059664
+            localStorage.removeItem(AUTH_TOKEN_KEY);
+        }
+
+        function setDeviceStatus(message) {
+            const el = document.getElementById('device-login-status');
+            if (el) el.textContent = message;
+        }
+
+        function makeLocalDeviceId() {
+            const random = window.crypto?.randomUUID
+                ? window.crypto.randomUUID()
+                : 'web-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+            return 'web-' + random;
+        }
+
+        async function getDeviceIdentifier() {
+            const saved = localStorage.getItem(DEVICE_ID_KEY);
+            if (saved) return saved;
+
+            let nativeId = '';
+            try {
+                const devicePlugin = window.Capacitor?.Plugins?.Device;
+                if (devicePlugin?.getId) {
+                    const info = await devicePlugin.getId();
+                    nativeId = info?.identifier || info?.uuid || '';
+                }
+            } catch(e) {
+                console.log('原生裝置識別碼略過:', e.message);
+            }
+
+            const deviceId = nativeId ? 'native-' + nativeId : makeLocalDeviceId();
+            localStorage.setItem(DEVICE_ID_KEY, deviceId);
+            return deviceId;
+        }
+
+        async function getDeviceMeta() {
+            try {
+                const devicePlugin = window.Capacitor?.Plugins?.Device;
+                if (devicePlugin?.getInfo) {
+                    const info = await devicePlugin.getInfo();
+                    return {
+                        platform: info.platform || (isNative ? 'native' : 'web'),
+                        model: [info.manufacturer, info.model, info.operatingSystem, info.osVersion].filter(Boolean).join(' ')
+                    };
+                }
+            } catch(e) {
+                console.log('裝置資訊略過:', e.message);
+            }
+            return {
+                platform: isNative ? 'native' : 'web',
+                model: navigator.userAgent.substring(0, 80)
+            };
+        }
+
+        async function startDeviceLogin(forceNew = false) {
+            if (forceNew) {
+                clearToken();
+                localStorage.removeItem(DEVICE_ID_KEY);
+            }
+            setDeviceStatus('正在建立裝置帳號...');
+            const deviceId = await getDeviceIdentifier();
+            const meta = await getDeviceMeta();
+            const { status, data } = await api('/api/device-login', {
+                method: 'POST',
+                body: JSON.stringify({ device_id: deviceId, platform: meta.platform, model: meta.model })
+            });
+
+            if (status === 200) {
+                setToken(data.token);
+                currentUser = data.user;
+                setDeviceStatus('已取得編號 ' + (currentUser.account_code || ''));
+                showMainApp();
+                return;
+            }
+            setDeviceStatus(data.error || '裝置帳號建立失敗，請稍後重試');
+            showToast(data.error || '裝置登入失敗');
+        }
+
+        function refreshDeviceSession() {
+            startDeviceLogin(false);
         }
 
         // API 請求輔助
@@ -1964,7 +2011,7 @@
                     data = { error: '伺服器回應格式錯誤' };
                 }
 
-                if (response.status === 401 || response.status === 403) {
+                if ((response.status === 401 || response.status === 403) && url !== '/api/device-login') {
                     clearToken();
                     showLogin();
                 }
@@ -2010,80 +2057,19 @@
             if (pageName === 'settings') loadSettingsPage();
         }
 
-        // 登入/註冊切換
+        // 舊帳號流程已停用，保留空函式避免舊快取頁面呼叫錯誤
         function toggleAuthForm() {
-            const loginForm = document.getElementById('login-form');
-            const registerForm = document.getElementById('register-form');
-            if (loginForm.style.display === 'none') {
-                loginForm.style.display = 'block';
-                registerForm.style.display = 'none';
-            } else {
-                loginForm.style.display = 'none';
-                registerForm.style.display = 'block';
-            }
+            startDeviceLogin(false);
         }
 
         // 處理登入
         async function handleLogin() {
-            const email = document.getElementById('login-email').value.trim();
-            const password = document.getElementById('login-password').value.trim();
-
-            if (!email || !password) {
-                showToast('請輸入 Email 和密碼');
-                return;
-            }
-
-            const { status, data } = await api('/api/login', {
-                method: 'POST',
-                body: JSON.stringify({ email, password })
-            });
-
-            if (status === 200) {
-                setToken(data.token);
-                currentUser = data.user;
-                showMainApp();
-                showToast(t('登入成功!'));
-            } else {
-                showToast(data.error || '登入失敗');
-            }
+            await startDeviceLogin(false);
         }
 
         // 處理註冊
         async function handleRegister() {
-            const name = document.getElementById('reg-name').value.trim();
-            const email = document.getElementById('reg-email').value.trim();
-            const phone = document.getElementById('reg-phone').value.trim();
-            const age = document.getElementById('reg-age').value;
-            const password = document.getElementById('reg-password').value.trim();
-
-            if (!name || !email || !password) {
-                showToast(t('請填寫必填欄位'));
-                return;
-            }
-
-            if (password.length < 6) {
-                showToast('密碼至少需要6位');
-                return;
-            }
-
-            if (!document.getElementById('reg-agree').checked) {
-                showToast('請先同意使用者條款及隱私權政策');
-                return;
-            }
-
-            const { status, data } = await api('/api/register', {
-                method: 'POST',
-                body: JSON.stringify({ name, email, phone, password, age: age ? parseInt(age) : null })
-            });
-
-            if (status === 200) {
-                document.getElementById('register-form').style.display = 'none';
-                document.getElementById('login-form').style.display = 'block';
-                document.getElementById('login-email').value = email;
-                showToast(data.message || '註冊成功，請到信箱完成 Email 驗證後再登入');
-            } else {
-                showToast(data.error || '註冊失敗');
-            }
+            await startDeviceLogin(false);
         }
 
         // 處理登出
@@ -2094,12 +2080,13 @@
         }
 
         // 顯示登入頁面
-        function showLogin() {
+        function showLogin(autoStart = true) {
             document.getElementById('login-page').style.display = 'block';
             document.getElementById('main-app').style.display = 'none';
             document.body.classList.remove('simple-mode', 'desktop-mode');
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById('login-page').classList.add('active');
+            if (autoStart) startDeviceLogin(false);
         }
 
         // ========== 忘記密碼 ==========
@@ -2133,7 +2120,7 @@
         function showMainApp() {
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
-            document.getElementById('header-username').textContent = currentUser.name;
+            document.getElementById('header-username').textContent = currentUser.account_code || currentUser.name;
             // 管理員顯示後台連結
             const adminLink = document.getElementById('admin-header-link');
             if (adminLink) adminLink.style.display = (currentUser.role === 'admin') ? 'inline-block' : 'none';
@@ -2805,7 +2792,7 @@
             modal.innerHTML = `
                 <div class="modal">
                     <h2>${t('加入家人')}</h2>
-                    <p style="color:var(--text-light);margin-bottom:16px;">用 Email 加入，或產生邀請碼讓家人點連結加入照護。</p>
+                    <p style="color:var(--text-light);margin-bottom:16px;">產生邀請碼或邀請連結，家人開啟後會用自己的裝置編號加入照護。</p>
                     <div style="background:#f8fafb;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
                         <div style="font-weight:700;margin-bottom:8px;">邀請連結 / 邀請碼</div>
                         <select id="invite-family-relation" class="form-input" style="margin-bottom:8px;">
@@ -2817,22 +2804,7 @@
                         <button onclick="createFamilyInvite()" class="btn btn-primary" style="font-size:15px;padding:10px;">產生邀請碼</button>
                         <div id="family-invite-result" style="margin-top:10px;font-size:14px;"></div>
                     </div>
-                    <div class="form-group">
-                        <label>${t('家人 Email')}</label>
-                        <input type="email" id="add-family-email" class="form-input" placeholder="輸入家人的 Email">
-                    </div>
-                    <div class="form-group">
-                        <label>${t('關係')}</label>
-                        <select id="add-family-relation" class="form-input">
-                            <option value="子女">子女</option>
-                            <option value="父母">父母</option>
-                            <option value="配偶">配偶</option>
-                            <option value="兄弟">兄弟姊妹</option>
-                            <option value="朋友">朋友</option>
-                        </select>
-                    </div>
                     <div style="display:flex;gap:8px;margin-top:16px;">
-                        <button onclick="addFamilyMember()" class="btn btn-primary">${t('確認加入')}</button>
                         <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-outline">${t('取消')}</button>
                     </div>
                 </div>`;
@@ -2906,7 +2878,7 @@
         // ========== 初始載入 ==========
 
         window.addEventListener('DOMContentLoaded', () => {
-            const savedToken = authToken;
+            const savedToken = getToken();
             if (savedToken) {
                 authToken = savedToken;
                 // 嘗試自動登入
@@ -2929,12 +2901,7 @@
             if (e.key === 'Enter') {
                 const loginPage = document.getElementById('login-page');
                 if (loginPage.style.display !== 'none') {
-                    const registerForm = document.getElementById('register-form');
-                    if (registerForm.style.display === 'none') {
-                        handleLogin();
-                    } else {
-                        handleRegister();
-                    }
+                    startDeviceLogin(false);
                 }
             }
         });
@@ -3031,6 +2998,8 @@
             await loadSettings();
             const sel = document.getElementById('settings-lang-selector');
             if (sel) sel.value = currentLang;
+            const accountCode = document.getElementById('settings-account-code');
+            if (accountCode) accountCode.textContent = currentUser?.account_code || currentUser?.name || '--';
         }
 
         async function saveReminderSetting() {
@@ -3121,10 +3090,14 @@
 
         // ========== 刪除帳號 ==========
         async function deleteMyAccount() {
-            if (!confirm('⚠️ 確定要永久刪除您的帳號及所有資料？\n\n包含：用藥記錄、健康數據、家庭關聯、通知記錄\n\n此操作無法復原！')) return;
-            if (!confirm('再次確認：真的要永久刪除帳號嗎？')) return;
+            if (!confirm('⚠️ 確定要永久刪除此裝置的所有資料？\n\n包含：用藥記錄、健康數據、家庭關聯、通知記錄\n\n此操作無法復原！')) return;
+            if (!confirm('再次確認：真的要永久刪除此裝置資料嗎？')) return;
             const { status, data } = await api('/api/user/account', { method: 'DELETE' });
-            if (status === 200) { showToast('帳號已永久刪除'); setTimeout(() => handleLogout(), 1500); }
+            if (status === 200) {
+                localStorage.removeItem(DEVICE_ID_KEY);
+                showToast('裝置資料已永久刪除');
+                setTimeout(() => handleLogout(), 1500);
+            }
             else showToast(data.error || '刪除失敗');
         }
 
