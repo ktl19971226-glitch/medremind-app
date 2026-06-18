@@ -1678,7 +1678,7 @@
             if (normalized.some(lang => lang.startsWith('vi'))) return 'vi';
             if (normalized.some(lang => lang.startsWith('fil') || lang.startsWith('tl'))) return 'fil';
             if (normalized.some(lang => lang.startsWith('en'))) return 'en';
-            return 'zh-TW';
+            return 'en';
         }
 
         let currentLang = detectPreferredLanguage();
@@ -1720,6 +1720,7 @@
             '用藥': { 'zh-TW':'用藥','en':'Meds','id':'Obat','th':'ยา','vi':'Thuốc','fil':'Gamot' },
             '健康': { 'zh-TW':'健康','en':'Health','id':'Sehat','th':'สุขภาพ','vi':'Sức khỏe','fil':'Health' },
             '家人': { 'zh-TW':'家人','en':'Family','id':'Keluarga','th':'ครอบครัว','vi':'Gia đình','fil':'Pamilya' },
+            '設定': { 'zh-TW':'設定','en':'Settings','id':'Pengaturan','th':'ตั้งค่า','vi':'Cài đặt','fil':'Settings' },
             '我的家人': { 'zh-TW':'我的家人','en':'My Family','id':'Keluarga Saya','th':'ครอบครัว','vi':'Gia đình tôi','fil':'Pamilya Ko' },
             '姓名': { 'zh-TW':'姓名','en':'Name','id':'Nama','th':'ชื่อ','vi':'Họ tên','fil':'Pangalan' },
             '密碼': { 'zh-TW':'密碼','en':'Password','id':'Kata Sandi','th':'รหัสผ่าน','vi':'Mật khẩu','fil':'Password' },
@@ -1753,6 +1754,51 @@
             '裝置帳號建立失敗，請稍後重試': { 'zh-TW':'裝置帳號建立失敗，請稍後重試','en':'Device account failed. Try again later','id':'Gagal membuat akun perangkat','th':'สร้างบัญชีอุปกรณ์ไม่สำเร็จ','vi':'Tạo tài khoản thiết bị thất bại','fil':'Device account failed' },
             '裝置登入失敗': { 'zh-TW':'裝置登入失敗','en':'Device login failed','id':'Login perangkat gagal','th':'เข้าสู่ระบบอุปกรณ์ไม่สำเร็จ','vi':'Đăng nhập thiết bị thất bại','fil':'Device login failed' },
             '請輸入用戶名稱': { 'zh-TW':'請輸入用戶名稱','en':'Enter your name','id':'Masukkan nama','th':'กรุณาใส่ชื่อ','vi':'Nhập tên người dùng','fil':'Ilagay ang pangalan' },
+            '藥記得 - 智慧用藥提醒': { 'zh-TW':'藥記得 - 智慧用藥提醒','en':'MedRemind - Smart Medication Reminder','id':'MedRemind - Pengingat Obat Pintar','th':'MedRemind - เตือนกินยาอัจฉริยะ','vi':'MedRemind - Nhắc thuốc thông minh','fil':'MedRemind - Smart Medication Reminder' },
+            '藥記得產品介紹': { 'zh-TW':'藥記得產品介紹','en':'MedRemind introduction','id':'Pengenalan MedRemind','th':'แนะนำ MedRemind','vi':'Giới thiệu MedRemind','fil':'MedRemind introduction' },
+            'AI 用藥提醒與家人照護平台': { 'zh-TW':'AI 用藥提醒與家人照護平台','en':'AI medication reminders and family care','id':'Pengingat obat AI dan perawatan keluarga','th':'เตือนกินยาด้วย AI และดูแลครอบครัว','vi':'Nhắc thuốc AI và chăm sóc gia đình','fil':'AI medication reminders and family care' },
+            '每天吃對藥，家人即時放心。': { 'zh-TW':'每天吃對藥，家人即時放心。','en':'Take the right medicine daily. Keep family reassured.','id':'Minum obat yang tepat setiap hari. Keluarga lebih tenang.','th':'กินยาให้ถูกทุกวัน ให้ครอบครัวสบายใจ','vi':'Uống đúng thuốc mỗi ngày. Gia đình an tâm.','fil':'Take the right medicine daily. Keep family reassured.' },
+            '開啟後自動建立裝置帳號，不需要註冊或輸入密碼，即可管理今日用藥、藥袋照片、補藥提醒、健康紀錄與家人照護摘要。': { 'zh-TW':'開啟後自動建立裝置帳號，不需要註冊或輸入密碼，即可管理今日用藥、藥袋照片、補藥提醒、健康紀錄與家人照護摘要。','en':'Open the app to create a device account. No registration or password needed to manage medications, photos, refills, health records, and family care.','id':'Buka app untuk membuat akun perangkat. Tanpa daftar atau kata sandi untuk mengelola obat, foto, stok, kesehatan, dan keluarga.','th':'เปิดแอปเพื่อสร้างบัญชีอุปกรณ์ ไม่ต้องสมัครหรือใส่รหัสผ่าน จัดการยา รูปถุงยา เติมยา สุขภาพ และครอบครัวได้','vi':'Mở ứng dụng để tạo tài khoản thiết bị. Không cần đăng ký hay mật khẩu để quản lý thuốc, ảnh toa thuốc, nhắc lấy thuốc, sức khỏe và gia đình.','fil':'Open the app to create a device account. No registration or password needed to manage medications, photos, refills, health records, and family care.' },
+            '今日提醒': { 'zh-TW':'今日提醒','en':'Today Reminders','id':'Pengingat Hari Ini','th':'เตือนวันนี้','vi':'Nhắc hôm nay','fil':'Today Reminders' },
+            '下一次用藥、劑量與打卡集中在首頁。': { 'zh-TW':'下一次用藥、劑量與打卡集中在首頁。','en':'Next dose, dosage, and check-ins are on the home screen.','id':'Dosis berikutnya, aturan, dan catatan ada di beranda.','th':'ยาครั้งถัดไป ขนาดยา และการบันทึกอยู่หน้าแรก','vi':'Liều tiếp theo, liều lượng và điểm danh nằm ở trang chủ.','fil':'Next dose, dosage, and check-ins are on the home screen.' },
+            'AI 辨識': { 'zh-TW':'AI 辨識','en':'AI Scan','id':'Pindai AI','th':'สแกน AI','vi':'Quét AI','fil':'AI Scan' },
+            '藥袋照片協助帶入資料，使用前再確認。': { 'zh-TW':'藥袋照片協助帶入資料，使用前再確認。','en':'Medicine-bag photos help fill details. Review before use.','id':'Foto obat membantu mengisi data. Periksa sebelum dipakai.','th':'รูปถุงยาช่วยกรอกข้อมูล โปรดตรวจสอบก่อนใช้','vi':'Ảnh túi thuốc giúp điền dữ liệu. Hãy kiểm tra trước khi dùng.','fil':'Medicine-bag photos help fill details. Review before use.' },
+            '家人照護': { 'zh-TW':'家人照護','en':'Family Care','id':'Perawatan Keluarga','th':'ดูแลครอบครัว','vi':'Chăm sóc gia đình','fil':'Family Care' },
+            '邀請碼加入，追蹤未打卡與健康狀態。': { 'zh-TW':'邀請碼加入，追蹤未打卡與健康狀態。','en':'Join by invite code to track missed check-ins and health.','id':'Gabung dengan kode undangan untuk memantau obat dan kesehatan.','th':'เข้าร่วมด้วยรหัสเชิญ เพื่อติดตามการบันทึกและสุขภาพ','vi':'Tham gia bằng mã mời để theo dõi lần quên uống và sức khỏe.','fil':'Join by invite code to track missed check-ins and health.' },
+            '正在建立此手機的藥記得編號': { 'zh-TW':'正在建立此手機的藥記得編號','en':'Creating this phone’s MedRemind ID','id':'Membuat ID MedRemind untuk ponsel ini','th':'กำลังสร้างรหัส MedRemind สำหรับโทรศัพท์นี้','vi':'Đang tạo mã MedRemind cho điện thoại này','fil':'Creating this phone’s MedRemind ID' },
+            '正在讀取裝置識別碼...': { 'zh-TW':'正在讀取裝置識別碼...','en':'Reading device ID...','id':'Membaca ID perangkat...','th':'กำลังอ่านรหัสอุปกรณ์...','vi':'Đang đọc mã thiết bị...','fil':'Reading device ID...' },
+            '系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。': { 'zh-TW':'系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。','en':'The app does not read the real phone serial number. It uses an app device ID instead.','id':'App tidak membaca nomor seri asli ponsel. App memakai ID perangkat aplikasi.','th':'แอปไม่อ่านเลขเครื่องจริง ใช้รหัสอุปกรณ์ของแอปแทน','vi':'Ứng dụng không đọc số sê-ri thật của điện thoại, mà dùng mã thiết bị của ứng dụng.','fil':'The app does not read the real phone serial number. It uses an app device ID instead.' },
+            '用戶名稱': { 'zh-TW':'用戶名稱','en':'User Name','id':'Nama Pengguna','th':'ชื่อผู้ใช้','vi':'Tên người dùng','fil':'User Name' },
+            '例如：王大明': { 'zh-TW':'例如：王大明','en':'Example: John Wang','id':'Contoh: Budi','th':'เช่น สมชาย','vi':'Ví dụ: Nguyễn Văn A','fil':'Example: Juan' },
+            '前往藥記得官方網站': { 'zh-TW':'前往藥記得官方網站','en':'Go to MedRemind website','id':'Buka situs MedRemind','th':'ไปที่เว็บไซต์ MedRemind','vi':'Đến website MedRemind','fil':'Go to MedRemind website' },
+            '隱私權政策': { 'zh-TW':'隱私權政策','en':'Privacy Policy','id':'Kebijakan Privasi','th':'นโยบายความเป็นส่วนตัว','vi':'Chính sách quyền riêng tư','fil':'Privacy Policy' },
+            '使用者條款': { 'zh-TW':'使用者條款','en':'Terms of Use','id':'Ketentuan Pengguna','th':'ข้อกำหนดการใช้งาน','vi':'Điều khoản sử dụng','fil':'Terms of Use' },
+            '重整': { 'zh-TW':'重整','en':'Refresh','id':'Muat Ulang','th':'รีเฟรช','vi':'Làm mới','fil':'Refresh' },
+            '後台': { 'zh-TW':'後台','en':'Admin','id':'Admin','th':'ผู้ดูแล','vi':'Quản trị','fil':'Admin' },
+            '通知中心': { 'zh-TW':'通知中心','en':'Notifications','id':'Notifikasi','th':'การแจ้งเตือน','vi':'Thông báo','fil':'Notifications' },
+            '加入主畫面': { 'zh-TW':'加入主畫面','en':'Add to Home Screen','id':'Tambahkan ke Layar Utama','th':'เพิ่มไปยังหน้าจอหลัก','vi':'Thêm vào màn hình chính','fil':'Add to Home Screen' },
+            '像 App 一樣開啟，提醒與照護入口更快。': { 'zh-TW':'像 App 一樣開啟，提醒與照護入口更快。','en':'Open like an app for faster reminders and care.','id':'Buka seperti app agar pengingat lebih cepat.','th':'เปิดเหมือนแอป เพื่อเข้าถึงการเตือนและดูแลได้เร็วขึ้น','vi':'Mở như ứng dụng để nhắc nhở và chăm sóc nhanh hơn.','fil':'Open like an app for faster reminders and care.' },
+            '安裝': { 'zh-TW':'安裝','en':'Install','id':'Pasang','th':'ติดตั้ง','vi':'Cài đặt','fil':'Install' },
+            '稍後': { 'zh-TW':'稍後','en':'Later','id':'Nanti','th':'ภายหลัง','vi':'Để sau','fil':'Later' },
+            '下一次提醒': { 'zh-TW':'下一次提醒','en':'Next Reminder','id':'Pengingat Berikutnya','th':'เตือนครั้งถัดไป','vi':'Nhắc tiếp theo','fil':'Next Reminder' },
+            '補藥項目': { 'zh-TW':'補藥項目','en':'Refills','id':'Isi Ulang','th':'รายการเติมยา','vi':'Cần lấy thuốc','fil':'Refills' },
+            '今日健康': { 'zh-TW':'今日健康','en':'Today Health','id':'Kesehatan Hari Ini','th':'สุขภาพวันนี้','vi':'Sức khỏe hôm nay','fil':'Today Health' },
+            '下一件事': { 'zh-TW':'下一件事','en':'Next Step','id':'Langkah Berikutnya','th':'สิ่งถัดไป','vi':'Việc tiếp theo','fil':'Next Step' },
+            '載入中...': { 'zh-TW':'載入中...','en':'Loading...','id':'Memuat...','th':'กำลังโหลด...','vi':'Đang tải...','fil':'Loading...' },
+            '正在整理今日用藥': { 'zh-TW':'正在整理今日用藥','en':'Preparing today’s medications','id':'Menyiapkan obat hari ini','th':'กำลังจัดยาวันนี้','vi':'Đang chuẩn bị thuốc hôm nay','fil':'Preparing today’s medications' },
+            '常用工具': { 'zh-TW':'常用工具','en':'Common Tools','id':'Alat Umum','th':'เครื่องมือที่ใช้บ่อย','vi':'Công cụ thường dùng','fil':'Common Tools' },
+            '照護與紀錄': { 'zh-TW':'照護與紀錄','en':'Care and Records','id':'Perawatan dan Catatan','th':'การดูแลและบันทึก','vi':'Chăm sóc và hồ sơ','fil':'Care and Records' },
+            '批次打卡': { 'zh-TW':'批次打卡','en':'Batch Check-in','id':'Catat Sekaligus','th':'บันทึกหลายรายการ','vi':'Điểm danh hàng loạt','fil':'Batch Check-in' },
+            '朗讀': { 'zh-TW':'朗讀','en':'Read Aloud','id':'Bacakan','th':'อ่านออกเสียง','vi':'Đọc to','fil':'Read Aloud' },
+            '就診報告': { 'zh-TW':'就診報告','en':'Doctor Report','id':'Laporan Dokter','th':'รายงานพบแพทย์','vi':'Báo cáo khám bệnh','fil':'Doctor Report' },
+            '緊急': { 'zh-TW':'緊急','en':'Emergency','id':'Darurat','th':'ฉุกเฉิน','vi':'Khẩn cấp','fil':'Emergency' },
+            '緊急卡': { 'zh-TW':'緊急卡','en':'Emergency Card','id':'Kartu Darurat','th':'บัตรฉุกเฉิน','vi':'Thẻ khẩn cấp','fil':'Emergency Card' },
+            'AI 風險': { 'zh-TW':'AI 風險','en':'AI Risk','id':'Risiko AI','th':'ความเสี่ยง AI','vi':'Rủi ro AI','fil':'AI Risk' },
+            '異動': { 'zh-TW':'異動','en':'Changes','id':'Perubahan','th':'การเปลี่ยนแปลง','vi':'Thay đổi','fil':'Changes' },
+            '藥物搜尋': { 'zh-TW':'藥物搜尋','en':'Drug Search','id':'Cari Obat','th':'ค้นหายา','vi':'Tìm thuốc','fil':'Drug Search' },
+            '用藥卡': { 'zh-TW':'用藥卡','en':'Med Card','id':'Kartu Obat','th':'บัตรยา','vi':'Thẻ thuốc','fil':'Med Card' },
+            '交互': { 'zh-TW':'交互','en':'Interactions','id':'Interaksi','th':'ปฏิกิริยา','vi':'Tương tác','fil':'Interactions' },
+            '飲食': { 'zh-TW':'飲食','en':'Food','id':'Makanan','th':'อาหาร','vi':'Ăn uống','fil':'Food' },
             '的用藥記錄嗎?': { 'zh-TW':'的用藥記錄嗎?','en':' medication record?','id':'?','th':'?','vi':'?','fil':'?' },
 
             '家人 Email': { 'zh-TW':'家人 Email','en':'Family Email','id':'Email Keluarga','th':'อีเมลครอบครัว','vi':'Email gia đình','fil':'Family Email' },
@@ -1770,7 +1816,9 @@
         function t(key) {
             if (currentLang === 'zh-TW') return key;
             const entry = TR[key];
-            return (entry && entry[currentLang]) ? entry[currentLang] : key;
+            if (entry && entry[currentLang]) return entry[currentLang];
+            if (entry && entry.en) return entry.en;
+            return key;
         }
 
         function escapeHTML(value) {
@@ -1780,6 +1828,50 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        function translateStaticDOM() {
+            if (!document.body) return;
+            document.documentElement.lang = currentLang === 'zh-TW' ? 'zh-Hant' : currentLang;
+            document.title = t('藥記得 - 智慧用藥提醒');
+
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+                acceptNode(node) {
+                    const parent = node.parentElement;
+                    if (!parent || ['SCRIPT', 'STYLE'].includes(parent.tagName)) return NodeFilter.FILTER_REJECT;
+                    const text = node.nodeValue.trim();
+                    if (!text && !node.__i18nKey) return NodeFilter.FILTER_REJECT;
+                    if (node.__i18nKey || TR[text]) return NodeFilter.FILTER_ACCEPT;
+                    return NodeFilter.FILTER_REJECT;
+                }
+            });
+            const textNodes = [];
+            while (walker.nextNode()) textNodes.push(walker.currentNode);
+            textNodes.forEach(node => {
+                if (!node.__i18nKey) node.__i18nKey = node.nodeValue.trim();
+                const leading = node.nodeValue.match(/^\s*/)?.[0] || '';
+                const trailing = node.nodeValue.match(/\s*$/)?.[0] || '';
+                node.nodeValue = leading + t(node.__i18nKey) + trailing;
+            });
+
+            document.querySelectorAll('[placeholder]').forEach(el => {
+                if (!el.dataset.i18nPlaceholder && TR[el.getAttribute('placeholder')]) {
+                    el.dataset.i18nPlaceholder = el.getAttribute('placeholder');
+                }
+                if (el.dataset.i18nPlaceholder) el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+            });
+            document.querySelectorAll('[title]').forEach(el => {
+                if (!el.dataset.i18nTitle && TR[el.getAttribute('title')]) {
+                    el.dataset.i18nTitle = el.getAttribute('title');
+                }
+                if (el.dataset.i18nTitle) el.setAttribute('title', t(el.dataset.i18nTitle));
+            });
+            document.querySelectorAll('[aria-label]').forEach(el => {
+                if (!el.dataset.i18nAriaLabel && TR[el.getAttribute('aria-label')]) {
+                    el.dataset.i18nAriaLabel = el.getAttribute('aria-label');
+                }
+                if (el.dataset.i18nAriaLabel) el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
+            });
         }
 
         function changeLanguage(lang) {
@@ -1801,6 +1893,7 @@
         }
 
         function updateStaticTexts() {
+            translateStaticDOM();
             // 導航
             const navItems = document.querySelectorAll('.nav-item');
             if (navItems.length >= 5) {
@@ -1808,7 +1901,7 @@
                 navItems[1].innerHTML = '<span class="nav-icon">💊</span> ' + t('用藥');
                 navItems[2].innerHTML = '<span class="nav-icon">❤️</span> ' + t('健康');
                 navItems[3].innerHTML = '<span class="nav-icon">👨‍👩‍👧</span> ' + t('家人');
-                navItems[4].innerHTML = '<span class="nav-icon">⚙️</span> 設定';
+                navItems[4].innerHTML = '<span class="nav-icon">⚙️</span> ' + t('設定');
             }
             // 登出按鈕
             const logoutBtn = document.querySelector('.logout-btn');
