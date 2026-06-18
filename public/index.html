@@ -3302,7 +3302,7 @@
                 if (lowStock.length === 0) { container.innerHTML = ''; return; }
                 container.innerHTML = '<div class="card" style="background:#fff8e1;margin-bottom:12px;">' +
                     '<div style="color:var(--orange);font-weight:600;margin-bottom:8px;">⚠️ 藥物庫存不足</div>' +
-                    lowStock.map(m => '<div style="font-size:14px;padding:4px 0;">💊 ' + m.drug_name + ' — 僅剩 <b>' + m.days_left + '</b> 天</div>').join('') +
+                    lowStock.map(m => '<div style="font-size:14px;padding:4px 0;">💊 ' + escapeHTML(m.drug_name) + ' — 僅剩 <b>' + escapeHTML(m.days_left) + '</b> 天</div>').join('') +
                 '</div>';
             });
         }
@@ -3411,13 +3411,13 @@
             document.getElementById('modal-container').innerHTML =
                 '<div class="modal-overlay" id="report-modal"><div class="modal" style="max-height:90vh;"><h3>📋 就診報告</h3>' +
                 '<div style="font-size:12px;color:var(--text-light);margin-bottom:8px;">產生時間：' + new Date(data.generatedAt).toLocaleString('zh-TW') + '</div>' +
-                '<div style="background:#e8f5e9;padding:12px;border-radius:8px;margin-bottom:12px;"><div><strong>👤 ' + data.user.name + '</strong>' + (data.user.age ? ' · ' + data.user.age + '歲' : '') + '</div><div style="font-size:14px;">📞 ' + (data.user.phone || '未提供') + ' | 📧 ' + data.user.email + '</div></div>' +
+                '<div style="background:#e8f5e9;padding:12px;border-radius:8px;margin-bottom:12px;"><div><strong>👤 ' + escapeHTML(data.user.name) + '</strong>' + (data.user.age ? ' · ' + escapeHTML(data.user.age) + '歲' : '') + '</div><div style="font-size:14px;">📞 ' + escapeHTML(data.user.phone || '未提供') + ' | 📧 ' + escapeHTML(data.user.email) + '</div></div>' +
                 '<div style="padding:8px 0;"><strong>📊 近30天用藥遵從率：</strong><span style="font-size:24px;font-weight:700;color:var(--green);">' + a.rate + '%</span></div>' +
                 '<div style="font-size:14px;color:var(--text-light);">總提醒 ' + a.totalReminders + ' 次 · 已服用 ' + a.totalTaken + ' 次 · 追蹤 ' + a.days + ' 天</div>' +
                 healthHTML +
                 '<div style="margin-top:12px;"><strong>💊 目前用藥：</strong></div>' +
                 (data.medications || []).map(m =>
-                    '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;">💊 ' + m.drug_name + ' ' + m.dosage + ' · ' + (m.remind_time || '').replace(/[\\[\\]"]/g, '') + (m.usage_notes ? '<br><span style="color:var(--text-light);">📝 ' + m.usage_notes + '</span>' : '') + '</div>'
+                    '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;">💊 ' + escapeHTML(m.drug_name) + ' ' + escapeHTML(m.dosage) + ' · ' + escapeHTML((m.remind_time || '').replace(/[\\[\\]"]/g, '')) + (m.usage_notes ? '<br><span style="color:var(--text-light);">📝 ' + escapeHTML(m.usage_notes) + '</span>' : '') + '</div>'
                 ).join('') +
                 '<div style="display:flex;gap:8px;margin-top:16px;"><button onclick="window.print()" class="btn btn-primary" style="flex:1;">🖨️ 列印</button><button onclick="document.getElementById(\'report-modal\').remove()" class="btn btn-outline" style="flex:1;">關閉</button></div></div></div>';
             document.getElementById('report-modal').addEventListener('click', e => { if (e.target.id === 'report-modal') e.target.remove(); });
@@ -3488,8 +3488,8 @@
                 const isSoon = !isDue && a.appointment_date > today && new Date(a.appointment_date) - new Date() < 86400000;
                 const badge = isDue ? '🔴 今天' : isSoon ? '🟡 明天' : '📅';
                 return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">' +
-                    '<div><div>' + badge + ' <strong>' + a.title + '</strong></div>' +
-                    '<div style="font-size:13px;color:var(--text-light);">' + a.appointment_date + (a.clinic_name ? ' · ' + a.clinic_name : '') + (a.notes ? ' · ' + a.notes : '') + '</div></div>' +
+                    '<div><div>' + badge + ' <strong>' + escapeHTML(a.title) + '</strong></div>' +
+                    '<div style="font-size:13px;color:var(--text-light);">' + escapeHTML(a.appointment_date) + (a.clinic_name ? ' · ' + escapeHTML(a.clinic_name) : '') + (a.notes ? ' · ' + escapeHTML(a.notes) : '') + '</div></div>' +
                     '<button onclick="deleteAppointment(' + a.id + ')" class="btn btn-danger btn-sm">✕</button></div>';
             }).join('');
         }
@@ -3636,9 +3636,9 @@
             container.innerHTML = '<div style="margin-top:8px;"><h4 style="margin-bottom:8px;color:var(--text-light);">📚 已停用藥品</h4>' +
                 data.medications.map(m =>
                     '<div class="card" style="margin-bottom:8px;opacity:0.8;">' +
-                    '<div class="drug-name">💊 ' + m.drug_name + ' <span style="font-size:12px;color:var(--text-light);">（已停用）</span></div>' +
-                    '<div class="drug-dosage">' + m.dosage + ' · ' + (m.remind_time || '').replace(/[\[\]"]/g, '') + '</div>' +
-                    (m.end_date ? '<div style="font-size:13px;color:var(--text-light);margin-top:4px;">停用日：' + m.end_date + '</div>' : '') +
+                    '<div class="drug-name">💊 ' + escapeHTML(m.drug_name) + ' <span style="font-size:12px;color:var(--text-light);">（已停用）</span></div>' +
+                    '<div class="drug-dosage">' + escapeHTML(m.dosage) + ' · ' + escapeHTML((m.remind_time || '').replace(/[\[\]"]/g, '')) + '</div>' +
+                    (m.end_date ? '<div style="font-size:13px;color:var(--text-light);margin-top:4px;">停用日：' + escapeHTML(m.end_date) + '</div>' : '') +
                     '</div>'
                 ).join('') + '</div>';
         }
@@ -3713,8 +3713,8 @@
                         ? '<div style="color:var(--text-light);text-align:center;padding:8px;">尚無留言</div>'
                         : msgs.map(m =>
                             '<div style="padding:8px 0;border-bottom:1px solid var(--border);">' +
-                            '<div style="display:flex;justify-content:space-between;"><strong>' + m.sender_name + '</strong><span style="font-size:12px;color:var(--text-light);">' + (m.created_at||'').split('T')[0] + '</span></div>' +
-                            '<div style="margin-top:4px;">' + m.message + '</div></div>'
+                            '<div style="display:flex;justify-content:space-between;"><strong>' + escapeHTML(m.sender_name) + '</strong><span style="font-size:12px;color:var(--text-light);">' + escapeHTML((m.created_at||'').split('T')[0]) + '</span></div>' +
+                            '<div style="margin-top:4px;">' + escapeHTML(m.message) + '</div></div>'
                         ).join('');
                 });
             });
