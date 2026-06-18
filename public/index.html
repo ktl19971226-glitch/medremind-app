@@ -1219,6 +1219,13 @@
                             系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。
                         </div>
                     </div>
+                    <div id="device-name-form" style="display:none;margin:4px 0 14px;">
+                        <div class="form-group">
+                            <label>用戶名稱</label>
+                            <input type="text" id="device-user-name" class="form-input" maxlength="60" placeholder="例如：王大明" onkeydown="if(event.key==='Enter') submitDeviceName()">
+                        </div>
+                        <button onclick="submitDeviceName()" class="btn btn-primary">建立我的藥記得編號</button>
+                    </div>
                     <button onclick="startDeviceLogin(true)" class="btn btn-primary">重新建立裝置連線</button>
                     <a class="login-home-link" href="https://www.yaojidecare.app/">前往藥記得官方網站</a>
                     <div class="login-links">
@@ -1888,6 +1895,14 @@
             if (el) el.textContent = message;
         }
 
+        function toggleDeviceNameForm(show) {
+            const form = document.getElementById('device-name-form');
+            const spinner = document.querySelector('#login-form .spinner');
+            if (form) form.style.display = show ? 'block' : 'none';
+            if (spinner) spinner.style.display = show ? 'none' : 'block';
+            if (show) setTimeout(() => document.getElementById('device-user-name')?.focus(), 50);
+        }
+
         function makeLocalDeviceId() {
             const random = window.crypto?.randomUUID
                 ? window.crypto.randomUUID()
@@ -1934,17 +1949,20 @@
             };
         }
 
-        async function startDeviceLogin(forceNew = false) {
+        async function startDeviceLogin(forceNew = false, displayName = '') {
             if (forceNew) {
                 clearToken();
                 localStorage.removeItem(DEVICE_ID_KEY);
             }
+            toggleDeviceNameForm(false);
             setDeviceStatus('正在建立裝置帳號...');
             const deviceId = await getDeviceIdentifier();
             const meta = await getDeviceMeta();
+            const payload = { device_id: deviceId, platform: meta.platform, model: meta.model };
+            if (displayName) payload.name = displayName;
             const { status, data } = await api('/api/device-login', {
                 method: 'POST',
-                body: JSON.stringify({ device_id: deviceId, platform: meta.platform, model: meta.model })
+                body: JSON.stringify(payload)
             });
 
             if (status === 200) {
@@ -1954,8 +1972,20 @@
                 showMainApp();
                 return;
             }
+            if (status === 409 && data.require_name) {
+                setDeviceStatus('第一次使用請輸入用戶名稱');
+                toggleDeviceNameForm(true);
+                return;
+            }
             setDeviceStatus(data.error || '裝置帳號建立失敗，請稍後重試');
             showToast(data.error || '裝置登入失敗');
+        }
+
+        function submitDeviceName() {
+            const input = document.getElementById('device-user-name');
+            const name = (input?.value || '').trim();
+            if (!name) return showToast('請輸入用戶名稱');
+            startDeviceLogin(false, name);
         }
 
         function refreshDeviceSession() {

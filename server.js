@@ -449,8 +449,14 @@ async function init() {
         let user = dbGet('SELECT * FROM users WHERE device_identifier_hash=?', [deviceHash]);
 
         if (!user) {
+            if (!displayName) {
+                return res.status(409).json({
+                    error: '第一次使用請先輸入用戶名稱',
+                    require_name: true
+                });
+            }
             const email = `device-${deviceHash.slice(0, 20)}@device.yaojidecare.local`;
-            const name = displayName || '藥記得用戶';
+            const name = displayName;
             const inserted = dbRun(
                 `INSERT INTO users
                     (name,email,phone,password_hash,role,email_verified,email_verified_at,device_identifier_hash,account_source,last_device_login_at)
