@@ -217,6 +217,13 @@ app.get('/', (req, res, next) => {
     }
     next();
 });
+app.use((req, res, next) => {
+    const pathname = decodeURIComponent(req.path || '');
+    if (/(^|\/)\.env(?:\.|$)|\.(?:db|sqlite|sqlite3|log|p12|pem|key|mobileprovision|tar|tgz|gz|zip)$/i.test(pathname)) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    next();
+});
 app.use(express.static('public', {
     setHeaders(res, filePath) {
         const file = path.basename(filePath);
