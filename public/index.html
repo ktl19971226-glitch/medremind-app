@@ -375,8 +375,8 @@
             background: linear-gradient(135deg, var(--green), #2ecc71);
             color: white;
             border-radius: var(--radius);
-            padding: 24px;
-            margin-bottom: 20px;
+            padding: 18px;
+            margin-bottom: 14px;
             box-shadow: var(--shadow-strong);
         }
 
@@ -387,20 +387,20 @@
         }
 
         .summary-card .rate {
-            font-size: 48px;
+            font-size: 34px;
             font-weight: 700;
-            margin: 8px 0;
+            margin: 4px 0;
         }
 
         .summary-card .rate-label {
-            font-size: 16px;
+            font-size: 14px;
         }
 
         .summary-card .stats {
             display: flex;
-            gap: 24px;
-            margin-top: 16px;
-            padding-top: 16px;
+            gap: 18px;
+            margin-top: 12px;
+            padding-top: 12px;
             border-top: 1px solid rgba(255,255,255,0.3);
         }
 
@@ -409,7 +409,7 @@
         }
 
         .summary-card .stat-value {
-            font-size: 22px;
+            font-size: 19px;
             font-weight: 600;
         }
 
@@ -1159,7 +1159,7 @@
         body.desktop-mode { padding-bottom: 16px; }
         body.desktop-mode .container { max-width: 760px; }
         body.desktop-mode .summary-card { text-align: center; }
-        body.desktop-mode .summary-card .rate { font-size: 72px; }
+        body.desktop-mode .summary-card .rate { font-size: 46px; }
         body.desktop-mode .take-btn { font-size: 24px; min-height: 64px; flex: 1; }
         body.desktop-mode #home-page > .card:not(#today-summary) { display: none; }
         body.desktop-mode #today-schedule .card,
@@ -1331,7 +1331,6 @@
                         <button onclick="showEmergencyCard()" class="quick-action warning"><span class="icon">🪪</span><span>緊急卡</span></button>
                         <button onclick="showRiskSummary()" class="quick-action warning"><span class="icon">🧠</span><span>AI 風險</span></button>
                         <button onclick="showMedicationChanges()" class="quick-action"><span class="icon">🕘</span><span>異動</span></button>
-                        <button onclick="showMonthlyReport()" class="quick-action"><span class="icon">📄</span><span>月報</span></button>
                         <button onclick="showDrugSearch()" class="quick-action"><span class="icon">🔍</span><span>藥物搜尋</span></button>
                         <button onclick="showWeeklyCard()" class="quick-action"><span class="icon">🖼️</span><span>用藥卡</span></button>
                         <button onclick="showDrugInteractionCheck()" class="quick-action"><span class="icon">💥</span><span>交互</span></button>
@@ -1406,6 +1405,43 @@
             <div id="health-page" class="page">
                 <h2 id="health-page-title" style="margin-bottom:16px;">健康數據</h2>
 
+                <!-- 添加健康數據 -->
+                <div class="card" style="margin-top:0;">
+                    <h3 id="record-today-title" style="margin-bottom:12px;">記錄今日數據</h3>
+                    <div class="form-group">
+                        <label>收縮壓 (高壓)</label>
+                        <input type="number" id="record-bp-sys" class="form-input" placeholder="例:120">
+                    </div>
+                    <div class="form-group">
+                        <label>舒張壓 (低壓)</label>
+                        <input type="number" id="record-bp-dia" class="form-input" placeholder="例:80">
+                    </div>
+                    <div class="form-group">
+                        <label>血糖</label>
+                        <input type="number" id="record-sugar" class="form-input" placeholder="例:100">
+                    </div>
+                    <div class="form-group">
+                        <label>體重</label>
+                        <input type="number" id="record-weight" class="form-input" placeholder="例:70" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>睡眠時數</label>
+                        <input type="number" id="record-sleep" class="form-input" placeholder="例:7.5" step="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label>今日感受</label>
+                        <select id="record-mood" class="form-input">
+                            <option value="">不填寫</option>
+                            <option value="😊 穩定">😊 穩定</option>
+                            <option value="😐 普通">😐 普通</option>
+                            <option value="😴 疲倦">😴 疲倦</option>
+                            <option value="😷 不舒服">😷 不舒服</option>
+                        </select>
+                    </div>
+                    <button onclick="recordHealth()" class="btn btn-primary">記錄</button>
+                    <button onclick="recordAllHealth()" class="btn btn-outline" style="width:100%;margin-top:8px;">📦 一鍵記錄今日</button>
+                </div>
+
                 <!-- 最新摘要 -->
                 <div class="health-grid" id="health-summary">
                     <div class="health-item">
@@ -1449,43 +1485,6 @@
                     <div id="bmi-dashboard">
                         <button class="btn btn-outline btn-sm" onclick="showHeightInput()">設定身高</button>
                     </div>
-                </div>
-
-                <!-- 添加健康數據 -->
-                <div class="card" style="margin-top:16px;">
-                    <h3 id="record-today-title" style="margin-bottom:12px;">記錄今日數據</h3>
-                    <div class="form-group">
-                        <label>收縮壓 (高壓)</label>
-                        <input type="number" id="record-bp-sys" class="form-input" placeholder="例:120">
-                    </div>
-                    <div class="form-group">
-                        <label>舒張壓 (低壓)</label>
-                        <input type="number" id="record-bp-dia" class="form-input" placeholder="例:80">
-                    </div>
-                    <div class="form-group">
-                        <label>血糖</label>
-                        <input type="number" id="record-sugar" class="form-input" placeholder="例:100">
-                    </div>
-                    <div class="form-group">
-                        <label>體重</label>
-                        <input type="number" id="record-weight" class="form-input" placeholder="例:70" step="0.1">
-                    </div>
-                    <div class="form-group">
-                        <label>睡眠時數</label>
-                        <input type="number" id="record-sleep" class="form-input" placeholder="例:7.5" step="0.5">
-                    </div>
-                    <div class="form-group">
-                        <label>今日感受</label>
-                        <select id="record-mood" class="form-input">
-                            <option value="">不填寫</option>
-                            <option value="😊 穩定">😊 穩定</option>
-                            <option value="😐 普通">😐 普通</option>
-                            <option value="😴 疲倦">😴 疲倦</option>
-                            <option value="😷 不舒服">😷 不舒服</option>
-                        </select>
-                    </div>
-                    <button onclick="recordHealth()" class="btn btn-primary">記錄</button>
-                    <button onclick="recordAllHealth()" class="btn btn-outline" style="width:100%;margin-top:8px;">📦 一鍵記錄今日</button>
                 </div>
 
                 <!-- 健康目標 -->
@@ -1592,7 +1591,6 @@
                     </label>
                 </div>
                 <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="testNotification()">🔔 測試通知</button>
-                <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="showPinSetup()">🔒 App 密碼鎖</button>
 
                 <div class="card" style="margin-top:8px;">
                     <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:16px;">
@@ -3738,34 +3736,6 @@
                 data.thisMonth + ' vs ' + data.lastMonth + '</div>';
         }
 
-        // ========== App 密碼鎖 ==========
-        function showPinSetup() {
-            api('/api/user/pin-lock').then(({ data }) => {
-                document.getElementById('modal-container').innerHTML =
-                    '<div class="modal-overlay" id="pin-modal"><div class="modal" style="text-align:center;">' +
-                    '<h3>🔒 App 密碼鎖</h3>' +
-                    (data.enabled ?
-                        '<p style="margin:12px 0;">密碼鎖目前：<b style="color:var(--green);">已啟用</b></p>' +
-                        '<button onclick="disablePin()" class="btn btn-danger" style="width:100%;">停用密碼鎖</button>' :
-                        '<div class="form-group"><label>設定 4 位數 PIN 碼</label><input type="password" id="pin-code" class="form-input" maxlength="4" placeholder="****" style="text-align:center;font-size:32px;letter-spacing:8px;"></div>' +
-                        '<button onclick="enablePin()" class="btn btn-primary" style="width:100%;">啟用密碼鎖</button>') +
-                    '<button onclick="document.getElementById(\'pin-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:8px;">關閉</button></div></div>';
-                document.getElementById('pin-modal').addEventListener('click', e => { if (e.target.id === 'pin-modal') e.target.remove(); });
-            });
-        }
-        async function enablePin() {
-            const pin = document.getElementById('pin-code').value;
-            if (!/^\d{4}$/.test(pin)) return showToast('請輸入 4 位數字 PIN');
-            const { status } = await api('/api/user/pin-lock', { method:'PUT', body:JSON.stringify({ pin, enabled: true }) });
-            if (status === 200) { document.getElementById('pin-modal').remove(); showToast('🔒 密碼鎖已啟用'); }
-            else showToast('設定失敗');
-        }
-        async function disablePin() {
-            await api('/api/user/pin-lock', { method:'PUT', body:JSON.stringify({ enabled: false }) });
-            document.getElementById('pin-modal').remove();
-            showToast('密碼鎖已停用');
-        }
-
         // ========== 提醒延後 ==========
         async function snoozeMedication(medId, remindTime) {
             const { status } = await api('/api/medications/' + medId + '/snooze', { method:'POST', body:JSON.stringify({ remind_time: remindTime, snooze_minutes: 10 }) });
@@ -4239,7 +4209,6 @@
                     title: '7. 常用設定',
                     items: [
                         '大字模式適合閱讀不方便的長輩，簡化模式會把首頁縮成更少資訊與大按鈕。',
-                        'App 密碼鎖可加一道 PIN 保護，避免手機借人時看到健康與用藥資料。',
                         '可從設定匯出個人資料 CSV，也可下載備份或還原備份。'
                     ]
                 },

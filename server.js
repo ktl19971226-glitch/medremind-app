@@ -1054,7 +1054,6 @@ async function init() {
             telegram_chat_id: s.telegram_chat_id || null,
             height_cm: s.height_cm || null,
             simple_mode: s.simple_mode || 0,
-            pin_enabled: s.pin_enabled || 0,
             reminder_sound: s.reminder_sound || 'classic',
             desktop_mode: s.desktop_mode || 0,
             family_alert_delay_minutes: s.family_alert_delay_minutes || 60,
@@ -1777,29 +1776,6 @@ async function init() {
                 weight: diff(current.weight_avg, previous.weight_avg)
             }
         });
-    });
-
-    // ====== App 密碼鎖 ======
-    app.put('/api/user/pin-lock', auth, (req, res) => {
-        const { pin, enabled } = req.body;
-        if (enabled && (!pin || !/^\d{4}$/.test(pin))) return res.status(400).json({ error: 'PIN 必須為 4 位數字' });
-        dbRun('INSERT INTO user_settings (user_id, pin_code, pin_enabled) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET pin_code=?, pin_enabled=?',
-            [req.user.id, pin || null, enabled ? 1 : 0, pin || null, enabled ? 1 : 0]);
-        saveDB();
-        res.json({ message: enabled ? '密碼鎖已啟用' : '密碼鎖已停用' });
-    });
-
-    app.get('/api/user/pin-lock', auth, (req, res) => {
-        const s = dbGet('SELECT pin_enabled FROM user_settings WHERE user_id=?', [req.user.id]);
-        res.json({ enabled: s ? !!s.pin_enabled : false });
-    });
-
-    app.post('/api/user/verify-pin', (req, res) => {
-        const { user_id, pin } = req.body;
-        if (!user_id || !pin) return res.status(400).json({ error: '請輸入 PIN' });
-        const s = dbGet('SELECT pin_code, pin_enabled FROM user_settings WHERE user_id=?', [user_id]);
-        if (!s || !s.pin_enabled) return res.json({ valid: true });
-        res.json({ valid: s.pin_code === pin });
     });
 
     // ====== 提醒延後 ======
