@@ -1,7 +1,26 @@
 node_modules/
 .env
 .env.local
+*.env
+*.log
 *.db
+*.sqlite
+*.sqlite3
+*.tar.gz
+*.tgz
+*.zip
+
+# Secrets / signing material
+*.p12
+*.pem
+*.key
+*.mobileprovision
+*.cer
+*.csr
+signing/
+ios_build/
+backups/
+data/
 
 # iOS build artifacts
 ios/App/build/
