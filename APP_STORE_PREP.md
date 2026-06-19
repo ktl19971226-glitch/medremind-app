@@ -125,7 +125,9 @@ AI用藥提醒與家人照護
 - 將 GitHub Actions 的簽名憑證與 provisioning profile 改由 GitHub Secrets 注入，不要把簽名材料硬寫在 workflow。
 - 現有 iOS workflow 只在 `trigger-build.txt` 變更或手動 workflow_dispatch 時才會跑，單純 push 程式碼不會自動產生 IPA。
 - 上傳 TestFlight，完成內部測試。
-- 建立正式 AdMob Rewarded 廣告單元，將目前 Google 測試 rewarded ad unit ID 替換為正式 `ios_ai_scan_rewarded` / `android_ai_scan_rewarded`。
+- 正式 AdMob Rewarded 廣告單元已建立並填入程式：
+  - iOS `ios_ai_scan_rewarded`：`ca-app-pub-7217388641578552/4592269129`
+  - Android `android_ai_scan_rewarded`：`ca-app-pub-7217388641578552/1966105785`
 - 準備至少 1 張、建議 5 張 iPhone 截圖。
 - 若保留 iPad 支援，需準備 iPad 截圖；若不準備 iPad，建議將 iOS target 改成 iPhone only。
 - 填寫 App Privacy 問卷。
