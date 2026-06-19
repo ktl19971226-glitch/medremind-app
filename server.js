@@ -795,6 +795,22 @@ async function init() {
             .map(member => ({ ...member, email: publicEmail(member) }));
         res.json({ members });
     });
+
+    app.delete('/api/family/:relatedUserId', auth, (req, res) => {
+        const relatedUserId = parseInt(req.params.relatedUserId);
+        if (!relatedUserId || relatedUserId === req.user.id) return res.status(400).json({ error: '家人資料無效' });
+        const member = dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [req.user.id, relatedUserId]);
+        if (!member) return res.status(404).json({ error: '找不到此家人或無權限刪除' });
+
+        dbRun('DELETE FROM family_members WHERE (user_id=? AND related_user_id=?) OR (user_id=? AND related_user_id=?)',
+            [req.user.id, relatedUserId, relatedUserId, req.user.id]);
+        dbRun('DELETE FROM family_invites WHERE (inviter_user_id=? AND used_by=?) OR (inviter_user_id=? AND used_by=?)',
+            [req.user.id, relatedUserId, relatedUserId, req.user.id]);
+        dbRun('DELETE FROM family_messages WHERE (sender_id=? AND target_user_id=?) OR (sender_id=? AND target_user_id=?)',
+            [req.user.id, relatedUserId, relatedUserId, req.user.id]);
+        saveDB();
+        res.json({ message: '已刪除家人關係' });
+    });
     
     app.post('/api/family/add', auth, (req, res) => {
         const email = normalizeEmail(req.body.email);
@@ -1802,27 +1818,13 @@ async function init() {
         res.json({ refills });
     });
 
-    // ====== 家人留言 ======
+    // ====== 家人留言（功能已停用） ======
     app.get('/api/family/messages', auth, (req, res) => {
-        const targetUserId = parseInt(req.query.user_id || req.user.id);
-        if (!targetUserId || !hasFamilyAccess(req.user.id, targetUserId)) {
-            return res.status(403).json({ error: '無權限查看留言' });
-        }
-        const msgs = dbAll(`SELECT fm.*, u.name AS sender_name FROM family_messages fm JOIN users u ON fm.sender_id=u.id WHERE fm.target_user_id=? ORDER BY fm.created_at DESC LIMIT 30`, [targetUserId]);
-        res.json({ messages: msgs });
+        res.status(410).json({ error: '家人留言功能已停用' });
     });
 
     app.post('/api/family/messages', auth, (req, res) => {
-        const target_user_id = parseInt(req.body.target_user_id);
-        const message = String(req.body.message || '').trim();
-        if (!target_user_id || !message) return res.status(400).json({ error: '請填寫對象和訊息' });
-        if (message.length > 500) return res.status(400).json({ error: '留言最多 500 字' });
-        if (!hasFamilyAccess(req.user.id, target_user_id)) {
-            return res.status(403).json({ error: '無權限留言給此用戶' });
-        }
-        dbRun('INSERT INTO family_messages (sender_id, target_user_id, message) VALUES (?,?,?)', [req.user.id, target_user_id, message]);
-        saveDB();
-        res.json({ message: '留言已送出' });
+        res.status(410).json({ error: '家人留言功能已停用' });
     });
 
     // ====== 健康數據對比 ======

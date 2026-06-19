@@ -835,6 +835,26 @@
             font-weight: 700;
         }
 
+        .family-card .member-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+        }
+
+        .family-delete-btn {
+            width: auto;
+            min-width: 56px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(231, 76, 60, 0.25);
+            background: #fff5f5;
+            color: var(--red);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
         .family-card .adherence.good { color: var(--green); }
         .family-card .adherence.warning { color: var(--orange); }
         .family-card .adherence.bad { color: var(--red); }
@@ -1475,16 +1495,6 @@
 
                 <!-- 家人未吃藥通知 -->
                 <div id="family-missed" style="margin-top:16px;"></div>
-
-                <!-- 家人留言 -->
-                <div class="card" style="margin-top:12px;">
-                    <h3 style="margin-bottom:8px;">💬 家人留言</h3>
-                    <div id="family-messages" style="font-size:14px;max-height:200px;overflow-y:auto;"></div>
-                    <div class="form-group" style="margin-top:8px;">
-                        <input type="text" id="family-msg-input" class="form-input" placeholder="留言給家人..." style="font-size:14px;">
-                    </div>
-                    <button onclick="sendFamilyMessage()" class="btn btn-outline btn-sm" style="width:100%;">送出留言</button>
-                </div>
 
                 <!-- 家人健康數據 -->
                 <div class="card" style="margin-top:12px;">
@@ -2859,7 +2869,6 @@
             if (status !== 200) return;
 
             checkFamilyMissed(); // 檢查家人未吃藥
-            loadFamilyMessages();
             loadFamilyHealth();
 
             const container = document.getElementById('family-list');
@@ -2886,6 +2895,7 @@
                 const avatar = escapeHTML(rawName.charAt(0) || '家');
                 const relation = escapeHTML(m.relationship || '家人');
                 const ageText = m.age ? escapeHTML(String(m.age)) + '歲' : '年齡未填';
+                const relatedUserId = Number(m.related_user_id) || 0;
 
                 return `
                     <div class="family-card">
@@ -2894,11 +2904,26 @@
                             <div class="member-name">${displayName}</div>
                             <div class="member-relation">${relation} · ${ageText}</div>
                         </div>
-                        <div class="adherence ${rateClass}">${rate}%</div>
+                        <div class="member-actions">
+                            <div class="adherence ${rateClass}">${rate}%</div>
+                            <button class="family-delete-btn" onclick="event.stopPropagation(); removeFamilyMember(${relatedUserId})">移除</button>
+                        </div>
                     </div>`;
             }));
 
             container.innerHTML = memberCards.join('');
+        }
+
+        async function removeFamilyMember(relatedUserId) {
+            if (!relatedUserId) return showToast('家人資料無效');
+            if (!confirm('確定要刪除這位家人？雙方都會解除家人照護關係。')) return;
+            const { status, data } = await api('/api/family/' + relatedUserId, { method: 'DELETE' });
+            if (status === 200) {
+                showToast('已刪除家人');
+                loadFamilyPage();
+            } else {
+                showToast(data.error || '刪除家人失敗');
+            }
         }
 
         function showAddFamily() {
@@ -3723,43 +3748,6 @@
                     ).join('')) +
                     '<button onclick="document.getElementById(\'photo-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:8px;">關閉</button></div></div>';
                 document.getElementById('photo-modal').addEventListener('click', e => { if (e.target.id === 'photo-modal') e.target.remove(); });
-            });
-        }
-
-        // ========== 家人留言 ==========
-        function loadFamilyMessages() {
-            // 計算要查看哪個對像（如果是長輩，看家人留言；如果是家人，看所有關聯長輩的留言）
-            api('/api/family').then(({ data: family }) => {
-                const members = family.members || family.family || [];
-                if (members.length === 0) {
-                    document.getElementById('family-messages').innerHTML = '<div style="color:var(--text-light);">加入家人後可留言</div>';
-                    return;
-                }
-                const targetUserId = currentUser.role === 'elder' ? currentUser.id : (members[0].related_user_id || members[0].elder_id || members[0].family_id);
-                api('/api/family/messages?user_id=' + targetUserId).then(({ data }) => {
-                    const msgs = data.messages || [];
-                    document.getElementById('family-messages').innerHTML = msgs.length === 0
-                        ? '<div style="color:var(--text-light);text-align:center;padding:8px;">尚無留言</div>'
-                        : msgs.map(m =>
-                            '<div style="padding:8px 0;border-bottom:1px solid var(--border);">' +
-                            '<div style="display:flex;justify-content:space-between;"><strong>' + escapeHTML(m.sender_name) + '</strong><span style="font-size:12px;color:var(--text-light);">' + escapeHTML((m.created_at||'').split('T')[0]) + '</span></div>' +
-                            '<div style="margin-top:4px;">' + escapeHTML(m.message) + '</div></div>'
-                        ).join('');
-                });
-            });
-        }
-        async function sendFamilyMessage() {
-            const input = document.getElementById('family-msg-input');
-            const msg = input.value.trim();
-            if (!msg) return;
-            api('/api/family').then(({ data: family }) => {
-                const members = family.members || family.family || [];
-                if (members.length === 0) return showToast('尚無家庭成員');
-                const targetUserId = members[0].related_user_id || members[0].family_id || members[0].elder_id;
-                api('/api/family/messages', { method:'POST', body:JSON.stringify({ target_user_id: targetUserId, message: msg }) }).then(({ status }) => {
-                    if (status === 200) { input.value = ''; showToast('留言已送出'); loadFamilyMessages(); }
-                    else showToast('發送失敗');
-                });
             });
         }
 
