@@ -1,7 +1,7 @@
 {
   "name": "medremind-app",
   "version": "1.0.0",
-  "description": "藥記得 - 智慧用藥提醒 App",
+  "description": "藥護家 - 智慧用藥提醒 App",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

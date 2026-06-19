@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥記得 - 智慧用藥提醒</title>
+    <title>藥護家 - 智慧用藥提醒</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="藥記得">
+    <meta name="apple-mobile-web-app-title" content="藥護家">
     <link rel="apple-touch-icon" href="/icon-192.png">
     <meta name="theme-color" content="#27AE60">
     <style>
@@ -1166,10 +1166,10 @@
     <!-- 登入註冊頁面 -->
     <div id="login-page" class="page active">
         <div class="login-container">
-            <section class="login-brand-panel" aria-label="藥記得產品介紹">
+            <section class="login-brand-panel" aria-label="藥護家產品介紹">
                 <a class="login-brand-top" href="https://www.yaojidecare.app/">
                     <img src="/icon-192.png" alt="">
-                    <span>藥記得</span>
+                    <span>藥護家</span>
                 </a>
                 <div class="login-eyebrow">AI 用藥提醒與家人照護平台</div>
                 <h1>每天吃對藥，家人即時放心。</h1>
@@ -1183,8 +1183,8 @@
             <section class="login-card" aria-label="登入與註冊">
                 <div class="login-card-header">
                     <img src="/icon-192.png" alt="">
-                    <div class="app-title">藥記得</div>
-                    <div class="login-subtitle">正在建立此手機的藥記得編號</div>
+                    <div class="app-title">藥護家</div>
+                    <div class="login-subtitle">正在建立此手機的藥護家編號</div>
                 </div>
                 <div id="login-form">
                     <div style="text-align:center;padding:12px 0 18px;">
@@ -1199,10 +1199,10 @@
                             <label>用戶名稱</label>
                             <input type="text" id="device-user-name" class="form-input" maxlength="60" placeholder="例如：王大明" onkeydown="if(event.key==='Enter') submitDeviceName()">
                         </div>
-                        <button id="device-name-submit-btn" onclick="submitDeviceName()" class="btn btn-primary">建立我的藥記得編號</button>
+                        <button id="device-name-submit-btn" onclick="submitDeviceName()" class="btn btn-primary">建立我的藥護家編號</button>
                     </div>
                     <button id="device-reconnect-btn" onclick="startDeviceLogin(true)" class="btn btn-primary">重新建立裝置連線</button>
-                    <a class="login-home-link" href="https://www.yaojidecare.app/">前往藥記得官方網站</a>
+                    <a class="login-home-link" href="https://www.yaojidecare.app/">前往藥護家官方網站</a>
                     <div class="login-links">
                         <a href="/privacy.html" style="color:var(--text-light);">🔒 隱私權政策</a>
                         <a href="/terms.html" style="color:var(--text-light);">📄 使用者條款</a>
@@ -1216,7 +1216,7 @@
     <div id="main-app" style="display:none;">
         <!-- 頂部導航 -->
         <div class="header">
-            <h1>💊 藥記得</h1>
+            <h1>💊 藥護家</h1>
             <div style="display:flex;align-items:center;gap:8px;">
                 <select id="lang-selector" onchange="changeLanguage(this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.15);color:white;font-size:13px;cursor:pointer;">
                     <option value="zh-TW">🇹🇼 中文</option>
@@ -1582,7 +1582,7 @@
                 <div class="card" style="margin-top:12px;">
                     <div style="font-size:16px;font-weight:700;margin-bottom:6px;">📱 裝置編號</div>
                     <div style="font-size:22px;color:var(--green);font-weight:800;" id="settings-account-code">--</div>
-                    <div style="font-size:13px;color:var(--text-light);margin-top:4px;">此編號由藥記得產生，用來代替傳統帳號。</div>
+                    <div style="font-size:13px;color:var(--text-light);margin-top:4px;">此編號由藥護家產生，用來代替傳統帳號。</div>
                 </div>
                 <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="exportMyData()">📥 匯出個人資料 (CSV)</button>
                 <div class="card" style="margin-top:8px;">
@@ -1715,7 +1715,7 @@
             '已加入家庭成員': { 'zh-TW':'已加入家庭成員','en':'Family member added','id':'Anggota ditambahkan','th':'เพิ่มสมาชิกแล้ว','vi':'Đã thêm thành viên','fil':'Member added' },
             '已自動填入:': { 'zh-TW':'已自動填入:','en':'Auto-filled: ','id':'Terisi: ','th':'เติมให้: ','vi':'Đã điền: ','fil':'Auto-filled: ' },
             'AI 辨識中,改用文字掃描...': { 'zh-TW':'AI 辨識中,改用文字掃描...','en':'AI failed, trying OCR...','id':'AI gagal, coba OCR...','th':'AI ไม่สําเร็จ ใช้ OCR...','vi':'AI lỗi, thử OCR...','fil':'AI failed, try OCR...' },
-            '建立我的藥記得編號': { 'zh-TW':'建立我的藥記得編號','en':'Create My MedRemind ID','id':'Buat ID MedRemind Saya','th':'สร้างรหัส MedRemind ของฉัน','vi':'Tạo mã MedRemind của tôi','fil':'Gumawa ng MedRemind ID' },
+            '建立我的藥護家編號': { 'zh-TW':'建立我的藥護家編號','en':'Create My MedCare Home ID','id':'Buat ID MedCare Home Saya','th':'สร้างรหัส MedCare Home ของฉัน','vi':'Tạo mã MedCare Home của tôi','fil':'Gumawa ng MedCare Home ID' },
             '重新建立裝置連線': { 'zh-TW':'重新建立裝置連線','en':'Reconnect Device','id':'Sambungkan Ulang Perangkat','th':'เชื่อมต่ออุปกรณ์ใหม่','vi':'Kết nối lại thiết bị','fil':'Reconnect Device' },
             '正在建立裝置帳號...': { 'zh-TW':'正在建立裝置帳號...','en':'Creating device account...','id':'Membuat akun perangkat...','th':'กำลังสร้างบัญชีอุปกรณ์...','vi':'Đang tạo tài khoản thiết bị...','fil':'Gumagawa ng device account...' },
             '已取得編號': { 'zh-TW':'已取得編號','en':'ID created','id':'ID dibuat','th':'สร้างรหัสแล้ว','vi':'Đã tạo mã','fil':'ID created' },
@@ -1723,8 +1723,8 @@
             '裝置帳號建立失敗，請稍後重試': { 'zh-TW':'裝置帳號建立失敗，請稍後重試','en':'Device account failed. Try again later','id':'Gagal membuat akun perangkat','th':'สร้างบัญชีอุปกรณ์ไม่สำเร็จ','vi':'Tạo tài khoản thiết bị thất bại','fil':'Device account failed' },
             '裝置登入失敗': { 'zh-TW':'裝置登入失敗','en':'Device login failed','id':'Login perangkat gagal','th':'เข้าสู่ระบบอุปกรณ์ไม่สำเร็จ','vi':'Đăng nhập thiết bị thất bại','fil':'Device login failed' },
             '請輸入用戶名稱': { 'zh-TW':'請輸入用戶名稱','en':'Enter your name','id':'Masukkan nama','th':'กรุณาใส่ชื่อ','vi':'Nhập tên người dùng','fil':'Ilagay ang pangalan' },
-            '藥記得 - 智慧用藥提醒': { 'zh-TW':'藥記得 - 智慧用藥提醒','en':'MedRemind - Smart Medication Reminder','id':'MedRemind - Pengingat Obat Pintar','th':'MedRemind - เตือนกินยาอัจฉริยะ','vi':'MedRemind - Nhắc thuốc thông minh','fil':'MedRemind - Smart Medication Reminder' },
-            '藥記得產品介紹': { 'zh-TW':'藥記得產品介紹','en':'MedRemind introduction','id':'Pengenalan MedRemind','th':'แนะนำ MedRemind','vi':'Giới thiệu MedRemind','fil':'MedRemind introduction' },
+            '藥護家 - 智慧用藥提醒': { 'zh-TW':'藥護家 - 智慧用藥提醒','en':'MedCare Home - Smart Medication Reminder','id':'MedCare Home - Pengingat Obat Pintar','th':'MedCare Home - เตือนกินยาอัจฉริยะ','vi':'MedCare Home - Nhắc thuốc thông minh','fil':'MedCare Home - Smart Medication Reminder' },
+            '藥護家產品介紹': { 'zh-TW':'藥護家產品介紹','en':'MedCare Home introduction','id':'Pengenalan MedCare Home','th':'แนะนำ MedCare Home','vi':'Giới thiệu MedCare Home','fil':'MedCare Home introduction' },
             'AI 用藥提醒與家人照護平台': { 'zh-TW':'AI 用藥提醒與家人照護平台','en':'AI medication reminders and family care','id':'Pengingat obat AI dan perawatan keluarga','th':'เตือนกินยาด้วย AI และดูแลครอบครัว','vi':'Nhắc thuốc AI và chăm sóc gia đình','fil':'AI medication reminders and family care' },
             '每天吃對藥，家人即時放心。': { 'zh-TW':'每天吃對藥，家人即時放心。','en':'Take the right medicine daily. Keep family reassured.','id':'Minum obat yang tepat setiap hari. Keluarga lebih tenang.','th':'กินยาให้ถูกทุกวัน ให้ครอบครัวสบายใจ','vi':'Uống đúng thuốc mỗi ngày. Gia đình an tâm.','fil':'Take the right medicine daily. Keep family reassured.' },
             '開啟後自動建立裝置帳號，不需要註冊或輸入密碼，即可管理今日用藥、藥袋照片、補藥提醒、健康紀錄與家人照護摘要。': { 'zh-TW':'開啟後自動建立裝置帳號，不需要註冊或輸入密碼，即可管理今日用藥、藥袋照片、補藥提醒、健康紀錄與家人照護摘要。','en':'Open the app to create a device account. No registration or password needed to manage medications, photos, refills, health records, and family care.','id':'Buka app untuk membuat akun perangkat. Tanpa daftar atau kata sandi untuk mengelola obat, foto, stok, kesehatan, dan keluarga.','th':'เปิดแอปเพื่อสร้างบัญชีอุปกรณ์ ไม่ต้องสมัครหรือใส่รหัสผ่าน จัดการยา รูปถุงยา เติมยา สุขภาพ และครอบครัวได้','vi':'Mở ứng dụng để tạo tài khoản thiết bị. Không cần đăng ký hay mật khẩu để quản lý thuốc, ảnh toa thuốc, nhắc lấy thuốc, sức khỏe và gia đình.','fil':'Open the app to create a device account. No registration or password needed to manage medications, photos, refills, health records, and family care.' },
@@ -1734,12 +1734,12 @@
             '藥袋照片協助帶入資料，使用前再確認。': { 'zh-TW':'藥袋照片協助帶入資料，使用前再確認。','en':'Medicine-bag photos help fill details. Review before use.','id':'Foto obat membantu mengisi data. Periksa sebelum dipakai.','th':'รูปถุงยาช่วยกรอกข้อมูล โปรดตรวจสอบก่อนใช้','vi':'Ảnh túi thuốc giúp điền dữ liệu. Hãy kiểm tra trước khi dùng.','fil':'Medicine-bag photos help fill details. Review before use.' },
             '家人照護': { 'zh-TW':'家人照護','en':'Family Care','id':'Perawatan Keluarga','th':'ดูแลครอบครัว','vi':'Chăm sóc gia đình','fil':'Family Care' },
             '邀請碼加入，追蹤未打卡與健康狀態。': { 'zh-TW':'邀請碼加入，追蹤未打卡與健康狀態。','en':'Join by invite code to track missed check-ins and health.','id':'Gabung dengan kode undangan untuk memantau obat dan kesehatan.','th':'เข้าร่วมด้วยรหัสเชิญ เพื่อติดตามการบันทึกและสุขภาพ','vi':'Tham gia bằng mã mời để theo dõi lần quên uống và sức khỏe.','fil':'Join by invite code to track missed check-ins and health.' },
-            '正在建立此手機的藥記得編號': { 'zh-TW':'正在建立此手機的藥記得編號','en':'Creating this phone’s MedRemind ID','id':'Membuat ID MedRemind untuk ponsel ini','th':'กำลังสร้างรหัส MedRemind สำหรับโทรศัพท์นี้','vi':'Đang tạo mã MedRemind cho điện thoại này','fil':'Creating this phone’s MedRemind ID' },
+            '正在建立此手機的藥護家編號': { 'zh-TW':'正在建立此手機的藥護家編號','en':'Creating this phone’s MedCare Home ID','id':'Membuat ID MedCare Home untuk ponsel ini','th':'กำลังสร้างรหัส MedCare Home สำหรับโทรศัพท์นี้','vi':'Đang tạo mã MedCare Home cho điện thoại này','fil':'Creating this phone’s MedCare Home ID' },
             '正在讀取裝置識別碼...': { 'zh-TW':'正在讀取裝置識別碼...','en':'Reading device ID...','id':'Membaca ID perangkat...','th':'กำลังอ่านรหัสอุปกรณ์...','vi':'Đang đọc mã thiết bị...','fil':'Reading device ID...' },
             '系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。': { 'zh-TW':'系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。','en':'The app does not read the real phone serial number. It uses an app device ID instead.','id':'App tidak membaca nomor seri asli ponsel. App memakai ID perangkat aplikasi.','th':'แอปไม่อ่านเลขเครื่องจริง ใช้รหัสอุปกรณ์ของแอปแทน','vi':'Ứng dụng không đọc số sê-ri thật của điện thoại, mà dùng mã thiết bị của ứng dụng.','fil':'The app does not read the real phone serial number. It uses an app device ID instead.' },
             '用戶名稱': { 'zh-TW':'用戶名稱','en':'User Name','id':'Nama Pengguna','th':'ชื่อผู้ใช้','vi':'Tên người dùng','fil':'User Name' },
             '例如：王大明': { 'zh-TW':'例如：王大明','en':'Example: John Wang','id':'Contoh: Budi','th':'เช่น สมชาย','vi':'Ví dụ: Nguyễn Văn A','fil':'Example: Juan' },
-            '前往藥記得官方網站': { 'zh-TW':'前往藥記得官方網站','en':'Go to MedRemind website','id':'Buka situs MedRemind','th':'ไปที่เว็บไซต์ MedRemind','vi':'Đến website MedRemind','fil':'Go to MedRemind website' },
+            '前往藥護家官方網站': { 'zh-TW':'前往藥護家官方網站','en':'Go to MedCare Home website','id':'Buka situs MedCare Home','th':'ไปที่เว็บไซต์ MedCare Home','vi':'Đến website MedCare Home','fil':'Go to MedCare Home website' },
             '隱私權政策': { 'zh-TW':'隱私權政策','en':'Privacy Policy','id':'Kebijakan Privasi','th':'นโยบายความเป็นส่วนตัว','vi':'Chính sách quyền riêng tư','fil':'Privacy Policy' },
             '使用者條款': { 'zh-TW':'使用者條款','en':'Terms of Use','id':'Ketentuan Pengguna','th':'ข้อกำหนดการใช้งาน','vi':'Điều khoản sử dụng','fil':'Terms of Use' },
             '重整': { 'zh-TW':'重整','en':'Refresh','id':'Muat Ulang','th':'รีเฟรช','vi':'Làm mới','fil':'Refresh' },
@@ -1799,7 +1799,7 @@
         function translateStaticDOM() {
             if (!document.body) return;
             document.documentElement.lang = currentLang === 'zh-TW' ? 'zh-Hant' : currentLang;
-            document.title = t('藥記得 - 智慧用藥提醒');
+            document.title = t('藥護家 - 智慧用藥提醒');
 
             const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
                 acceptNode(node) {
@@ -1874,7 +1874,7 @@
             if (logoutBtn) logoutBtn.textContent = t('登出');
             // 裝置登入表單
             const nameSubmitBtn = document.getElementById('device-name-submit-btn');
-            if (nameSubmitBtn) nameSubmitBtn.textContent = t('建立我的藥記得編號');
+            if (nameSubmitBtn) nameSubmitBtn.textContent = t('建立我的藥護家編號');
             const reconnectBtn = document.getElementById('device-reconnect-btn');
             if (reconnectBtn) reconnectBtn.textContent = t('重新建立裝置連線');
             // 頁面標題
@@ -3593,7 +3593,7 @@
             if ('Notification' in window) {
                 Notification.requestPermission().then(p => {
                     if (p === 'granted') {
-                        new Notification('💊 藥記得 - 測試通知', { body: '通知功能正常！您會準時收到用藥提醒。', icon: '/icon-192.png' });
+                        new Notification('💊 藥護家 - 測試通知', { body: '通知功能正常！您會準時收到用藥提醒。', icon: '/icon-192.png' });
                         showToast('✅ 通知已發送，請查看');
                     } else {
                         showToast('⚠️ 通知權限被拒絕，請在瀏覽器設定中開啟');
@@ -3603,7 +3603,7 @@
                 showToast('此瀏覽器不支援通知功能');
             }
             // 同時測試語音
-            speakReminder('藥記得通知測試，如果您聽到這句話，代表語音功能正常。');
+            speakReminder('藥護家通知測試，如果您聽到這句話，代表語音功能正常。');
         }
 
         // ========== SOS 緊急求救 ==========
@@ -4084,7 +4084,7 @@
             document.getElementById('modal-container').innerHTML =
                 '<div class="modal-overlay" id="safe-modal"><div class="modal"><h3>🛡️ 醫療安全與資料保存</h3>' +
                 '<div style="font-size:14px;line-height:1.7;color:var(--text);">' +
-                '<p><b>醫療免責：</b>藥記得提供用藥提醒、紀錄整理與一般風險提示，不能取代醫師、藥師診斷或醫囑。</p>' +
+                '<p><b>醫療免責：</b>藥護家提供用藥提醒、紀錄整理與一般風險提示，不能取代醫師、藥師診斷或醫囑。</p>' +
                 '<p><b>AI 提醒：</b>AI 藥袋辨識與風險摘要可能出錯，新增用藥前請以藥袋、處方與專業人員說明為準。</p>' +
                 '<p><b>資料保存：</b>用藥、健康與家人照護資料保存在帳號資料庫中，可從設定匯出個人資料或刪除帳號。</p>' +
                 '<p><b>緊急狀況：</b>若出現嚴重不適、過敏、胸痛、呼吸困難或意識異常，請立即聯絡當地緊急醫療服務。</p>' +
@@ -4170,7 +4170,7 @@
                     id: 'privacy',
                     title: '9. 醫療與資料安全',
                     items: [
-                        '藥記得是提醒與紀錄工具，不能取代醫師、藥師診斷或醫囑。',
+                        '藥護家是提醒與紀錄工具，不能取代醫師、藥師診斷或醫囑。',
                         '若有胸痛、呼吸困難、嚴重過敏、意識異常或急性不適，請立即聯絡當地緊急醫療服務。',
                         '用藥、健康與家人照護資料保存在帳號資料庫中，可從設定匯出個人資料或刪除帳號。'
                     ]
@@ -4193,7 +4193,7 @@
             ).join('');
             document.getElementById('modal-container').innerHTML =
                 '<div class="modal-overlay" id="help-modal"><div class="modal" style="max-width:720px;max-height:90vh;">' +
-                '<h3>📘 藥記得詳細說明文件</h3>' +
+                '<h3>📘 藥護家詳細說明文件</h3>' +
                 '<div style="font-size:13px;color:var(--text-light);margin-top:4px;">快速開始、每日使用、家人照護、通知、AI、資料安全與常見問題。</div>' +
                 '<div class="help-doc-nav">' + nav + '</div>' +
                 '<div class="help-doc">' + body + '</div>' +
@@ -4317,7 +4317,7 @@
         }
         function showOnboardingStep(step) {
             const steps = [
-                { title: '👋 歡迎使用藥記得', text: '先完成 3 個設定，就能開始每天提醒與家人照護。', action: '' },
+                { title: '👋 歡迎使用藥護家', text: '先完成 3 個設定，就能開始每天提醒與家人照護。', action: '' },
                 { title: '💊 1. 新增第一顆藥', text: '可以手動輸入，也可以拍藥袋讓 AI 協助填表。', action: '<button onclick="document.getElementById(&quot;onboard-overlay&quot;).remove();switchPage(&quot;medications&quot;);showAddMedication();" class="btn btn-outline" style="margin-top:8px;">立即新增用藥</button>' },
                 { title: '⏰ 2. 設定提醒時間', text: '在新增用藥時勾選早上、中午、晚上或睡前提醒。', action: '' },
                 { title: '👨‍👩‍👧 3. 邀請家人', text: '產生邀請碼或連結，讓家人加入照護與查看提醒。', action: '<button onclick="document.getElementById(&quot;onboard-overlay&quot;).remove();switchPage(&quot;family&quot;);showAddFamily();" class="btn btn-outline" style="margin-top:8px;">產生家人邀請</button>' },

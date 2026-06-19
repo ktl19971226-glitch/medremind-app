@@ -1,5 +1,5 @@
 require('dotenv').config();
-// 藥記得 App - 後端伺服器
+// 藥護家 App - 後端伺服器
 // Node.js + Express + SQLite (sql.js 內存版)
 
 const express = require('express');
@@ -336,10 +336,10 @@ async function init() {
         saveDB();
         await sendEmail({
             to: user.email,
-            subject: '請驗證您的藥記得 Email',
+            subject: '請驗證您的藥護家 Email',
             html: authMailTemplate(
-                '驗證您的藥記得帳號',
-                `${user.name || '您好'}，請點擊下方按鈕完成 Email 驗證，完成後即可登入藥記得。`,
+                '驗證您的藥護家帳號',
+                `${user.name || '您好'}，請點擊下方按鈕完成 Email 驗證，完成後即可登入藥護家。`,
                 '完成 Email 驗證',
                 link,
                 `此驗證連結將於 ${EMAIL_VERIFY_TTL_MINUTES} 分鐘後失效。`
@@ -357,9 +357,9 @@ async function init() {
         saveDB();
         await sendEmail({
             to: user.email,
-            subject: '重設您的藥記得密碼',
+            subject: '重設您的藥護家密碼',
             html: authMailTemplate(
-                '重設您的藥記得密碼',
+                '重設您的藥護家密碼',
                 `${user.name || '您好'}，請點擊下方按鈕設定新密碼。如果不是您本人操作，可以忽略這封信。`,
                 '設定新密碼',
                 link,
@@ -578,13 +578,13 @@ async function init() {
         const token = String(req.query.token || '');
         const tokenHash = token ? hashToken(token) : '';
         const u = tokenHash ? dbGet('SELECT id,name FROM users WHERE email_verification_token_hash=?', [tokenHash]) : null;
-        const invalidPage = (message, status = 400) => res.status(status).send(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>驗證失敗</title><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;line-height:1.7;"><h2>驗證失敗</h2><p>${escapeHTML(message)}</p><p><a href="/">回到藥記得</a></p></body></html>`);
+        const invalidPage = (message, status = 400) => res.status(status).send(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>驗證失敗</title><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;line-height:1.7;"><h2>驗證失敗</h2><p>${escapeHTML(message)}</p><p><a href="/">回到藥護家</a></p></body></html>`);
         if (!u) return invalidPage('驗證連結無效，請重新註冊或重新寄送驗證信。');
         const valid = dbGet('SELECT id FROM users WHERE id=? AND email_verification_expires_at > ?', [u.id, new Date().toISOString()]);
         if (!valid) return invalidPage('驗證連結已過期，請回到登入頁重新寄送驗證信。');
         dbRun('UPDATE users SET email_verified=1, email_verified_at=CURRENT_TIMESTAMP, email_verification_token_hash=NULL, email_verification_expires_at=NULL WHERE id=?', [u.id]);
         saveDB();
-        res.send(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email 已驗證</title><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;line-height:1.7;"><h2>Email 已驗證完成</h2><p>${escapeHTML(u.name)}，您的藥記得帳號已可登入。</p><p><a href="/" style="display:inline-block;background:#0f766e;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;">回到藥記得登入</a></p></body></html>`);
+        res.send(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email 已驗證</title><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;line-height:1.7;"><h2>Email 已驗證完成</h2><p>${escapeHTML(u.name)}，您的藥護家帳號已可登入。</p><p><a href="/" style="display:inline-block;background:#0f766e;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;">回到藥護家登入</a></p></body></html>`);
     });
     
     app.get('/api/user/profile', auth, (req, res) => {
@@ -1407,7 +1407,7 @@ async function init() {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>重設藥記得密碼</title>
+    <title>重設藥護家密碼</title>
     <style>
         body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:24px;color:#1f2937}
         .card{max-width:420px;margin:48px auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;box-shadow:0 8px 24px rgba(15,23,42,.08)}
@@ -1421,7 +1421,7 @@ async function init() {
 <body>
     <div class="card">
         <h1>重設密碼</h1>
-        <p>請輸入新的藥記得登入密碼。</p>
+        <p>請輸入新的藥護家登入密碼。</p>
         <form id="reset-form">
             <input type="hidden" id="token" value="${token}">
             <label for="password">新密碼</label>
@@ -1994,7 +1994,7 @@ async function init() {
     // ====== 匯出日曆（.ics 格式） ======
     app.get('/api/medications/export-ics', auth, (req, res) => {
         const meds = dbAll('SELECT drug_name, dosage, remind_time, duration_days, end_date FROM medications WHERE user_id=? AND is_active=1', [req.user.id]);
-        let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MedRemember//TW//\r\n';
+        let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MedCare Home//TW//\r\n';
         const now = new Date().toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
         for (const med of meds) {
             let times = [];
@@ -2187,7 +2187,7 @@ async function init() {
 
     // ====== 啟動 ======
     app.listen(PORT, HOST, () => {
-        console.log(`💊 藥記得 App 伺服器已啟動：http://${HOST}:${PORT}`);
+        console.log(`💊 藥護家 App 伺服器已啟動：http://${HOST}:${PORT}`);
         if (CREATE_DEMO_DATA) {
             console.log(`🔑 測試帳號：wang@example.com / 123456`);
             console.log(`🔑 測試帳號：li@example.com / 123456`);

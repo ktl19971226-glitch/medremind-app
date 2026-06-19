@@ -1,4 +1,4 @@
-# 藥記得 - MedRemind 智慧用藥提醒 App
+# 藥護家 - MedCare Home 智慧用藥提醒 App
 
 ## 簡介
 台灣第一款整合診所、藥局、家庭監督的智慧用藥提醒 App
