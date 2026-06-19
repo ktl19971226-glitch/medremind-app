@@ -12,6 +12,7 @@
 - 正式網站：https://yaojidecare.app/
 - 隱私權政策：https://yaojidecare.app/privacy.html
 - 使用者條款：https://yaojidecare.app/terms.html
+- app-ads.txt：https://yaojidecare.app/app-ads.txt
 - 支援信箱：admin@yaojidecare.app
 
 ## App Store Connect 建議填寫
@@ -102,6 +103,7 @@ AI用藥提醒與家人照護
 - iOS App 顯示名稱為「藥護家」。
 - iOS bundle id 為 `app.yaojidecare`。
 - 隱私權政策與使用者條款已公開上線。
+- AdMob app-ads.txt 已公開上線。
 - 支援信箱統一為 `admin@yaojidecare.app`。
 - `Info.plist` 已補上相機使用說明。
 - `Info.plist` 已補上相簿使用說明。
