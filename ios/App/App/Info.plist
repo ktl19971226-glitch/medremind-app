@@ -47,5 +47,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>藥護家需要使用相機拍攝藥袋或藥品照片，用於藥袋文字辨識與建立用藥提醒。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>藥護家需要讀取你選擇的相簿照片，用於藥袋文字辨識與建立用藥提醒。</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
