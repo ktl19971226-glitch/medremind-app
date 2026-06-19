@@ -30,6 +30,7 @@ const EMAIL_MODE = process.env.EMAIL_MODE || (process.env.NODE_ENV === 'producti
 const SENDMAIL_PATH = process.env.SENDMAIL_PATH || '/usr/sbin/sendmail';
 const EMAIL_VERIFY_TTL_MINUTES = Number(process.env.EMAIL_VERIFY_TTL_MINUTES || 60 * 24);
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
+const API_RATE_LIMIT_PER_MIN = Number(process.env.API_RATE_LIMIT_PER_MIN || 240);
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8050,http://localhost:3000')
     .split(',')
     .map(origin => origin.trim())
@@ -167,16 +168,23 @@ function authMailTemplate(title, intro, actionText, actionUrl, expiresText) {
         </div>`;
 }
 
-// 簡易速率限制（每 IP 每分鐘最多 60 次請求）
+// 簡易速率限制。正式站在 Nginx 後面，只信任 loopback proxy 轉出的真實來源 IP。
 const rateLimitMap = new Map();
-function rateLimiter(maxPerMin = 60) {
+function rateLimitKey(req) {
+    const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    const ip = req.ip || forwarded || req.socket?.remoteAddress || 'unknown';
+    const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    const tokenKey = auth ? hashToken(auth).slice(0, 16) : 'anon';
+    return `${ip}:${tokenKey}`;
+}
+function rateLimiter(maxPerMin = API_RATE_LIMIT_PER_MIN) {
     return (req, res, next) => {
-        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+        const key = rateLimitKey(req);
         const now = Date.now();
-        if (!rateLimitMap.has(ip)) rateLimitMap.set(ip, []);
-        const window = rateLimitMap.get(ip).filter(t => now - t < 60000);
+        if (!rateLimitMap.has(key)) rateLimitMap.set(key, []);
+        const window = rateLimitMap.get(key).filter(t => now - t < 60000);
         window.push(now);
-        rateLimitMap.set(ip, window);
+        rateLimitMap.set(key, window);
         if (window.length > maxPerMin) return res.status(429).json({ error: '請求過於頻繁，請稍後再試' });
         next();
     };
@@ -193,6 +201,7 @@ setInterval(() => {
 
 const app = express();
 let db = null;
+app.set('trust proxy', 'loopback');
 
 // 輔助函數
 function dbAll(sql, params = []) {
@@ -223,7 +232,7 @@ app.use((err, req, res, next) => {
     }
     next(err);
 });
-app.use('/api/', rateLimiter(60));  // API 速率限制
+app.use('/api/', rateLimiter(API_RATE_LIMIT_PER_MIN));  // API 速率限制
 app.get('/', (req, res, next) => {
     const host = String(req.headers.host || '').split(':')[0].toLowerCase();
     if (host === 'www.yaojidecare.app') {
