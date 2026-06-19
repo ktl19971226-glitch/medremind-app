@@ -2881,13 +2881,18 @@
                 let rateClass = 'good';
                 if (rate < 70) rateClass = 'bad';
                 else if (rate < 90) rateClass = 'warning';
+                const rawName = String(m.name || '家人').trim() || '家人';
+                const displayName = escapeHTML(rawName);
+                const avatar = escapeHTML(rawName.charAt(0) || '家');
+                const relation = escapeHTML(m.relationship || '家人');
+                const ageText = m.age ? escapeHTML(String(m.age)) + '歲' : '年齡未填';
 
                 return `
                     <div class="family-card">
-                        <div class="avatar">${m.name[0]}</div>
+                        <div class="avatar">${avatar}</div>
                         <div class="member-info">
-                            <div class="member-name">${m.name}</div>
-                            <div class="member-relation">${m.relationship} · ${m.age || '?'}歲</div>
+                            <div class="member-name">${displayName}</div>
+                            <div class="member-relation">${relation} · ${ageText}</div>
                         </div>
                         <div class="adherence ${rateClass}">${rate}%</div>
                     </div>`;
@@ -2909,6 +2914,7 @@
                             <option value="子女">邀請子女</option>
                             <option value="父母">邀請父母</option>
                             <option value="配偶">邀請配偶</option>
+                            <option value="照護者">邀請照護者</option>
                             <option value="家人">邀請家人</option>
                         </select>
                         <button onclick="createFamilyInvite()" class="btn btn-primary" style="font-size:15px;padding:10px;">產生邀請碼</button>

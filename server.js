@@ -88,6 +88,21 @@ function publicEmail(user) {
     return email.endsWith('@device.yaojidecare.local') ? null : email;
 }
 
+const FAMILY_RELATIONSHIPS = new Set(['子女', '父母', '配偶', '家人', '照護者']);
+
+function normalizeFamilyRelationship(value) {
+    const relationship = String(value || '家人').trim().substring(0, 20);
+    return FAMILY_RELATIONSHIPS.has(relationship) ? relationship : '家人';
+}
+
+function inverseFamilyRelationship(relationship) {
+    const normalized = normalizeFamilyRelationship(relationship);
+    if (normalized === '子女') return '父母';
+    if (normalized === '父母') return '子女';
+    if (normalized === '配偶') return '配偶';
+    return '家人';
+}
+
 function expiresAt(minutes) {
     return new Date(Date.now() + minutes * 60000).toISOString();
 }
@@ -251,6 +266,27 @@ function hasFamilyAccess(viewerId, targetUserId) {
     );
 }
 
+function createFamilyInviteCode() {
+    for (let i = 0; i < 6; i++) {
+        const code = crypto.randomBytes(6).toString('hex').toUpperCase();
+        if (!dbGet('SELECT id FROM family_invites WHERE code=?', [code])) return code;
+    }
+    throw new Error('Unable to generate unique invite code');
+}
+
+function deleteUserData(uid) {
+    dbRun('DELETE FROM medication_logs WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM medications WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM health_records WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM family_members WHERE user_id=? OR related_user_id=?', [uid, uid]);
+    dbRun('DELETE FROM family_invites WHERE inviter_user_id=? OR used_by=?', [uid, uid]);
+    dbRun('DELETE FROM family_messages WHERE sender_id=? OR target_user_id=?', [uid, uid]);
+    dbRun('DELETE FROM notifications WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM user_settings WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM medication_changes WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM users WHERE id=?', [uid]);
+}
+
 // ====== 初始化 ======
 async function init() {
     const SQL = await initSqlJs();
@@ -301,7 +337,8 @@ async function init() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`,
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_device_identifier_hash ON users(device_identifier_hash) WHERE device_identifier_hash IS NOT NULL",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_account_code ON users(account_code) WHERE account_code IS NOT NULL"
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_account_code ON users(account_code) WHERE account_code IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_family_members_pair ON family_members(user_id, related_user_id)"
     ];
     for (const migration of migrations) {
         try { db.run(migration); } catch(e) {}
@@ -745,27 +782,33 @@ async function init() {
     
     // ====== 家庭 API ======
     app.get('/api/family', auth, (req, res) => {
-        res.json({ members: dbAll("SELECT fm.*, u.name,u.email,u.phone,u.age FROM family_members fm JOIN users u ON fm.related_user_id=u.id WHERE fm.user_id=?", [req.user.id]) });
+        const members = dbAll("SELECT fm.*, u.name,u.email,u.phone,u.age FROM family_members fm JOIN users u ON fm.related_user_id=u.id WHERE fm.user_id=?", [req.user.id])
+            .map(member => ({ ...member, email: publicEmail(member) }));
+        res.json({ members });
     });
     
     app.post('/api/family/add', auth, (req, res) => {
-        const { email, relationship } = req.body;
-        if (!email||!relationship) return res.status(400).json({ error:'請輸入家人 Email 和關係' });
-        const ru = dbGet('SELECT id,name FROM users WHERE email=?', [email]);
+        const email = normalizeEmail(req.body.email);
+        const relationship = normalizeFamilyRelationship(req.body.relationship);
+        if (!email) return res.status(400).json({ error:'請輸入家人 Email' });
+        const ru = dbGet('SELECT id,name,email FROM users WHERE email=?', [email]);
         if (!ru || !ru.id) return res.status(404).json({ error:'找不到此用戶' });
         if (ru.id===req.user.id) return res.status(400).json({ error:'不能加入自己' });
         if (dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [req.user.id, ru.id])) return res.status(400).json({ error:'此家人已在清單中' });
         dbRun('INSERT INTO family_members (user_id,related_user_id,relationship,permission_level) VALUES (?,?,?,?)', [req.user.id, ru.id, relationship, 'view']);
-        const rr = relationship==='子女'?'父母':relationship==='父母'?'子女':relationship;
+        const rr = inverseFamilyRelationship(relationship);
         if (!dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [ru.id, req.user.id]))
             dbRun('INSERT INTO family_members (user_id,related_user_id,relationship,permission_level) VALUES (?,?,?,?)', [ru.id, req.user.id, rr, 'view']);
         saveDB();
-        res.json({ message:'已加入家庭成員', member:{ name:ru.name, email, relationship } });
+        res.json({ message:'已加入家庭成員', member:{ name:ru.name, email: publicEmail(ru), relationship } });
     });
 
     app.post('/api/family/invite', auth, (req, res) => {
-        const relationship = (req.body.relationship || '家人').trim() || '家人';
-        const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const relationship = normalizeFamilyRelationship(req.body.relationship);
+        dbRun('DELETE FROM family_invites WHERE inviter_user_id=? AND used_by IS NULL AND expires_at IS NOT NULL AND expires_at < ?', [req.user.id, new Date().toISOString()]);
+        const active = dbGet('SELECT COUNT(*) AS c FROM family_invites WHERE inviter_user_id=? AND used_by IS NULL AND (expires_at IS NULL OR expires_at >= ?)', [req.user.id, new Date().toISOString()]);
+        if ((active?.c || 0) >= 10) return res.status(429).json({ error: '有效邀請碼太多，請等舊邀請過期後再產生' });
+        const code = createFamilyInviteCode();
         const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
         dbRun('INSERT INTO family_invites (inviter_user_id, code, relationship, expires_at) VALUES (?,?,?,?)', [req.user.id, code, relationship, expiresAt]);
         saveDB();
@@ -773,7 +816,7 @@ async function init() {
             code,
             relationship,
             expires_at: expiresAt,
-            invite_url: `/ ?invite=${code}`.replace('/ ?', '/?')
+            invite_url: `/?invite=${code}`
         });
     });
 
@@ -787,18 +830,19 @@ async function init() {
         if (invite.inviter_user_id === req.user.id) return res.status(400).json({ error: '不能加入自己' });
         const inviter = dbGet('SELECT id,name,email FROM users WHERE id=?', [invite.inviter_user_id]);
         if (!inviter) return res.status(404).json({ error: '邀請人不存在' });
+        const inviterSeesAcceptedAs = normalizeFamilyRelationship(invite.relationship);
+        const acceptedSeesInviterAs = inverseFamilyRelationship(inviterSeesAcceptedAs);
         if (!dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [req.user.id, inviter.id])) {
-            dbRun('INSERT INTO family_members (user_id, related_user_id, relationship, permission_level) VALUES (?,?,?,?)', [req.user.id, inviter.id, invite.relationship || '家人', 'view']);
+            dbRun('INSERT INTO family_members (user_id, related_user_id, relationship, permission_level) VALUES (?,?,?,?)', [req.user.id, inviter.id, acceptedSeesInviterAs, 'view']);
         }
-        const reverseRel = invite.relationship === '子女' ? '父母' : invite.relationship === '父母' ? '子女' : '家人';
         if (!dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [inviter.id, req.user.id])) {
-            dbRun('INSERT INTO family_members (user_id, related_user_id, relationship, permission_level) VALUES (?,?,?,?)', [inviter.id, req.user.id, reverseRel, 'view']);
+            dbRun('INSERT INTO family_members (user_id, related_user_id, relationship, permission_level) VALUES (?,?,?,?)', [inviter.id, req.user.id, inviterSeesAcceptedAs, 'view']);
         }
         dbRun('UPDATE family_invites SET used_by=?, used_at=CURRENT_TIMESTAMP WHERE id=?', [req.user.id, invite.id]);
         dbRun('INSERT INTO notifications (user_id, type, title, message, is_read, status, action_url) VALUES (?,?,?,?,0,?,?)',
             [inviter.id, 'family_joined', '👨‍👩‍👧 家人已加入', `${req.user.name || req.user.email} 已透過邀請碼加入照護`, 'unread', '#family']);
         saveDB();
-        res.json({ message: '已加入家人照護', inviter });
+        res.json({ message: '已加入家人照護', inviter: { ...inviter, email: publicEmail(inviter) } });
     });
     
     app.get('/api/family/:fid/medications', auth, (req, res) => {
@@ -1205,13 +1249,7 @@ async function init() {
     app.delete('/api/admin/users/:id', auth, adminAuth, (req, res) => {
         const uid = parseInt(req.params.id);
         if (uid === req.user.id) return res.status(400).json({ error: '不能刪除自己' });
-        dbRun('DELETE FROM medication_logs WHERE user_id = ?', [uid]);
-        dbRun('DELETE FROM medications WHERE user_id = ?', [uid]);
-        dbRun('DELETE FROM health_records WHERE user_id = ?', [uid]);
-        dbRun('DELETE FROM family_members WHERE user_id = ? OR related_user_id = ?', [uid, uid]);
-        dbRun('DELETE FROM notifications WHERE user_id = ?', [uid]);
-        dbRun('DELETE FROM user_settings WHERE user_id = ?', [uid]);
-        dbRun('DELETE FROM users WHERE id = ?', [uid]);
+        deleteUserData(uid);
         saveDB();
         res.json({ message: '用戶及相關資料已刪除' });
     });
@@ -1254,13 +1292,7 @@ async function init() {
     // 刪除自己的帳號
     app.delete('/api/user/account', auth, (req, res) => {
         const uid = req.user.id;
-        dbRun('DELETE FROM medication_logs WHERE user_id=?', [uid]);
-        dbRun('DELETE FROM medications WHERE user_id=?', [uid]);
-        dbRun('DELETE FROM health_records WHERE user_id=?', [uid]);
-        dbRun('DELETE FROM family_members WHERE user_id=? OR related_user_id=?', [uid, uid]);
-        dbRun('DELETE FROM notifications WHERE user_id=?', [uid]);
-        dbRun('DELETE FROM user_settings WHERE user_id=?', [uid]);
-        dbRun('DELETE FROM users WHERE id=?', [uid]);
+        deleteUserData(uid);
         saveDB();
         res.json({ message: '帳號已永久刪除' });
     });
@@ -1773,8 +1805,9 @@ async function init() {
 
     app.post('/api/family/messages', auth, (req, res) => {
         const target_user_id = parseInt(req.body.target_user_id);
-        const { message } = req.body;
+        const message = String(req.body.message || '').trim();
         if (!target_user_id || !message) return res.status(400).json({ error: '請填寫對象和訊息' });
+        if (message.length > 500) return res.status(400).json({ error: '留言最多 500 字' });
         if (!hasFamilyAccess(req.user.id, target_user_id)) {
             return res.status(403).json({ error: '無權限留言給此用戶' });
         }
@@ -1966,9 +1999,17 @@ async function init() {
 
     // ====== 沒吃藥即時通知（標記未讀通知） ======
     app.post('/api/family/trigger-missed-alert', auth, (req, res) => {
-        const { elder_id, elder_name, drug_name, remind_time } = req.body;
+        const elderId = parseInt(req.body.elder_id);
+        if (!elderId || !hasFamilyAccess(req.user.id, elderId)) {
+            return res.status(403).json({ error: '無權限發送此家人提醒' });
+        }
+        const elder = dbGet('SELECT id,name FROM users WHERE id=?', [elderId]);
+        if (!elder) return res.status(404).json({ error: '家人不存在' });
+        const elderName = String(req.body.elder_name || elder.name || '家人').trim().substring(0, 60);
+        const drugName = String(req.body.drug_name || '用藥').trim().substring(0, 80);
+        const remindTime = String(req.body.remind_time || '').trim().substring(0, 10);
         dbRun('INSERT INTO notifications (user_id, type, title, message, is_read) VALUES (?,?,?,?,0)',
-            [req.user.id, 'missed_alert', '⚠️ 未吃藥提醒', elder_name + ' 錯過了 ' + remind_time + ' 的 ' + drug_name]);
+            [req.user.id, 'missed_alert', '⚠️ 未吃藥提醒', elderName + ' 錯過了 ' + remindTime + ' 的 ' + drugName]);
         saveDB();
         res.json({ message: '通知已發送' });
     });
