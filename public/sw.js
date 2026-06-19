@@ -1,5 +1,5 @@
 // 藥護家 - Enhanced Service Worker
-const CACHE_NAME = 'medcarehome-v32';
+const CACHE_NAME = 'medcarehome-v33';
 const STATIC_ASSETS = [
     '/privacy.html',
     '/terms.html',
