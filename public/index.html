@@ -1143,16 +1143,6 @@
         body.simple-mode #refill-alert-container { display: block; }
         body.simple-mode #today-schedule .card { display: block; }
         body.simple-mode .take-btn { font-size: 22px !important; padding: 16px !important; margin: 4px 0 !important; width: 100% !important; }
-        body.desktop-mode .bottom-nav { display: none; }
-        body.desktop-mode { padding-bottom: 16px; }
-        body.desktop-mode .container { max-width: 760px; }
-        body.desktop-mode .summary-card { text-align: center; }
-        body.desktop-mode .summary-card .rate { font-size: 46px; }
-        body.desktop-mode .take-btn { font-size: 24px; min-height: 64px; flex: 1; }
-        body.desktop-mode #home-page > .card:not(#today-summary) { display: none; }
-        body.desktop-mode #today-schedule .card,
-        body.desktop-mode #stock-alert-container .card,
-        body.desktop-mode #refill-alert-container .card { display: block; }
 
         /* 載入動畫 */
         .spinner {
@@ -1565,14 +1555,6 @@
                         <option value="clear">清楚提示音</option>
                     </select>
                     <button onclick="playReminderSound()" class="btn btn-outline" style="width:100%;margin-top:8px;">試聽提醒音</button>
-                </div>
-
-                <div class="card" style="margin-top:8px;">
-                    <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:16px;">
-                        <span>🖥️ 桌面看板模式</span>
-                        <input type="checkbox" id="setting-desktop-mode" onchange="toggleDesktopMode()">
-                    </label>
-                    <div style="font-size:13px;color:var(--text-light);margin-top:6px;">開啟後首頁保留今日用藥與大按鈕，適合長輩放在桌面。</div>
                 </div>
 
                 <div class="card" style="margin-top:8px;">
@@ -2194,7 +2176,7 @@
         function showLogin(autoStart = true) {
             document.getElementById('login-page').style.display = 'block';
             document.getElementById('main-app').style.display = 'none';
-            document.body.classList.remove('simple-mode', 'desktop-mode');
+            document.body.classList.remove('simple-mode');
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById('login-page').classList.add('active');
             if (autoStart) startDeviceLogin(false);
@@ -2231,6 +2213,7 @@
         function showMainApp() {
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
+            document.body.classList.remove('desktop-mode');
             document.getElementById('header-username').textContent = getDisplayUserName(currentUser);
             // 管理員顯示後台連結
             const adminLink = document.getElementById('admin-header-link');
@@ -3155,11 +3138,9 @@
                 if (cb) cb.checked = data.settings.reminder_repeat === 1;
                 const sound = document.getElementById('setting-reminder-sound');
                 if (sound) sound.value = data.settings.reminder_sound || 'classic';
-                const desktop = document.getElementById('setting-desktop-mode');
-                if (desktop) desktop.checked = data.settings.desktop_mode === 1;
                 const delay = document.getElementById('setting-family-delay');
                 if (delay) delay.value = String(data.settings.family_alert_delay_minutes || 60);
-                document.body.classList.toggle('desktop-mode', data.settings.desktop_mode === 1);
+                document.body.classList.remove('desktop-mode');
             }
             syncDarkCheckbox();
         }
@@ -3181,19 +3162,12 @@
         async function saveAdvancedSettings() {
             const repeat = document.getElementById('setting-reminder-repeat')?.checked ? 1 : 0;
             const sound = document.getElementById('setting-reminder-sound')?.value || 'classic';
-            const desktop = document.getElementById('setting-desktop-mode')?.checked ? 1 : 0;
             const delay = parseInt(document.getElementById('setting-family-delay')?.value || '60');
             await api('/api/settings', {
                 method: 'PUT',
-                body: JSON.stringify({ reminder_repeat: repeat, reminder_sound: sound, desktop_mode: desktop, family_alert_delay_minutes: delay })
+                body: JSON.stringify({ reminder_repeat: repeat, reminder_sound: sound, family_alert_delay_minutes: delay })
             });
             showToast('設定已儲存');
-        }
-
-        function toggleDesktopMode() {
-            const enabled = document.getElementById('setting-desktop-mode')?.checked;
-            document.body.classList.toggle('desktop-mode', !!enabled);
-            saveAdvancedSettings();
         }
 
         function playReminderSound() {

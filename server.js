@@ -1154,7 +1154,7 @@ async function init() {
             height_cm: s.height_cm || null,
             simple_mode: s.simple_mode || 0,
             reminder_sound: s.reminder_sound || 'classic',
-            desktop_mode: s.desktop_mode || 0,
+            desktop_mode: 0,
             family_alert_delay_minutes: s.family_alert_delay_minutes || 60,
             bp_sys_goal: s.bp_sys_goal || null,
             bp_dia_goal: s.bp_dia_goal || null,
@@ -1165,12 +1165,12 @@ async function init() {
     });
     
     app.put('/api/settings', auth, (req, res) => {
-        const { reminder_repeat, telegram_chat_id, height_cm, reminder_sound, desktop_mode, family_alert_delay_minutes } = req.body;
+        const { reminder_repeat, telegram_chat_id, height_cm, reminder_sound, family_alert_delay_minutes } = req.body;
         let s = dbGet('SELECT id FROM user_settings WHERE user_id=?', [req.user.id]);
         const sound = reminder_sound || 'classic';
         const delay = parseInt(family_alert_delay_minutes) || 60;
-        if (!s) dbRun('INSERT INTO user_settings (user_id,reminder_repeat,telegram_chat_id,height_cm,reminder_sound,desktop_mode,family_alert_delay_minutes) VALUES (?,?,?,?,?,?,?)', [req.user.id, reminder_repeat||0, telegram_chat_id||null, height_cm || null, sound, desktop_mode ? 1 : 0, delay]);
-        else dbRun('UPDATE user_settings SET reminder_repeat=?,telegram_chat_id=?,height_cm=COALESCE(?, height_cm),reminder_sound=?,desktop_mode=?,family_alert_delay_minutes=? WHERE user_id=?', [reminder_repeat||0, telegram_chat_id||null, height_cm || null, sound, desktop_mode ? 1 : 0, delay, req.user.id]);
+        if (!s) dbRun('INSERT INTO user_settings (user_id,reminder_repeat,telegram_chat_id,height_cm,reminder_sound,desktop_mode,family_alert_delay_minutes) VALUES (?,?,?,?,?,?,?)', [req.user.id, reminder_repeat||0, telegram_chat_id||null, height_cm || null, sound, 0, delay]);
+        else dbRun('UPDATE user_settings SET reminder_repeat=?,telegram_chat_id=?,height_cm=COALESCE(?, height_cm),reminder_sound=?,desktop_mode=0,family_alert_delay_minutes=? WHERE user_id=?', [reminder_repeat||0, telegram_chat_id||null, height_cm || null, sound, delay, req.user.id]);
         saveDB();
         res.json({ message: '設定已更新' });
     });
