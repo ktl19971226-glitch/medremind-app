@@ -62,7 +62,7 @@ AI用藥提醒與家人照護
 
 ### 是否用於追蹤
 
-否。沒有廣告追蹤，沒有跨 App 或跨網站追蹤。
+第一版建議填「否」。廣告策略採非個人化獎勵廣告，不用健康資料、用藥資料或藥袋照片做跨 App / 跨網站追蹤或個人化投放。若未來啟用追蹤型個人化廣告，需補 ATT 授權、隱私標籤與政策。
 
 ### 會收集且可能連結到使用者的資料
 
@@ -71,16 +71,19 @@ AI用藥提醒與家人照護
 - Identifiers：裝置帳號、藥護家編號、裝置識別碼雜湊、登入 token。
 - Contact Info：使用者自行設定的名稱；未來若啟用 Email 登入，也可能包含 Email。
 - Diagnostics：伺服器錯誤紀錄、API 狀態紀錄，僅用於維護與安全排查。
+- Advertising Data：行動 App 版使用 Google AdMob 獎勵廣告時，可能產生廣告請求、展示、獎勵完成等廣告相關資料。第一版應設定為非個人化廣告，不以健康資料做廣告投放。
 
 ### 資料使用目的
 
 - App Functionality：提供用藥提醒、打卡、家人照護、資料同步、AI 辨識。
+- Third-Party Advertising：免費 AI 掃描額度用完後，使用者可觀看獎勵廣告取得額外掃描次數。
 - Customer Support：處理使用者詢問、帳號刪除、問題排查。
 - Analytics：目前不使用第三方分析 SDK；若未來新增，需同步更新隱私標籤與政策。
 
 ### 第三方資料處理
 
 - AI 藥袋辨識可能將使用者主動上傳的藥袋/藥品照片送至 AI 服務進行文字辨識。
+- Google AdMob 用於獎勵廣告；不可將健康、用藥或藥袋照片資料用於廣告投放。
 - 不可宣稱「不收集資料」。
 - 不可宣稱 AI 辨識結果可取代醫師、藥師、藥袋或處方。
 
@@ -104,6 +107,8 @@ AI用藥提醒與家人照護
 - iOS bundle id 為 `app.yaojidecare`。
 - 隱私權政策與使用者條款已公開上線。
 - AdMob app-ads.txt 已公開上線。
+- 已取得 AdMob App ID：iOS `ca-app-pub-7217388641578552~6880209470`、Android `ca-app-pub-7217388641578552~1204678131`。
+- App 已導入獎勵廣告邏輯：每天免費 AI 掃描 1 次，超過後看獎勵廣告換 1 次，每天最多兌換 3 次。
 - 支援信箱統一為 `admin@yaojidecare.app`。
 - `Info.plist` 已補上相機使用說明。
 - `Info.plist` 已補上相簿使用說明。
@@ -120,6 +125,7 @@ AI用藥提醒與家人照護
 - 將 GitHub Actions 的簽名憑證與 provisioning profile 改由 GitHub Secrets 注入，不要把簽名材料硬寫在 workflow。
 - 現有 iOS workflow 只在 `trigger-build.txt` 變更或手動 workflow_dispatch 時才會跑，單純 push 程式碼不會自動產生 IPA。
 - 上傳 TestFlight，完成內部測試。
+- 建立正式 AdMob Rewarded 廣告單元，將目前 Google 測試 rewarded ad unit ID 替換為正式 `ios_ai_scan_rewarded` / `android_ai_scan_rewarded`。
 - 準備至少 1 張、建議 5 張 iPhone 截圖。
 - 若保留 iPad 支援，需準備 iPad 截圖；若不準備 iPad，建議將 iOS target 改成 iPhone only。
 - 填寫 App Privacy 問卷。

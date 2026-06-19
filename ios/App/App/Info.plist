@@ -53,5 +53,7 @@
 	<string>藥護家需要讀取你選擇的相簿照片，用於藥袋文字辨識與建立用藥提醒。</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-7217388641578552~6880209470</string>
 </dict>
 </plist>

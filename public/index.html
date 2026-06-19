@@ -1922,7 +1922,199 @@
         const INSTALL_DISMISSED_KEY = 'medremind_install_dismissed';
         const DEVICE_ID_KEY = 'medremind_device_identifier';
         const AUTH_TOKEN_KEY = 'medremind_auth_token';
+        const AI_SCAN_QUOTA_KEY_PREFIX = 'medremind_ai_scan_quota_v1';
+        const AI_SCAN_DAILY_FREE_LIMIT = 1;
+        const AI_SCAN_DAILY_REWARD_LIMIT = 3;
+        const AI_SCAN_REWARDED_AD_ID = 1;
+        const IOS_REWARDED_AD_UNIT_ID = '';
+        const ANDROID_REWARDED_AD_UNIT_ID = '';
+        const IOS_TEST_REWARDED_AD_UNIT_ID = 'ca-app-pub-3940256099942544/1712485313';
+        const ANDROID_TEST_REWARDED_AD_UNIT_ID = 'ca-app-pub-3940256099942544/5224354917';
+        let aiScanRewardedAdCreated = false;
+        let aiScanRewardedAdLoading = null;
+        let aiScanRewardedListenerReady = false;
+        let aiScanRewardEarned = false;
+        let pendingAiScanAccess = false;
         let deferredInstallPrompt = null;
+
+        function getTaipeiDateKey() {
+            return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+        }
+
+        function getAiScanQuotaKey() {
+            const userKey = currentUser?.id || currentUser?.account_code || localStorage.getItem(DEVICE_ID_KEY) || 'guest';
+            return AI_SCAN_QUOTA_KEY_PREFIX + ':' + userKey;
+        }
+
+        function getAiScanQuota() {
+            const today = getTaipeiDateKey();
+            try {
+                const raw = localStorage.getItem(getAiScanQuotaKey());
+                const state = raw ? JSON.parse(raw) : {};
+                if (state.date === today) {
+                    return {
+                        date: today,
+                        freeUsed: Number(state.freeUsed || 0),
+                        rewardedUsed: Number(state.rewardedUsed || 0),
+                        rewardCredits: Number(state.rewardCredits || 0)
+                    };
+                }
+            } catch (e) {
+                console.log('AI scan quota reset:', e.message);
+            }
+            return { date: today, freeUsed: 0, rewardedUsed: 0, rewardCredits: 0 };
+        }
+
+        function saveAiScanQuota(state) {
+            localStorage.setItem(getAiScanQuotaKey(), JSON.stringify(state));
+        }
+
+        function getAiScanQuotaSummary() {
+            const state = getAiScanQuota();
+            return {
+                freeRemaining: Math.max(0, AI_SCAN_DAILY_FREE_LIMIT - state.freeUsed),
+                rewardedRemaining: Math.max(0, AI_SCAN_DAILY_REWARD_LIMIT - state.rewardedUsed),
+                rewardCredits: Math.max(0, state.rewardCredits)
+            };
+        }
+
+        function consumeAiScanQuota() {
+            if (!isNative) return true;
+            const state = getAiScanQuota();
+            if (state.freeUsed < AI_SCAN_DAILY_FREE_LIMIT) {
+                state.freeUsed += 1;
+                saveAiScanQuota(state);
+                return true;
+            }
+            if (state.rewardCredits > 0) {
+                state.rewardCredits -= 1;
+                saveAiScanQuota(state);
+                return true;
+            }
+            return false;
+        }
+
+        function getAdMobPlugin() {
+            return window.Capacitor?.Plugins?.AdMobPlus || null;
+        }
+
+        function getRewardedAdUnitId() {
+            const platform = window.Capacitor?.getPlatform?.() || '';
+            if (platform === 'ios') return IOS_REWARDED_AD_UNIT_ID || IOS_TEST_REWARDED_AD_UNIT_ID;
+            if (platform === 'android') return ANDROID_REWARDED_AD_UNIT_ID || ANDROID_TEST_REWARDED_AD_UNIT_ID;
+            return '';
+        }
+
+        function isUsingTestRewardedAdUnit() {
+            const adUnitId = getRewardedAdUnitId();
+            return adUnitId === IOS_TEST_REWARDED_AD_UNIT_ID || adUnitId === ANDROID_TEST_REWARDED_AD_UNIT_ID;
+        }
+
+        async function prepareAiScanRewardedAd() {
+            const AdMob = getAdMobPlugin();
+            const adUnitId = getRewardedAdUnitId();
+            if (!AdMob || !adUnitId) throw new Error('此裝置目前無法載入獎勵廣告');
+
+            if (!aiScanRewardedListenerReady && AdMob.addListener) {
+                AdMob.addListener('rewarded.reward', (event) => {
+                    if ((event?.adId || event?.id) === AI_SCAN_REWARDED_AD_ID) {
+                        aiScanRewardEarned = true;
+                    }
+                });
+                aiScanRewardedListenerReady = true;
+            }
+
+            if (!aiScanRewardedAdCreated) {
+                await AdMob.start();
+                await AdMob.configure?.({ appMuted: false, appVolume: 1 });
+                await AdMob.configRequest?.({
+                    maxAdContentRating: 'G',
+                    tagForChildDirectedTreatment: false,
+                    tagForUnderAgeOfConsent: false
+                });
+                await AdMob.adCreate({
+                    id: AI_SCAN_REWARDED_AD_ID,
+                    cls: 'RewardedAd',
+                    adUnitId
+                });
+                aiScanRewardedAdCreated = true;
+            }
+
+            const loaded = await AdMob.adIsLoaded({ id: AI_SCAN_REWARDED_AD_ID }).catch(() => false);
+            if (!loaded) {
+                if (!aiScanRewardedAdLoading) {
+                    aiScanRewardedAdLoading = AdMob.adLoad({ id: AI_SCAN_REWARDED_AD_ID })
+                        .finally(() => { aiScanRewardedAdLoading = null; });
+                }
+                await aiScanRewardedAdLoading;
+            }
+        }
+
+        async function watchAiScanRewardedAd() {
+            const state = getAiScanQuota();
+            if (state.rewardedUsed >= AI_SCAN_DAILY_REWARD_LIMIT) {
+                showToast('今日廣告兌換次數已用完，明天會重新發放免費掃描');
+                return false;
+            }
+
+            const AdMob = getAdMobPlugin();
+            if (!isNative || !AdMob) {
+                showToast('獎勵廣告目前只能在手機 App 內使用');
+                return false;
+            }
+
+            try {
+                showToast(isUsingTestRewardedAdUnit() ? '載入測試廣告中...' : '載入廣告中...');
+                await prepareAiScanRewardedAd();
+                aiScanRewardEarned = false;
+                await AdMob.adShow({ id: AI_SCAN_REWARDED_AD_ID });
+                if (!aiScanRewardEarned) {
+                    showToast('廣告未完整觀看，尚未取得掃描次數');
+                    return false;
+                }
+
+                const nextState = getAiScanQuota();
+                nextState.rewardedUsed += 1;
+                nextState.rewardCredits += 1;
+                saveAiScanQuota(nextState);
+                showToast('已取得 1 次 AI 掃描');
+                prepareAiScanRewardedAd().catch((e) => console.log('Rewarded preload skipped:', e.message));
+                return true;
+            } catch (e) {
+                console.log('Rewarded ad failed:', e.message);
+                aiScanRewardedAdCreated = false;
+                showToast('廣告暫時無法載入，請稍後再試');
+                return false;
+            }
+        }
+
+        function showAiScanLimitModal() {
+            const summary = getAiScanQuotaSummary();
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.id = 'ai-scan-limit-modal';
+            modal.innerHTML = `
+                <div class="modal">
+                    <h3>今日免費 AI 掃描已用完</h3>
+                    <p style="font-size:14px;color:var(--text-light);line-height:1.6;margin:8px 0 14px;">
+                        觀看一則廣告，即可取得 1 次 AI 掃描。每天最多可透過廣告兌換 ${AI_SCAN_DAILY_REWARD_LIMIT} 次，明天會重新發放免費掃描。
+                    </p>
+                    <div style="font-size:13px;color:var(--text-light);margin-bottom:12px;">
+                        今日剩餘廣告兌換：${summary.rewardedRemaining} 次
+                    </div>
+                    <button onclick="watchAiScanRewardedAd().then(ok => { if (ok) document.getElementById('ai-scan-limit-modal')?.remove(); })" class="btn btn-primary" style="width:100%;margin-bottom:8px;">觀看廣告取得 1 次掃描</button>
+                    <button onclick="document.getElementById('ai-scan-limit-modal')?.remove()" class="btn btn-outline" style="width:100%;">明天再使用免費掃描</button>
+                </div>`;
+            document.getElementById('modal-container').appendChild(modal);
+        }
+
+        async function requestAiScanAccess() {
+            if (!isNative) return true;
+            const summary = getAiScanQuotaSummary();
+            if (summary.freeRemaining > 0 || summary.rewardCredits > 0) return true;
+            showAiScanLimitModal();
+            return false;
+        }
 
         window.addEventListener('beforeinstallprompt', (event) => {
             event.preventDefault();
@@ -2471,11 +2663,15 @@
         }
 
         // 拍照辨識藥物
-        function scanDrugPhoto() {
+        async function scanDrugPhoto() {
+            if (!await requestAiScanAccess()) return;
+            pendingAiScanAccess = true;
             document.getElementById('drug-photo-input').click();
         }
 
-        function uploadDrugPhoto() {
+        async function uploadDrugPhoto() {
+            if (!await requestAiScanAccess()) return;
+            pendingAiScanAccess = true;
             document.getElementById('drug-upload-input').click();
         }
 
@@ -2518,6 +2714,17 @@
         async function handleDrugPhoto(event) {
             const file = event.target.files[0];
             if (!file) return;
+            if (!pendingAiScanAccess && !await requestAiScanAccess()) {
+                event.target.value = '';
+                return;
+            }
+            if (!consumeAiScanQuota()) {
+                pendingAiScanAccess = false;
+                event.target.value = '';
+                showAiScanLimitModal();
+                return;
+            }
+            pendingAiScanAccess = false;
 
             const resultDiv = document.getElementById('scan-result');
             resultDiv.style.display = 'block';
