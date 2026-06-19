@@ -115,6 +115,8 @@ AI用藥提醒與家人照護
 - 建立 App Store provisioning profile。
 - 將 `exportOptions.plist` 從 development/adhoc 改成 App Store 發布用設定，或新增獨立 app-store exportOptions。
 - 用正式 distribution 簽名產生可上傳 App Store Connect 的 IPA。
+- 將 GitHub Actions 的簽名憑證與 provisioning profile 改由 GitHub Secrets 注入，不要把簽名材料硬寫在 workflow。
+- 現有 iOS workflow 只在 `trigger-build.txt` 變更或手動 workflow_dispatch 時才會跑，單純 push 程式碼不會自動產生 IPA。
 - 上傳 TestFlight，完成內部測試。
 - 準備至少 1 張、建議 5 張 iPhone 截圖。
 - 若保留 iPad 支援，需準備 iPad 截圖；若不準備 iPad，建議將 iOS target 改成 iPhone only。
