@@ -1995,6 +1995,12 @@
             localStorage.removeItem(AUTH_TOKEN_KEY);
         }
 
+        function getDisplayUserName(user) {
+            const rawName = String(user?.name || '').trim();
+            const cleanName = rawName.replace(/\s*YJ-\d{6}\s*$/i, '').trim();
+            return cleanName || user?.account_code || rawName || '--';
+        }
+
         function setDeviceStatus(message) {
             const el = document.getElementById('device-login-status');
             if (el) el.textContent = message;
@@ -2225,7 +2231,7 @@
         function showMainApp() {
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
-            document.getElementById('header-username').textContent = currentUser.account_code || currentUser.name;
+            document.getElementById('header-username').textContent = getDisplayUserName(currentUser);
             // 管理員顯示後台連結
             const adminLink = document.getElementById('admin-header-link');
             if (adminLink) adminLink.style.display = (currentUser.role === 'admin') ? 'inline-block' : 'none';
