@@ -51,6 +51,8 @@
 	<string>藥護家需要使用相機拍攝藥袋或藥品照片，用於藥袋文字辨識與建立用藥提醒。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>藥護家需要讀取你選擇的相簿照片，用於藥袋文字辨識與建立用藥提醒。</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>藥護家會使用你的授權，讓 Google AdMob 提供較相關的獎勵廣告並衡量廣告成效；我們不會將健康、用藥或藥袋照片用於廣告投放。</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>GADApplicationIdentifier</key>
