@@ -75,6 +75,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 12px;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -85,11 +86,25 @@
             font-size: 22px;
             font-weight: 600;
             letter-spacing: 0;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
         }
 
         .header .user-info {
             font-size: 15px;
             opacity: 0.9;
+            min-width: 0;
+            max-width: 132px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .header .logout-btn {
@@ -466,8 +481,10 @@
         .bottom-nav {
             position: fixed;
             bottom: 0;
-            left: 0;
-            right: 0;
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+            width: min(100%, 480px);
             background: white;
             display: flex;
             border-top: 1px solid var(--border);
@@ -790,6 +807,68 @@
             }
         }
 
+        @media (max-width: 520px) {
+            .header {
+                padding: 10px 12px;
+                gap: 8px;
+            }
+
+            .header h1 {
+                font-size: 19px;
+            }
+
+            .header-actions {
+                gap: 6px;
+                flex: 1;
+                justify-content: flex-end;
+            }
+
+            #lang-selector {
+                max-width: 84px;
+                padding: 6px;
+                font-size: 12px;
+            }
+
+            .header .user-info {
+                display: none;
+            }
+
+            .header .logout-btn {
+                padding: 7px 10px;
+                font-size: 13px;
+            }
+
+            .notification-btn {
+                padding: 6px 8px;
+            }
+        }
+
+        @media (min-width: 861px) {
+            body {
+                padding-bottom: 0;
+            }
+
+            .bottom-nav {
+                top: 92px;
+                bottom: auto;
+                left: calc(50% + 260px);
+                transform: none;
+                width: 96px;
+                flex-direction: column;
+                gap: 6px;
+                padding: 10px;
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                box-shadow: 0 10px 30px rgba(44,62,80,0.10);
+            }
+
+            .bottom-nav .nav-item {
+                flex: none;
+                width: 100%;
+                padding: 10px 6px;
+            }
+        }
+
         /* 家庭成員卡片 */
         .family-card {
             display: flex;
@@ -1079,16 +1158,85 @@
             color: var(--text);
         }
 
-        .help-doc-nav {
+        .help-hero {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #eefaf3 0%, #f7fbff 100%);
+            border: 1px solid rgba(39,174,96,0.18);
             margin: 12px 0;
         }
 
+        body.dark .help-hero {
+            background: rgba(39,174,96,0.08);
+        }
+
+        .help-hero-title {
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .help-hero-copy {
+            color: var(--text-light);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .help-doc-nav {
+            display: flex;
+            overflow-x: auto;
+            gap: 8px;
+            margin: 12px 0;
+            padding-bottom: 4px;
+            -webkit-overflow-scrolling: touch;
+        }
+
         .help-doc-nav button {
+            flex: 0 0 auto;
             font-size: 13px;
             padding: 9px 8px;
+            white-space: nowrap;
+        }
+
+        .help-quick-path {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .help-path-step {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 6px;
+            text-align: center;
+            min-height: 84px;
+        }
+
+        body.dark .help-path-step {
+            background: var(--card-bg);
+        }
+
+        .help-path-icon {
+            font-size: 24px;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+
+        .help-path-title {
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+
+        .help-path-copy {
+            font-size: 11px;
+            color: var(--text-light);
+            line-height: 1.3;
+            margin-top: 4px;
         }
 
         .help-section {
@@ -1108,12 +1256,140 @@
             font-size: 16px;
         }
 
-        .help-section ul {
-            padding-left: 20px;
+        .help-section-grid {
+            display: grid;
+            grid-template-columns: 96px 1fr;
+            gap: 12px;
+            align-items: start;
         }
 
-        .help-section li {
-            margin: 4px 0;
+        .help-visual {
+            border-radius: 16px;
+            background: #f0f7ff;
+            border: 1px solid rgba(52,152,219,0.16);
+            padding: 8px;
+        }
+
+        body.dark .help-visual {
+            background: rgba(52,152,219,0.10);
+        }
+
+        .help-phone {
+            width: 74px;
+            min-height: 126px;
+            margin: 0 auto;
+            border: 3px solid #2c3e50;
+            border-radius: 18px;
+            background: white;
+            padding: 9px 6px 7px;
+            box-shadow: 0 8px 18px rgba(44,62,80,0.12);
+        }
+
+        body.dark .help-phone {
+            background: #16213e;
+            border-color: #dbeafe;
+        }
+
+        .help-phone-bar {
+            width: 28px;
+            height: 4px;
+            background: #d0d7de;
+            border-radius: 999px;
+            margin: 0 auto 8px;
+        }
+
+        .help-phone-screen {
+            display: grid;
+            gap: 5px;
+        }
+
+        .help-phone-line {
+            height: 8px;
+            border-radius: 999px;
+            background: #dfe8f3;
+        }
+
+        .help-phone-line.primary {
+            background: var(--green);
+        }
+
+        .help-phone-line.orange {
+            background: var(--orange);
+        }
+
+        .help-phone-card {
+            height: 22px;
+            border-radius: 7px;
+            background: #eef4f8;
+            border: 1px solid #e1e8ef;
+        }
+
+        .help-phone-icon {
+            display: grid;
+            place-items: center;
+            height: 44px;
+            border-radius: 10px;
+            background: #ecf8f0;
+            font-size: 24px;
+        }
+
+        .help-step-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .help-step {
+            display: grid;
+            grid-template-columns: 28px 1fr;
+            gap: 8px;
+            align-items: start;
+        }
+
+        .help-step-num {
+            display: grid;
+            place-items: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: var(--green);
+            color: white;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .help-step-text {
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .help-callout {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-left: 4px solid var(--orange);
+            background: #fff8ed;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        body.dark .help-callout {
+            background: rgba(243,156,18,0.12);
+        }
+
+        @media (max-width: 520px) {
+            .help-quick-path {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .help-section-grid {
+                grid-template-columns: 84px 1fr;
+                gap: 10px;
+            }
+
+            .help-phone {
+                width: 64px;
+                min-height: 112px;
+            }
         }
 
         /* 大字模式 */
@@ -1194,7 +1470,7 @@
                 <div class="login-card-header">
                     <img src="/icon-192.png" alt="">
                     <div class="app-title">藥護家</div>
-                    <div class="login-subtitle">正在建立此手機的藥護家編號</div>
+                    <div class="login-subtitle">建立此手機的藥護家編號</div>
                 </div>
                 <div id="login-form">
                     <div style="text-align:center;padding:12px 0 18px;">
@@ -1570,6 +1846,12 @@
                 <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="document.getElementById('restore-input').click()">📥 還原備份</button>
                 <input type="file" id="restore-input" accept=".db" style="display:none;" onchange="restoreBackup(event)">
 
+                <div class="card" style="margin-top:12px;border-left:4px solid var(--orange);">
+                    <div style="font-size:16px;font-weight:700;margin-bottom:4px;">📝 問題回報</div>
+                    <div style="font-size:13px;color:var(--text-light);line-height:1.5;margin-bottom:10px;">回報錯誤、操作問題或功能建議，系統會附上最近操作紀錄協助排查。</div>
+                    <button class="btn btn-outline" style="width:100%;font-size:15px;padding:11px 12px;" onclick="showIssueReport()">📝 回報問題</button>
+                </div>
+
                 <!-- 裝置資料管理 -->
                 <div class="card" style="margin-top:12px;">
                     <div style="font-size:16px;font-weight:700;margin-bottom:6px;">📱 裝置編號</div>
@@ -1726,7 +2008,7 @@
             '藥袋照片協助帶入資料，使用前再確認。': { 'zh-TW':'藥袋照片協助帶入資料，使用前再確認。','en':'Medicine-bag photos help fill details. Review before use.','id':'Foto obat membantu mengisi data. Periksa sebelum dipakai.','th':'รูปถุงยาช่วยกรอกข้อมูล โปรดตรวจสอบก่อนใช้','vi':'Ảnh túi thuốc giúp điền dữ liệu. Hãy kiểm tra trước khi dùng.','fil':'Medicine-bag photos help fill details. Review before use.' },
             '家人照護': { 'zh-TW':'家人照護','en':'Family Care','id':'Perawatan Keluarga','th':'ดูแลครอบครัว','vi':'Chăm sóc gia đình','fil':'Family Care' },
             '邀請碼加入，追蹤未打卡與健康狀態。': { 'zh-TW':'邀請碼加入，追蹤未打卡與健康狀態。','en':'Join by invite code to track missed check-ins and health.','id':'Gabung dengan kode undangan untuk memantau obat dan kesehatan.','th':'เข้าร่วมด้วยรหัสเชิญ เพื่อติดตามการบันทึกและสุขภาพ','vi':'Tham gia bằng mã mời để theo dõi lần quên uống và sức khỏe.','fil':'Join by invite code to track missed check-ins and health.' },
-            '正在建立此手機的藥護家編號': { 'zh-TW':'正在建立此手機的藥護家編號','en':'Creating this phone’s MedCare Home ID','id':'Membuat ID MedCare Home untuk ponsel ini','th':'กำลังสร้างรหัส MedCare Home สำหรับโทรศัพท์นี้','vi':'Đang tạo mã MedCare Home cho điện thoại này','fil':'Creating this phone’s MedCare Home ID' },
+            '建立此手機的藥護家編號': { 'zh-TW':'建立此手機的藥護家編號','en':'Create this phone’s MedCare Home ID','id':'Buat ID MedCare Home untuk ponsel ini','th':'สร้างรหัส MedCare Home สำหรับโทรศัพท์นี้','vi':'Tạo mã MedCare Home cho điện thoại này','fil':'Create this phone’s MedCare Home ID' },
             '正在讀取裝置識別碼...': { 'zh-TW':'正在讀取裝置識別碼...','en':'Reading device ID...','id':'Membaca ID perangkat...','th':'กำลังอ่านรหัสอุปกรณ์...','vi':'Đang đọc mã thiết bị...','fil':'Reading device ID...' },
             '系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。': { 'zh-TW':'系統不會讀取手機真正序號，會使用 App 裝置識別碼建立專屬帳號。','en':'The app does not read the real phone serial number. It uses an app device ID instead.','id':'App tidak membaca nomor seri asli ponsel. App memakai ID perangkat aplikasi.','th':'แอปไม่อ่านเลขเครื่องจริง ใช้รหัสอุปกรณ์ของแอปแทน','vi':'Ứng dụng không đọc số sê-ri thật của điện thoại, mà dùng mã thiết bị của ứng dụng.','fil':'The app does not read the real phone serial number. It uses an app device ID instead.' },
             '用戶名稱': { 'zh-TW':'用戶名稱','en':'User Name','id':'Nama Pengguna','th':'ชื่อผู้ใช้','vi':'Tên người dùng','fil':'User Name' },
@@ -1786,6 +2068,17 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        function jsArg(value) {
+            return escapeHTML(JSON.stringify(value));
+        }
+
+        function safeImageSrc(value) {
+            const raw = String(value || '').trim();
+            return /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(raw)
+                ? raw.replace(/\s/g, '')
+                : '';
         }
 
         function translateStaticDOM() {
@@ -1926,10 +2219,17 @@
         const AI_SCAN_DAILY_FREE_LIMIT = 1;
         const AI_SCAN_DAILY_REWARD_LIMIT = 3;
         const AI_SCAN_REWARDED_AD_ID = 1;
+        const PRO_ENTITLEMENT_ID = 'pro';
+        const PRO_MONTHLY_PRODUCT_ID = 'yaojidecare_pro_monthly';
+        const PRO_YEARLY_PRODUCT_ID = 'yaojidecare_pro_yearly';
         const IOS_REWARDED_AD_UNIT_ID = 'ca-app-pub-7217388641578552/4592269129';
         const ANDROID_REWARDED_AD_UNIT_ID = 'ca-app-pub-7217388641578552/1966105785';
         const IOS_TEST_REWARDED_AD_UNIT_ID = 'ca-app-pub-3940256099942544/1712485313';
         const ANDROID_TEST_REWARDED_AD_UNIT_ID = 'ca-app-pub-3940256099942544/5224354917';
+        let subscriptionStatus = null;
+        let revenueCatConfigured = false;
+        let revenueCatConfigurePromise = null;
+        let revenueCatPackages = {};
         let aiScanRewardedAdCreated = false;
         let aiScanRewardedAdLoading = null;
         let aiScanRewardedListenerReady = false;
@@ -1980,6 +2280,7 @@
 
         function consumeAiScanQuota() {
             if (!isNative) return true;
+            if (subscriptionStatus?.active) return true;
             const state = getAiScanQuota();
             if (state.freeUsed < AI_SCAN_DAILY_FREE_LIMIT) {
                 state.freeUsed += 1;
@@ -2110,6 +2411,15 @@
 
         async function requestAiScanAccess() {
             if (!isNative) return true;
+            if (!subscriptionStatus && authToken) {
+                try {
+                    const { data } = await api('/api/subscription/status');
+                    subscriptionStatus = data;
+                } catch (e) {
+                    console.log('Subscription status skipped:', e.message);
+                }
+            }
+            if (subscriptionStatus?.active) return true;
             const summary = getAiScanQuotaSummary();
             if (summary.freeRemaining > 0 || summary.rewardCredits > 0) return true;
             showAiScanLimitModal();
@@ -2239,6 +2549,12 @@
                 clearToken();
                 localStorage.removeItem(DEVICE_ID_KEY);
             }
+            if (!displayName && !localStorage.getItem(DEVICE_ID_KEY)) {
+                clearToken();
+                setDeviceStatus(t('第一次使用請輸入用戶名稱'));
+                toggleDeviceNameForm(true);
+                return;
+            }
             toggleDeviceNameForm(false);
             setDeviceStatus(t('正在建立裝置帳號...'));
             const deviceId = await getDeviceIdentifier();
@@ -2280,6 +2596,7 @@
         // API 請求輔助
         async function api(url, options = {}) {
             const token = getToken();
+            const method = (options.method || 'GET').toUpperCase();
             const headers = {
                 'Content-Type': 'application/json',
                 ...(token && { 'Authorization': `Bearer ${token}` }),
@@ -2296,6 +2613,15 @@
                     data = { error: '伺服器回應格式錯誤' };
                 }
 
+                if (response.status >= 400) {
+                    trackActivity('api_error', `${method} ${url}`, {
+                        status: response.status,
+                        error: data.error || data.message || ''
+                    });
+                } else if (method !== 'GET') {
+                    trackActivity('api_success', `${method} ${url}`, { status: response.status });
+                }
+
                 if ((response.status === 401 || response.status === 403) && url !== '/api/device-login') {
                     clearToken();
                     showLogin();
@@ -2304,6 +2630,7 @@
                 return { status: response.status, data };
             } catch (fetchErr) {
                 console.error('API request error:', fetchErr);
+                trackActivity('network_error', `${method} ${url}`, { error: fetchErr.message });
                 return { status: 0, data: { error: '網路連線失敗：' + fetchErr.message } };
             }
         }
@@ -2318,8 +2645,81 @@
             setTimeout(() => toast.remove(), 2000);
         }
 
+        const ACTIVITY_TRAIL_LIMIT = 30;
+        const activityTrail = [];
+
+        function compactActivityValue(value) {
+            return String(value || '')
+                .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+                .replace(/token=[^&\s]+/gi, 'token=[redacted]')
+                .slice(0, 160);
+        }
+
+        function trackActivity(type, label, details = {}) {
+            try {
+                const entry = {
+                    time: new Date().toISOString(),
+                    type: compactActivityValue(type),
+                    label: compactActivityValue(label),
+                    page: getCurrentPageName(),
+                    modal: getActiveModalName(),
+                    details: {}
+                };
+                Object.keys(details || {}).forEach(key => {
+                    if (/password|token|secret|authorization/i.test(key)) return;
+                    entry.details[key] = compactActivityValue(details[key]);
+                });
+                activityTrail.push(entry);
+                if (activityTrail.length > ACTIVITY_TRAIL_LIMIT) activityTrail.splice(0, activityTrail.length - ACTIVITY_TRAIL_LIMIT);
+            } catch (e) {
+                console.log('activity trail skipped');
+            }
+        }
+
+        function getCurrentPageName() {
+            const active = document.querySelector('#main-app .page.active');
+            const labels = {
+                'home-page': '首頁',
+                'medications-page': '用藥',
+                'health-page': '健康',
+                'family-page': '家人',
+                'settings-page': '設定'
+            };
+            return active ? (labels[active.id] || active.id) : (document.getElementById('login-page')?.classList.contains('active') ? '登入' : '未知');
+        }
+
+        function getActiveModalName() {
+            const modal = document.querySelector('#modal-container .modal-overlay');
+            if (!modal) return '';
+            const title = modal.querySelector('h2,h3')?.textContent || modal.id || '彈窗';
+            return compactActivityValue(title);
+        }
+
+        function getActivityTrail() {
+            return activityTrail.slice(-ACTIVITY_TRAIL_LIMIT);
+        }
+
+        window.addEventListener('error', event => {
+            trackActivity('js_error', event.message || '前端錯誤', {
+                source: event.filename || '',
+                line: event.lineno || ''
+            });
+        });
+
+        window.addEventListener('unhandledrejection', event => {
+            trackActivity('promise_error', event.reason?.message || event.reason || 'Promise 錯誤');
+        });
+
+        document.addEventListener('click', event => {
+            const target = event.target.closest('button,a,.nav-item');
+            if (!target) return;
+            const label = target.getAttribute('aria-label') || target.title || target.textContent || target.id || target.tagName;
+            trackActivity('click', label, { id: target.id || '', tag: target.tagName.toLowerCase() });
+        }, true);
+
         // 頁面切換
         function switchPage(pageName) {
+            trackActivity('navigate', pageName);
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
@@ -2405,6 +2805,7 @@
         function showMainApp() {
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
+            window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
             document.body.classList.remove('desktop-mode');
             document.getElementById('header-username').textContent = getDisplayUserName(currentUser);
             // 管理員顯示後台連結
@@ -2483,6 +2884,7 @@
             });
 
             container.innerHTML = Object.values(grouped).map(med => {
+                const imageSrc = safeImageSrc(med.medication_image);
                 const timeButtons = med.times.map(t => {
                     let btnClass = 'take-btn';
                     if (t.taken) btnClass += ' taken';
@@ -2498,7 +2900,7 @@
                 return `
                     <div class="card">
                         <div style="display:flex;gap:12px;align-items:flex-start;">
-                            ${med.medication_image ? `<img src="${med.medication_image}" class="med-photo" onerror="this.outerHTML='<div class=&quot;med-photo placeholder&quot;>💊</div>'">` : '<div class="med-photo placeholder">💊</div>'}
+                            ${imageSrc ? `<img src="${imageSrc}" class="med-photo" onerror="this.outerHTML='<div class=&quot;med-photo placeholder&quot;>💊</div>'">` : '<div class="med-photo placeholder">💊</div>'}
                             <div style="min-width:0;flex:1;">
                                 <div class="drug-name">${escapeHTML(med.drug_name)}</div>
                                 <div class="drug-dosage">劑量:${escapeHTML(med.dosage)}</div>
@@ -2566,6 +2968,7 @@
             }
 
             container.innerHTML = data.medications.map(med => {
+                const imageSrc = safeImageSrc(med.medication_image);
                 const remindTimes = JSON.parse(med.remind_time);
                 const timeTags = remindTimes.map(t => {
                     const today = new Date().toISOString().split('T')[0];
@@ -2578,7 +2981,7 @@
                 return `
                     <div class="card">
                         <div style="display:flex;gap:12px;align-items:flex-start;">
-                            ${med.medication_image ? `<img src="${med.medication_image}" class="med-photo" onerror="this.outerHTML='<div class=&quot;med-photo placeholder&quot;>💊</div>'">` : '<div class="med-photo placeholder">💊</div>'}
+                            ${imageSrc ? `<img src="${imageSrc}" class="med-photo" onerror="this.outerHTML='<div class=&quot;med-photo placeholder&quot;>💊</div>'">` : '<div class="med-photo placeholder">💊</div>'}
                             <div style="min-width:0;flex:1;">
                                 <div class="drug-name">💊 ${escapeHTML(med.drug_name)}
                                     ${med.days_left !== null && med.days_left !== undefined ? `<span style="font-size:12px;background:${med.days_left <= 3 ? '#fde8e8' : '#e8f5e9'};color:${med.days_left <= 3 ? 'var(--red)' : 'var(--green)'};padding:2px 8px;border-radius:10px;margin-left:8px;">${t('剩')}${med.days_left}${t('天')}</span>` : ''}
@@ -2591,9 +2994,20 @@
                         <div style="margin-top:8px;">${timeTags}</div>
                         <div style="margin-top:12px;display:flex;gap:8px;">
                             <button class="btn btn-outline" style="width:auto;font-size:15px;padding:8px 16px;"
-                                onclick="editMedication(${med.id}, '${med.drug_name}', '${med.dosage}', '${med.usage_notes || ''}', '${med.remind_time.replace(/'/g, "\'")}')">${t('編輯')}</button>
+                                onclick="editMedication(${jsArg({
+                                    id: med.id,
+                                    drug_name: med.drug_name || '',
+                                    dosage: med.dosage || '',
+                                    usage_notes: med.usage_notes || '',
+                                    remind_time: med.remind_time || '[]',
+                                    duration_days: med.duration_days || '',
+                                    total_quantity: med.total_quantity ?? '',
+                                    remaining: med.remaining ?? '',
+                                    daily_amount: med.daily_amount ?? 1,
+                                    refill_threshold: med.refill_threshold ?? 7
+                                })})">${t('編輯')}</button>
                             <button class="btn btn-danger" style="width:auto;font-size:15px;padding:8px 16px;"
-                                onclick="deleteMedication(${med.id}, '${med.drug_name}')">${t('刪除')}</button>
+                                onclick="deleteMedication(${Number(med.id)}, ${jsArg(med.drug_name || '')})">${t('刪除')}</button>
                             <button class="btn btn-outline" style="width:auto;font-size:15px;padding:8px 16px;"
                                 onclick="showMedicationDiary(${med.id})">📝 日記</button>
                         </div>
@@ -2982,6 +3396,94 @@
             }
         }
 
+        function editMedication(med) {
+            let remindTimes = [];
+            try {
+                remindTimes = Array.isArray(med.remind_time) ? med.remind_time : JSON.parse(med.remind_time || '[]');
+            } catch (e) {
+                remindTimes = [];
+            }
+            const options = ['06:00','07:00','08:00','09:00','12:00','13:00','18:00','19:00','20:00','21:00','22:00'];
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.id = 'edit-med-modal';
+            modal.innerHTML = `
+                <div class="modal">
+                    <h2>${t('編輯')}</h2>
+                    <div class="form-group">
+                        <label>${t('藥名')}</label>
+                        <input type="text" id="edit-drug-name" class="form-input" value="${escapeHTML(med.drug_name)}">
+                    </div>
+                    <div class="form-group">
+                        <label>${t('劑量')}</label>
+                        <input type="text" id="edit-dosage" class="form-input" value="${escapeHTML(med.dosage)}">
+                    </div>
+                    <div class="form-group">
+                        <label>${t('服用須知')}</label>
+                        <input type="text" id="edit-notes" class="form-input" value="${escapeHTML(med.usage_notes)}">
+                    </div>
+                    <div class="form-group">
+                        <label>${t('用藥天數(選填,到期自動刪除)')}</label>
+                        <input type="number" id="edit-duration" class="form-input" value="${escapeHTML(med.duration_days)}" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>庫存提醒（選填）</label>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <input type="number" id="edit-total-quantity" class="form-input" placeholder="總顆數" value="${escapeHTML(med.total_quantity)}" min="0">
+                            <input type="number" id="edit-remaining" class="form-input" placeholder="剩餘顆數" value="${escapeHTML(med.remaining)}" min="0">
+                            <input type="number" id="edit-daily-amount" class="form-input" placeholder="每日用量" value="${escapeHTML(med.daily_amount || 1)}" min="0.1" step="0.5">
+                            <input type="number" id="edit-refill-threshold" class="form-input" placeholder="幾天前提醒" value="${escapeHTML(med.refill_threshold || 7)}" min="1">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>${t('提醒時間(可多選)')}</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;" id="edit-time-selector">
+                            ${options.map(time => `
+                                <label style="display:flex;align-items:center;gap:4px;font-size:15px;">
+                                    <input type="checkbox" value="${time}" ${remindTimes.includes(time) ? 'checked' : ''}> ${time}
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:16px;">
+                        <button onclick="submitEditMedication(${Number(med.id)})" class="btn btn-primary">${t('確認修改')}</button>
+                        <button onclick="document.getElementById('edit-med-modal')?.remove()" class="btn btn-outline">${t('取消')}</button>
+                    </div>
+                </div>`;
+            document.getElementById('modal-container').appendChild(modal);
+        }
+
+        async function submitEditMedication(id) {
+            const drug_name = document.getElementById('edit-drug-name').value.trim();
+            const dosage = document.getElementById('edit-dosage').value.trim();
+            const usage_notes = document.getElementById('edit-notes').value.trim();
+            const duration_days = parseInt(document.getElementById('edit-duration').value) || null;
+            const total_quantity = parseInt(document.getElementById('edit-total-quantity')?.value) || null;
+            const remaining = document.getElementById('edit-remaining')?.value ? parseInt(document.getElementById('edit-remaining').value) : total_quantity;
+            const daily_amount = parseFloat(document.getElementById('edit-daily-amount')?.value) || 1;
+            const refill_threshold = parseInt(document.getElementById('edit-refill-threshold')?.value) || 7;
+            const remind_time = Array.from(document.querySelectorAll('#edit-time-selector input:checked')).map(i => i.value);
+
+            if (!drug_name || !dosage || remind_time.length === 0) {
+                showToast(t('請填寫必填欄位'));
+                return;
+            }
+
+            const { status, data } = await api(`/api/medications/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ drug_name, dosage, usage_notes, remind_time, duration_days, total_quantity, remaining, daily_amount, refill_threshold })
+            });
+
+            if (status === 200) {
+                document.getElementById('edit-med-modal')?.remove();
+                showToast(data.message || t('設定已更新'));
+                loadMedicationsPage();
+                loadHomePage();
+            } else {
+                showToast(data.error || t('更新失敗'));
+            }
+        }
+
         async function deleteMedication(id, name) {
             if (!confirm(`${t('確定要刪除')}「${name}」${t('的用藥記錄嗎?')}`)) return;
 
@@ -3287,7 +3789,8 @@
 
         // 初始化
         initNativeNotifications();
-        loadSettings();
+        if (getToken()) loadSettings();
+        else syncDarkCheckbox();
 
         // ========== 健康數據趨勢圖 ==========
         async function renderTrendChart(type) {
@@ -3395,6 +3898,81 @@
                 osc.start(start);
                 osc.stop(start + 0.18);
             });
+        }
+
+        function showIssueReport() {
+            document.getElementById('modal-container').innerHTML = `
+                <div class="modal-overlay" id="issue-modal">
+                    <div class="modal">
+                        <h3>📝 問題回報</h3>
+                        <p style="font-size:14px;color:var(--text-light);margin-bottom:12px;">請描述遇到的問題、操作步驟或想建議的功能。</p>
+                        <div class="form-group">
+                            <label>問題類型</label>
+                            <select id="issue-category" class="form-input">
+                                <option value="操作問題">操作問題</option>
+                                <option value="功能錯誤">功能錯誤</option>
+                                <option value="提醒/通知">提醒/通知</option>
+                                <option value="AI 辨識">AI 辨識</option>
+                                <option value="家人照護">家人照護</option>
+                                <option value="功能建議">功能建議</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>問題內容</label>
+                            <textarea id="issue-message" class="form-input" rows="6" maxlength="2000" placeholder="例如：我在新增用藥後，首頁沒有看到提醒..."></textarea>
+                            <div style="font-size:12px;color:var(--text-light);margin-top:4px;">至少 10 個字，請不要填寫完整身分證、健保卡號或信用卡資料。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>聯絡方式（選填）</label>
+                            <input id="issue-contact" class="form-input" maxlength="120" placeholder="Email、電話或 LINE ID">
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:14px;">
+                            <button id="issue-submit-btn" onclick="submitIssueReport()" class="btn btn-primary" style="flex:1;">送出回報</button>
+                            <button onclick="document.getElementById('issue-modal').remove()" class="btn btn-outline" style="flex:1;">取消</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.getElementById('issue-modal')?.addEventListener('click', e => { if (e.target.id === 'issue-modal') e.target.remove(); });
+            setTimeout(() => document.getElementById('issue-message')?.focus(), 50);
+        }
+
+        async function submitIssueReport() {
+            const category = document.getElementById('issue-category')?.value || '使用問題';
+            const message = (document.getElementById('issue-message')?.value || '').trim();
+            const contact = (document.getElementById('issue-contact')?.value || '').trim();
+            if (message.length < 10) return showToast('請至少輸入 10 個字的問題內容');
+
+            const btn = document.getElementById('issue-submit-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '送出中...';
+            }
+
+            const { status, data } = await api('/api/support/report', {
+                method: 'POST',
+                body: JSON.stringify({
+                    category,
+                    message,
+                    contact,
+                    page_url: location.href,
+                    user_agent: navigator.userAgent,
+                    current_page: getCurrentPageName(),
+                    active_modal: getActiveModalName(),
+                    activity_trail: getActivityTrail()
+                })
+            });
+
+            if (status === 200) {
+                document.getElementById('issue-modal')?.remove();
+                showToast(data.message || '問題回報已送出');
+            } else {
+                showToast(data.error || '問題回報送出失敗');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '送出回報';
+                }
+            }
         }
 
         // ========== 修改密碼 ==========
@@ -4269,18 +4847,137 @@
             updateNotificationBadge();
         }
 
+        function getPurchasesPlugin() {
+            return window.Capacitor?.Plugins?.Purchases || null;
+        }
+
+        function currentRevenueCatApiKey(status) {
+            const platform = window.Capacitor?.getPlatform?.() || '';
+            const rc = status?.revenueCat || {};
+            if (platform === 'ios') return rc.iosApiKey || '';
+            if (platform === 'android') return rc.androidApiKey || '';
+            return '';
+        }
+
+        function hasProEntitlement(customerInfo) {
+            return Boolean(customerInfo?.entitlements?.active?.[PRO_ENTITLEMENT_ID]);
+        }
+
+        async function syncRevenueCatCustomerInfo(customerInfo) {
+            if (!customerInfo) return null;
+            const { data } = await api('/api/subscription/revenuecat-sync', {
+                method: 'POST',
+                body: JSON.stringify({ customerInfo })
+            });
+            subscriptionStatus = { ...(subscriptionStatus || {}), ...data };
+            return data;
+        }
+
+        async function configureRevenueCat(status) {
+            if (!isNative) throw new Error('商店訂閱需在手機 App 內測試');
+            const Purchases = getPurchasesPlugin();
+            if (!Purchases) throw new Error('訂閱模組尚未載入，請重新打包 App');
+            if (revenueCatConfigured) return Purchases;
+            if (revenueCatConfigurePromise) return revenueCatConfigurePromise;
+
+            const apiKey = currentRevenueCatApiKey(status || subscriptionStatus);
+            if (!apiKey) throw new Error('尚未設定 RevenueCat iOS/Android API key');
+
+            revenueCatConfigurePromise = (async () => {
+                await Purchases.setLogLevel?.({ level: 'INFO' }).catch(() => {});
+                await Purchases.configure({
+                    apiKey,
+                    appUserID: currentUser?.account_code || String(currentUser?.id || '')
+                });
+                revenueCatConfigured = true;
+                return Purchases;
+            })();
+            return revenueCatConfigurePromise;
+        }
+
+        function packageLabel(pkg, fallback) {
+            const product = pkg?.product || pkg?.storeProduct || {};
+            const price = product.priceString || product.localizedPriceString || fallback;
+            return price || fallback;
+        }
+
+        async function loadRevenueCatPackages(status) {
+            const Purchases = await configureRevenueCat(status);
+            const offerings = await Purchases.getOfferings();
+            const current = offerings?.current || null;
+            revenueCatPackages = {
+                monthly: current?.monthly || (current?.availablePackages || []).find(pkg => pkg?.product?.identifier === PRO_MONTHLY_PRODUCT_ID),
+                yearly: current?.annual || (current?.availablePackages || []).find(pkg => pkg?.product?.identifier === PRO_YEARLY_PRODUCT_ID)
+            };
+            return revenueCatPackages;
+        }
+
+        async function purchasePro(period) {
+            try {
+                const status = subscriptionStatus || (await api('/api/subscription/status')).data;
+                subscriptionStatus = status;
+                const packages = Object.keys(revenueCatPackages).length ? revenueCatPackages : await loadRevenueCatPackages(status);
+                const selected = period === 'yearly' ? packages.yearly : packages.monthly;
+                if (!selected) throw new Error('RevenueCat 尚未回傳此訂閱方案');
+
+                showToast('開啟商店付款中...');
+                const result = await getPurchasesPlugin().purchasePackage({ aPackage: selected });
+                await syncRevenueCatCustomerInfo(result?.customerInfo);
+                showToast(hasProEntitlement(result?.customerInfo) ? '藥護家 Pro 已啟用' : '購買完成，訂閱狀態同步中');
+                showSubscriptionInfo();
+            } catch (e) {
+                if (e?.userCancelled || e?.code === 'PURCHASE_CANCELLED') {
+                    showToast('已取消購買');
+                } else {
+                    showToast(e?.message || '訂閱暫時無法使用');
+                }
+            }
+        }
+
+        async function restoreProPurchases() {
+            try {
+                const status = subscriptionStatus || (await api('/api/subscription/status')).data;
+                subscriptionStatus = status;
+                const Purchases = await configureRevenueCat(status);
+                const result = await Purchases.restorePurchases();
+                await syncRevenueCatCustomerInfo(result?.customerInfo);
+                showToast(hasProEntitlement(result?.customerInfo) ? '已恢復藥護家 Pro' : '沒有找到有效訂閱');
+                showSubscriptionInfo();
+            } catch (e) {
+                showToast(e?.message || '恢復購買失敗');
+            }
+        }
+
         // ========== 進階版功能展示 ==========
         function showSubscriptionInfo() {
             api('/api/subscription/status').then(({ data }) => {
+                subscriptionStatus = data;
+                const monthlyPrice = packageLabel(revenueCatPackages.monthly, data.products?.monthly?.price || 'NT$75/月');
+                const yearlyPrice = packageLabel(revenueCatPackages.yearly, data.products?.yearly?.price || 'NT$750/年');
+                const payButtons = data.active
+                    ? '<button onclick="restoreProPurchases()" class="btn btn-outline" style="width:100%;margin-top:10px;">恢復購買 / 重新同步</button>'
+                    : '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">' +
+                        '<button onclick="purchasePro(&quot;monthly&quot;)" class="btn btn-primary">月訂閱<br><span style="font-size:12px;font-weight:600;">' + escapeHTML(monthlyPrice) + '</span></button>' +
+                        '<button onclick="purchasePro(&quot;yearly&quot;)" class="btn btn-primary">年訂閱<br><span style="font-size:12px;font-weight:600;">' + escapeHTML(yearlyPrice) + '</span></button>' +
+                    '</div><button onclick="restoreProPurchases()" class="btn btn-outline" style="width:100%;margin-top:8px;">恢復購買</button>';
+                const setupNotice = data.revenueCat?.configured
+                    ? '商店內訂閱已準備連線。付款會由 Apple App Store 或 Google Play 處理。'
+                    : '訂閱商品已定案，等待填入 RevenueCat API key 後即可真機測試付款。';
                 document.getElementById('modal-container').innerHTML =
-                    '<div class="modal-overlay" id="sub-modal"><div class="modal"><h3>⭐ 進階版功能</h3>' +
+                    '<div class="modal-overlay" id="sub-modal"><div class="modal"><h3>藥護家 Pro</h3>' +
                     '<div class="tier-grid">' +
                     '<div class="tier-card"><b>免費版</b>' + (data.tiers?.free || []).map(f => '<div>✅ ' + escapeHTML(f) + '</div>').join('') + '</div>' +
-                    '<div class="tier-card" style="border-color:rgba(39,174,96,0.35);background:#f0fff5;"><b>進階版</b>' + (data.tiers?.premium || []).map(f => '<div>⭐ ' + escapeHTML(f) + '</div>').join('') + '</div>' +
+                    '<div class="tier-card" style="border-color:rgba(39,174,96,0.35);background:#f0fff5;"><b>Pro</b>' + (data.tiers?.premium || []).map(f => '<div>⭐ ' + escapeHTML(f) + '</div>').join('') + '</div>' +
                     '</div>' +
-                    '<div style="font-size:13px;color:var(--text-light);background:#f8f9fa;padding:10px;border-radius:8px;margin-top:12px;">目前方案：' + escapeHTML(data.plan || 'preview') + '。MVP 先開放預覽，之後可接 Apple/Google 訂閱或網站付款。</div>' +
+                    '<div style="font-size:13px;color:var(--text-light);background:#f8f9fa;padding:10px;border-radius:8px;margin-top:12px;line-height:1.6;">目前方案：' + (data.active ? '藥護家 Pro' : '免費版') + '<br>' + setupNotice + '</div>' +
+                    payButtons +
                     '<button onclick="document.getElementById(\'sub-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:12px;">關閉</button></div></div>';
                 document.getElementById('sub-modal')?.addEventListener('click', e => { if (e.target.id === 'sub-modal') e.target.remove(); });
+                if (isNative && data.revenueCat?.configured && !Object.keys(revenueCatPackages).length) {
+                    loadRevenueCatPackages(data).then(() => {
+                        if (document.getElementById('sub-modal')) showSubscriptionInfo();
+                    }).catch(e => console.log('RevenueCat offerings skipped:', e.message));
+                }
             });
         }
 
@@ -4298,114 +4995,84 @@
         }
 
         function showHelpDocs() {
+            const phoneVisual = (icon, variant = '') =>
+                '<div class="help-visual"><div class="help-phone">' +
+                '<div class="help-phone-bar"></div><div class="help-phone-screen">' +
+                '<div class="help-phone-icon">' + icon + '</div>' +
+                '<div class="help-phone-line primary"></div><div class="help-phone-card"></div>' +
+                '<div class="help-phone-line ' + variant + '"></div><div class="help-phone-line"></div>' +
+                '</div></div></div>';
             const sections = [
-                {
-                    id: 'start',
-                    title: '1. 快速開始',
-                    items: [
-                        '第一次使用請先新增第一顆藥，輸入藥名、劑量、提醒時間與剩餘庫存。',
-                        '如果有藥袋照片，可以在新增用藥時上傳，之後今日用藥卡會一起顯示。',
-                        '設定完成後回到首頁，在今日用藥卡按下已吃藥即可。'
-                    ]
-                },
-                {
-                    id: 'home',
-                    title: '2. 首頁與今日用藥',
-                    items: [
-                        '今日用藥卡會顯示用藥時間、藥名與劑量。',
-                        '今日用藥卡可以逐項打卡，打卡後會寫入紀錄並自動扣庫存。',
-                        '庫存低於門檻時會顯示補藥提醒，避免藥快吃完才發現。'
-                    ]
-                },
-                {
-                    id: 'scan',
-                    title: '3. AI 藥袋辨識與照片',
-                    items: [
-                        '藥袋辨識可協助帶入藥名與摘要，但 AI 可能誤判，請以藥袋、處方箋與藥師說明為準。',
-                        '建議拍攝清楚、完整、不反光的藥袋照片，提高辨識品質。',
-                        '藥物照片會出現在今日用藥與藥物列表，方便長輩用圖像確認。'
-                    ]
-                },
-                {
-                    id: 'family',
-                    title: '4. 家人照護',
-                    items: [
-                        '可從家人頁產生邀請碼或邀請連結，家人登入後可點連結或手動輸入邀請碼加入照護。',
-                        '家人關係建立後，雙方可查看授權的用藥狀態、健康資料摘要與未打卡狀態。',
-                        '家人頁的移除按鈕可解除家人關係，解除後雙方不再互相查看照護資料。',
-                        '家人留言功能已停用，目前不提供家人私訊或留言。',
-                        '家人通知延遲可在設定頁調整，例如超過 30、60 或 120 分鐘未打卡再提醒。'
-                    ]
-                },
-                {
-                    id: 'notice',
-                    title: '5. 通知中心',
-                    items: [
-                        '通知中心集中顯示漏吃、補藥、家人加入、健康與 AI 風險提醒。',
-                        '每則通知可標記為已處理、已讀，或設定 1 小時後再提醒。',
-                        '手機通知需要瀏覽器授權；若收不到通知，請到手機瀏覽器或系統設定開啟權限。'
-                    ]
-                },
-                {
-                    id: 'health',
-                    title: '6. 健康紀錄與報告',
-                    items: [
-                        '健康頁可記錄血壓、血糖、體重、心情與症狀，方便回診時回顧。',
-                        '就診報告會整理近期用藥、打卡紀錄、健康趨勢與風險提醒。',
-                        '資料越完整，就診報告與家人摘要會越有參考價值。'
-                    ]
-                },
-                {
-                    id: 'settings',
-                    title: '7. 常用設定',
-                    items: [
-                        '大字模式適合閱讀不方便的長輩，簡化模式會把首頁縮成更少資訊與大按鈕。',
-                        '可調整提醒音、家人通知延遲、語言、深色模式與字體大小。',
-                        '桌面看板模式已移除，首頁會維持一般 App 操作介面。',
-                        '可從設定匯出個人資料 CSV，也可下載備份或還原備份。',
-                        '若不再使用，可在設定頁永久刪除此裝置帳號資料。'
-                    ]
-                },
-                {
-                    id: 'plans',
-                    title: '8. 免費版與進階版',
-                    items: [
-                        '免費版保留基本用藥提醒、健康紀錄與基本 AI 掃描。',
-                        '進階版規劃包含家人通知、AI 風險摘要、多照護對象與 PDF 報告。',
-                        '目前進階版為 MVP 預覽，之後可接 Apple、Google 或網站付款。'
-                    ]
-                },
-                {
-                    id: 'privacy',
-                    title: '9. 醫療與資料安全',
-                    items: [
-                        '藥護家是提醒與紀錄工具，不能取代醫師、藥師診斷或醫囑。',
-                        '若有胸痛、呼吸困難、嚴重過敏、意識異常或急性不適，請立即聯絡當地緊急醫療服務。',
-                        'AI 藥袋辨識只作輔助，儲存前請以藥袋、處方箋與藥師說明為準。',
-                        '用藥、健康與家人照護資料保存在帳號資料庫中，可從設定匯出個人資料或刪除帳號。'
-                    ]
-                },
-                {
-                    id: 'faq',
-                    title: '10. 常見問題',
-                    items: [
-                        '看不到新版畫面時，請關掉瀏覽器分頁重新開啟 yaojidecare.app，讓新版快取接手。',
-                        '如果提醒沒有響，請先確認手機通知權限、瀏覽器權限與提醒時間是否正確。',
-                        '如果藥袋辨識結果不完整，請手動修正藥名、劑量與提醒時間後再儲存。',
-                        '如果邀請碼無法使用，請確認是否已過期、已被使用，或請家人重新產生邀請碼。'
-                    ]
-                }
+                { id:'start', title:'1. 第一次打開手機版', visual:phoneVisual('👋'), items:[
+                    '開啟 yaojidecare.app 後，輸入使用者名稱建立這支手機的藥護家編號。',
+                    '建立完成會進到首頁，下方有首頁、用藥、健康、家人、設定五個入口。',
+                    '建議先完成第一顆藥，再邀請家人；這樣家人加入後才看得到提醒狀態。'
+                ], note:'手機版不需要註冊 Email；同一支手機會保留自己的裝置帳號。' },
+                { id:'home', title:'2. 看首頁與今日用藥', visual:phoneVisual('🏠'), items:[
+                    '首頁上方會整理下一次提醒、今日完成狀態與補藥提醒。',
+                    '看到今日用藥卡時，確認藥名、劑量與時間，吃完再按「已吃藥」。',
+                    '按下打卡後系統會留下紀錄，並自動扣掉庫存。'
+                ], note:'如果今天沒有看到藥，請先到「用藥」確認提醒時間是否有設定。' },
+                { id:'meds', title:'3. 新增用藥與藥袋照片', visual:phoneVisual('💊', 'orange'), items:[
+                    '點下方「用藥」進入清單，再按新增用藥。',
+                    '可手動輸入藥名、劑量、提醒時間與庫存；有藥袋照片時也可以上傳讓 AI 協助帶入。',
+                    '儲存前一定要重新看一次藥名、劑量、每日次數與提醒時間是否正確。'
+                ], note:'AI 只協助填資料，最終仍以藥袋、處方箋、醫師或藥師說明為準。' },
+                { id:'take', title:'4. 每天吃藥打卡', visual:phoneVisual('✅'), items:[
+                    '提醒時間到時，回首頁看今日用藥卡。',
+                    '實際吃完藥再按「已吃藥」，不要提前打卡。',
+                    '若漏吃或不確定是否已吃，先確認藥盒或詢問照護者，不要重複服用。'
+                ], note:'打卡紀錄會用在家人照護與就診報告，越確實越有幫助。' },
+                { id:'family', title:'5. 邀請家人一起照護', visual:phoneVisual('👨‍👩‍👧', 'orange'), items:[
+                    '點下方「家人」，按產生邀請碼或邀請連結。',
+                    '把邀請碼傳給家人，家人用自己的手機打開藥護家後輸入邀請碼加入。',
+                    '加入後，家人可以查看授權的用藥狀態、健康摘要與未打卡狀態。'
+                ], note:'可在家人頁移除關係；移除後雙方不再互相查看照護資料。' },
+                { id:'health', title:'6. 記錄血壓、血糖與症狀', visual:phoneVisual('❤️'), items:[
+                    '點下方「健康」，新增血壓、血糖、體重、心情或症狀。',
+                    '回診前可查看近期紀錄，快速整理給醫師或家人看。',
+                    '若數值異常或身體明顯不舒服，請優先聯絡醫療專業人員。'
+                ], note:'健康紀錄是回顧工具，不會取代醫療診斷。' },
+                { id:'settings', title:'7. 常用設定與問題回報', visual:phoneVisual('⚙️', 'orange'), items:[
+                    '點下方「設定」可開啟大字模式、簡化模式、深色模式與語言設定。',
+                    '收不到提醒時，先檢查手機通知權限、瀏覽器通知權限與提醒時間。',
+                    '遇到錯誤可在設定頁按「回報問題」，系統會附上最近操作紀錄協助排查。'
+                ], note:'問題回報不會記錄輸入欄內容，也會遮蔽 token、密碼等敏感資訊。' },
+                { id:'backup', title:'8. 匯出、備份與刪除資料', visual:phoneVisual('📦'), items:[
+                    '設定頁可以匯出個人資料 CSV，方便自己留存或回診整理。',
+                    '也可以下載備份檔，未來需要時再還原。',
+                    '若不再使用，可在設定頁永久刪除此裝置帳號資料。'
+                ], note:'刪除帳號是不可逆操作，按之前請先確認是否已備份重要資料。' },
+                { id:'privacy', title:'9. 醫療安全一定要知道', visual:phoneVisual('🛡️', 'orange'), items:[
+                    '藥護家是提醒與紀錄工具，不能取代醫師、藥師診斷或醫囑。',
+                    'AI 藥袋辨識與風險摘要可能出錯，使用前請自行確認。',
+                    '出現胸痛、呼吸困難、嚴重過敏、意識異常或急性不適，請立即求助當地緊急醫療服務。'
+                ], note:'任何用藥疑問，請以醫師、藥師或藥袋說明為準。' },
+                { id:'faq', title:'10. 常見狀況快速排除', visual:phoneVisual('❓'), items:[
+                    '看不到新版畫面：關掉瀏覽器分頁，再重新開啟 yaojidecare.app。',
+                    '提醒沒有響：檢查手機通知權限、瀏覽器權限、提醒時間與勿擾模式。',
+                    '邀請碼不能用：確認是否過期、是否已使用，或請家人重新產生邀請碼。'
+                ], note:'仍無法處理時，從設定頁送出問題回報最快。' }
             ];
             const nav = sections.map(s => '<button class="btn btn-outline btn-sm" onclick="document.getElementById(&quot;help-' + s.id + '&quot;).scrollIntoView({behavior:&quot;smooth&quot;,block:&quot;start&quot;})">' + s.title.replace(/^[0-9]+\\. /, '') + '</button>').join('');
             const body = sections.map(s =>
-                '<section class="help-section" id="help-' + s.id + '"><h4>' + s.title + '</h4><ul>' +
-                s.items.map(item => '<li>' + escapeHTML(item) + '</li>').join('') +
-                '</ul></section>'
+                '<section class="help-section" id="help-' + s.id + '"><div class="help-section-grid">' +
+                s.visual +
+                '<div><h4>' + s.title + '</h4><div class="help-step-list">' +
+                s.items.map((item, index) => '<div class="help-step"><div class="help-step-num">' + (index + 1) + '</div><div class="help-step-text">' + escapeHTML(item) + '</div></div>').join('') +
+                '</div><div class="help-callout">' + escapeHTML(s.note) + '</div></div></div></section>'
             ).join('');
             document.getElementById('modal-container').innerHTML =
                 '<div class="modal-overlay" id="help-modal"><div class="modal" style="max-width:720px;max-height:90vh;">' +
-                '<h3>📘 藥護家詳細說明文件</h3>' +
-                '<div style="font-size:13px;color:var(--text-light);margin-top:4px;">快速開始、每日使用、家人照護、通知、AI、資料安全與常見問題。</div>' +
+                '<h3>📱 藥護家手機版使用說明</h3>' +
+                '<div class="help-hero"><div><div class="help-hero-title">照著 4 步驟，就能開始提醒與家人照護</div>' +
+                '<div class="help-hero-copy">這份說明依手機操作順序整理：先建帳號，再新增用藥，接著每天打卡，最後邀請家人一起照護。</div></div>' +
+                '<div class="help-quick-path">' +
+                '<div class="help-path-step"><div class="help-path-icon">👋</div><div class="help-path-title">建立帳號</div><div class="help-path-copy">輸入名稱</div></div>' +
+                '<div class="help-path-step"><div class="help-path-icon">💊</div><div class="help-path-title">新增用藥</div><div class="help-path-copy">填時間劑量</div></div>' +
+                '<div class="help-path-step"><div class="help-path-icon">✅</div><div class="help-path-title">每天打卡</div><div class="help-path-copy">吃完再按</div></div>' +
+                '<div class="help-path-step"><div class="help-path-icon">👨‍👩‍👧</div><div class="help-path-title">邀請家人</div><div class="help-path-copy">一起照護</div></div>' +
+                '</div></div>' +
                 '<div class="help-doc-nav">' + nav + '</div>' +
                 '<div class="help-doc">' + body + '</div>' +
                 '<div style="display:flex;gap:8px;margin-top:12px;"><button onclick="showSafetyInfo()" class="btn btn-outline" style="flex:1;">醫療安全</button><button onclick="document.getElementById(\'help-modal\').remove()" class="btn btn-primary" style="flex:1;">關閉</button></div>' +

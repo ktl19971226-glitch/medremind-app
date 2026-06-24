@@ -23,6 +23,23 @@ CREATE TABLE IF NOT EXISTS users (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 商店內訂閱狀態
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL,
+    plan TEXT DEFAULT 'free',
+    entitlement TEXT,
+    product_identifier TEXT,
+    store TEXT,
+    is_pro INTEGER DEFAULT 0,
+    expires_at DATETIME,
+    source TEXT,
+    raw_customer_info TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 -- 用藥記錄表
 CREATE TABLE IF NOT EXISTS medications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

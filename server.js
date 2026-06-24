@@ -31,6 +31,11 @@ const SENDMAIL_PATH = process.env.SENDMAIL_PATH || '/usr/sbin/sendmail';
 const EMAIL_VERIFY_TTL_MINUTES = Number(process.env.EMAIL_VERIFY_TTL_MINUTES || 60 * 24);
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const API_RATE_LIMIT_PER_MIN = Number(process.env.API_RATE_LIMIT_PER_MIN || 240);
+const SUBSCRIPTION_ENTITLEMENT_ID = process.env.SUBSCRIPTION_ENTITLEMENT_ID || 'pro';
+const PRO_MONTHLY_PRODUCT_ID = process.env.PRO_MONTHLY_PRODUCT_ID || 'yaojidecare_pro_monthly';
+const PRO_YEARLY_PRODUCT_ID = process.env.PRO_YEARLY_PRODUCT_ID || 'yaojidecare_pro_yearly';
+const REVENUECAT_IOS_API_KEY = process.env.REVENUECAT_IOS_API_KEY || '';
+const REVENUECAT_ANDROID_API_KEY = process.env.REVENUECAT_ANDROID_API_KEY || '';
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8050,http://localhost:3000')
     .split(',')
     .map(origin => origin.trim())
@@ -68,6 +73,13 @@ function escapeHTML(value) {
         .replace(/'/g, '&#39;');
 }
 
+function compactReportValue(value, maxLength = 160) {
+    return String(value || '')
+        .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+        .replace(/token=[^&\s]+/gi, 'token=[redacted]')
+        .slice(0, maxLength);
+}
+
 function createRawToken() {
     return crypto.randomBytes(32).toString('hex');
 }
@@ -102,6 +114,47 @@ function inverseFamilyRelationship(relationship) {
     if (normalized === '父母') return '子女';
     if (normalized === '配偶') return '配偶';
     return '家人';
+}
+
+function normalizeReminderTimes(value) {
+    if (!Array.isArray(value)) return null;
+    const times = [...new Set(value.map(v => String(v || '').trim()))]
+        .filter(v => /^([01]\d|2[0-3]):[0-5]\d$/.test(v))
+        .sort();
+    return times.length ? times : null;
+}
+
+function parseOptionalInt(value, { min = null, max = null } = {}) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) return NaN;
+    if (min !== null && parsed < min) return NaN;
+    if (max !== null && parsed > max) return NaN;
+    return parsed;
+}
+
+function parseOptionalNumber(value, { min = null, max = null } = {}) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return NaN;
+    if (min !== null && parsed < min) return NaN;
+    if (max !== null && parsed > max) return NaN;
+    return parsed;
+}
+
+function isValidDateString(value) {
+    const raw = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+    const date = new Date(`${raw}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === raw;
+}
+
+function normalizeMedicationImage(value) {
+    if (!value) return null;
+    const raw = String(value).trim();
+    if (raw.length > 750000) return false;
+    if (!/^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(raw)) return false;
+    return raw.replace(/\s/g, '');
 }
 
 function expiresAt(minutes) {
@@ -323,6 +376,23 @@ async function init() {
         "ALTER TABLE users ADD COLUMN email_verification_expires_at DATETIME",
         "ALTER TABLE users ADD COLUMN password_reset_token_hash TEXT",
         "ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME",
+        `CREATE TABLE IF NOT EXISTS subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL,
+            plan TEXT DEFAULT 'free',
+            entitlement TEXT,
+            product_identifier TEXT,
+            store TEXT,
+            is_pro INTEGER DEFAULT 0,
+            expires_at DATETIME,
+            source TEXT,
+            raw_customer_info TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        "ALTER TABLE subscriptions ADD COLUMN store TEXT",
+        "ALTER TABLE subscriptions ADD COLUMN raw_customer_info TEXT",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)",
         "ALTER TABLE user_settings ADD COLUMN simple_mode INTEGER DEFAULT 0",
         "ALTER TABLE user_settings ADD COLUMN pin_code TEXT",
         "ALTER TABLE user_settings ADD COLUMN pin_enabled INTEGER DEFAULT 0",
@@ -370,6 +440,45 @@ async function init() {
         const total = logs.total || 0;
         const taken = logs.taken || 0;
         return { days, total, taken, missed: Math.max(0, total - taken), rate: total > 0 ? Math.round(taken / total * 100) : 100 };
+    }
+
+    function subscriptionCatalog() {
+        return {
+            entitlementId: SUBSCRIPTION_ENTITLEMENT_ID,
+            planName: '藥護家 Pro',
+            monthly: { productId: PRO_MONTHLY_PRODUCT_ID, price: 'NT$75/月' },
+            yearly: { productId: PRO_YEARLY_PRODUCT_ID, price: 'NT$750/年' },
+            features: ['無廣告', '更多 AI 藥袋辨識額度', '家人照護人數增加', '進階健康紀錄匯出與備份'],
+            revenueCat: {
+                iosApiKey: REVENUECAT_IOS_API_KEY,
+                androidApiKey: REVENUECAT_ANDROID_API_KEY,
+                configured: Boolean(REVENUECAT_IOS_API_KEY || REVENUECAT_ANDROID_API_KEY)
+            }
+        };
+    }
+
+    function isSubscriptionActive(row) {
+        if (!row || Number(row.is_pro || 0) !== 1) return false;
+        if (!row.expires_at) return true;
+        return new Date(row.expires_at).getTime() > Date.now();
+    }
+
+    function planFromProduct(productIdentifier) {
+        if (productIdentifier === PRO_YEARLY_PRODUCT_ID) return 'pro_yearly';
+        if (productIdentifier === PRO_MONTHLY_PRODUCT_ID) return 'pro_monthly';
+        return productIdentifier ? 'pro' : 'free';
+    }
+
+    function extractRevenueCatProStatus(customerInfo) {
+        const entitlement = customerInfo?.entitlements?.active?.[SUBSCRIPTION_ENTITLEMENT_ID] || null;
+        const productIdentifier = entitlement?.productIdentifier || entitlement?.product_identifier || '';
+        const expiresAt = entitlement?.expirationDate || entitlement?.expiration_date || null;
+        return {
+            isPro: Boolean(entitlement),
+            productIdentifier,
+            expiresAt,
+            store: entitlement?.store || customerInfo?.originalAppUserId || ''
+        };
     }
 
     async function sendVerificationEmail(user) {
@@ -662,15 +771,25 @@ async function init() {
     
     app.post('/api/medications', auth, (req, res) => {
         const { drug_name, dosage, usage_notes, remind_time, duration_days, total_quantity, remaining, daily_amount, refill_threshold, medication_image } = req.body;
-        if (!drug_name || !dosage || !remind_time || remind_time.length===0) return res.status(400).json({ error:'藥名、劑量和提醒時間為必填' });
-        const days = parseInt(duration_days) || null;
+        const cleanName = String(drug_name || '').trim().slice(0, 120);
+        const cleanDosage = String(dosage || '').trim().slice(0, 120);
+        const times = normalizeReminderTimes(remind_time);
+        if (!cleanName || !cleanDosage || !times) return res.status(400).json({ error:'藥名、劑量和有效提醒時間為必填' });
+        const days = parseOptionalInt(duration_days, { min: 1, max: 3650 });
+        const total = parseOptionalInt(total_quantity, { min: 0, max: 100000 });
+        const remain = remaining !== undefined && remaining !== null && remaining !== ''
+            ? parseOptionalInt(remaining, { min: 0, max: 100000 })
+            : total;
+        const daily = parseOptionalNumber(daily_amount, { min: 0.1, max: 1000 }) ?? 1;
+        const threshold = parseOptionalInt(refill_threshold, { min: 1, max: 3650 }) ?? 7;
+        if ([days, total, remain, daily, threshold].some(Number.isNaN)) return res.status(400).json({ error:'用藥天數、庫存與提醒門檻格式不正確' });
+        const image = normalizeMedicationImage(medication_image);
+        if (image === false) return res.status(400).json({ error:'藥品圖片格式不正確' });
         const endDate = days ? new Date(Date.now() + days * 86400000).toISOString().split('T')[0] : null;
-        const total = total_quantity ? parseInt(total_quantity) : null;
-        const remain = remaining !== undefined && remaining !== null && remaining !== '' ? parseInt(remaining) : total;
         dbRun('INSERT INTO medications (user_id,drug_name,dosage,usage_notes,remind_time,duration_days,end_date,total_quantity,remaining,daily_amount,refill_threshold,medication_image) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-            [req.user.id, drug_name, dosage, usage_notes||'', JSON.stringify(remind_time), days, endDate, total, remain, parseFloat(daily_amount) || 1, parseInt(refill_threshold) || 7, medication_image || null]);
+            [req.user.id, cleanName, cleanDosage, String(usage_notes || '').trim().slice(0, 500), JSON.stringify(times), days, endDate, total, remain, daily, threshold, image]);
         const newMed = dbGet('SELECT last_insert_rowid() AS id');
-        logMedicationChange(req.user.id, newMed?.id, drug_name, 'created', null, { drug_name, dosage, usage_notes, remind_time, duration_days: days, total_quantity: total, remaining: remain });
+        logMedicationChange(req.user.id, newMed?.id, cleanName, 'created', null, { drug_name: cleanName, dosage: cleanDosage, usage_notes, remind_time: times, duration_days: days, total_quantity: total, remaining: remain });
         saveDB();
         res.json({ message: '用藥已添加', end_date: endDate });
     });
@@ -679,11 +798,22 @@ async function init() {
         const { drug_name, dosage, usage_notes, remind_time, duration_days, total_quantity, remaining, daily_amount, refill_threshold, medication_image } = req.body;
         const before = dbGet('SELECT * FROM medications WHERE id=? AND user_id=?', [req.params.id, req.user.id]);
         if (!before) return res.status(404).json({ error:'用藥記錄不存在' });
-        const days = parseInt(duration_days) || null;
+        const cleanName = String(drug_name || '').trim().slice(0, 120);
+        const cleanDosage = String(dosage || '').trim().slice(0, 120);
+        const times = normalizeReminderTimes(remind_time);
+        if (!cleanName || !cleanDosage || !times) return res.status(400).json({ error:'藥名、劑量和有效提醒時間為必填' });
+        const days = parseOptionalInt(duration_days, { min: 1, max: 3650 });
+        const total = parseOptionalInt(total_quantity, { min: 0, max: 100000 });
+        const remain = parseOptionalInt(remaining, { min: 0, max: 100000 });
+        const daily = parseOptionalNumber(daily_amount, { min: 0.1, max: 1000 }) ?? 1;
+        const threshold = parseOptionalInt(refill_threshold, { min: 1, max: 3650 }) ?? 7;
+        if ([days, total, remain, daily, threshold].some(Number.isNaN)) return res.status(400).json({ error:'用藥天數、庫存與提醒門檻格式不正確' });
+        const image = normalizeMedicationImage(medication_image);
+        if (image === false) return res.status(400).json({ error:'藥品圖片格式不正確' });
         const endDate = days ? new Date(Date.now() + days * 86400000).toISOString().split('T')[0] : null;
         dbRun('UPDATE medications SET drug_name=?,dosage=?,usage_notes=?,remind_time=?,duration_days=?,end_date=?,total_quantity=?,remaining=?,daily_amount=?,refill_threshold=?,medication_image=COALESCE(?, medication_image) WHERE id=?',
-            [drug_name,dosage,usage_notes||'',JSON.stringify(remind_time),days,endDate,total_quantity ? parseInt(total_quantity) : null, remaining !== undefined && remaining !== null && remaining !== '' ? parseInt(remaining) : null, parseFloat(daily_amount) || 1, parseInt(refill_threshold) || 7, medication_image || null, req.params.id]);
-        logMedicationChange(req.user.id, req.params.id, drug_name || before.drug_name, 'updated', before, { drug_name, dosage, usage_notes, remind_time, duration_days: days, total_quantity, remaining, daily_amount, refill_threshold });
+            [cleanName,cleanDosage,String(usage_notes || '').trim().slice(0, 500),JSON.stringify(times),days,endDate,total,remain,daily,threshold, image, req.params.id]);
+        logMedicationChange(req.user.id, req.params.id, cleanName || before.drug_name, 'updated', before, { drug_name: cleanName, dosage: cleanDosage, usage_notes, remind_time: times, duration_days: days, total_quantity: total, remaining: remain, daily_amount: daily, refill_threshold: threshold });
         saveDB();
         res.json({ message: '用藥已更新', end_date: endDate });
     });
@@ -769,10 +899,24 @@ async function init() {
     
     app.post('/api/health', auth, (req, res) => {
         const { blood_pressure_sys, blood_pressure_dia, blood_sugar, weight, sleep_hours, mood, notes } = req.body;
+        const bpSys = parseOptionalInt(blood_pressure_sys, { min: 50, max: 260 });
+        const bpDia = parseOptionalInt(blood_pressure_dia, { min: 30, max: 160 });
+        const sugar = parseOptionalNumber(blood_sugar, { min: 20, max: 600 });
+        const bodyWeight = parseOptionalNumber(weight, { min: 1, max: 300 });
+        const sleep = parseOptionalNumber(sleep_hours, { min: 0, max: 24 });
+        if ([bpSys, bpDia, sugar, bodyWeight, sleep].some(Number.isNaN)) {
+            return res.status(400).json({ error: '健康數據超出合理範圍' });
+        }
+        if ((bpSys && !bpDia) || (!bpSys && bpDia)) {
+            return res.status(400).json({ error: '血壓需同時填寫收縮壓與舒張壓' });
+        }
+        if (!bpSys && !bpDia && sugar === null && bodyWeight === null && sleep === null && !mood && !notes) {
+            return res.status(400).json({ error: '請至少填寫一項健康數據' });
+        }
         const d = new Date().toISOString().split('T')[0];
         const ex = dbGet('SELECT id FROM health_records WHERE user_id=? AND record_date=?', [req.user.id, d]);
-        if (ex) dbRun('UPDATE health_records SET blood_pressure_sys=?,blood_pressure_dia=?,blood_sugar=?,weight=?,sleep_hours=?,mood=?,notes=? WHERE id=?', [blood_pressure_sys||null,blood_pressure_dia||null,blood_sugar||null,weight||null,sleep_hours||null,mood||null,notes||null,ex.id]);
-        else dbRun('INSERT INTO health_records (user_id,record_date,blood_pressure_sys,blood_pressure_dia,blood_sugar,weight,sleep_hours,mood,notes) VALUES (?,?,?,?,?,?,?,?,?)', [req.user.id,d,blood_pressure_sys||null,blood_pressure_dia||null,blood_sugar||null,weight||null,sleep_hours||null,mood||null,notes||null]);
+        if (ex) dbRun('UPDATE health_records SET blood_pressure_sys=?,blood_pressure_dia=?,blood_sugar=?,weight=?,sleep_hours=?,mood=?,notes=? WHERE id=?', [bpSys,bpDia,sugar,bodyWeight,sleep,mood||null,notes||null,ex.id]);
+        else dbRun('INSERT INTO health_records (user_id,record_date,blood_pressure_sys,blood_pressure_dia,blood_sugar,weight,sleep_hours,mood,notes) VALUES (?,?,?,?,?,?,?,?,?)', [req.user.id,d,bpSys,bpDia,sugar,bodyWeight,sleep,mood||null,notes||null]);
         saveDB();
         res.json({ message: ex ? '健康數據已更新':'健康數據已記錄' });
     });
@@ -1173,6 +1317,89 @@ async function init() {
         else dbRun('UPDATE user_settings SET reminder_repeat=?,telegram_chat_id=?,height_cm=COALESCE(?, height_cm),reminder_sound=?,desktop_mode=0,family_alert_delay_minutes=? WHERE user_id=?', [reminder_repeat||0, telegram_chat_id||null, height_cm || null, sound, delay, req.user.id]);
         saveDB();
         res.json({ message: '設定已更新' });
+    });
+
+    app.post('/api/support/report', auth, async (req, res) => {
+        const category = String(req.body.category || '使用問題').trim().slice(0, 80);
+        const message = String(req.body.message || '').trim().slice(0, 2000);
+        const contact = String(req.body.contact || '').trim().slice(0, 120);
+        const pageUrl = String(req.body.page_url || '').trim().slice(0, 500);
+        const userAgent = String(req.body.user_agent || '').trim().slice(0, 500);
+        const currentPage = String(req.body.current_page || '').trim().slice(0, 80);
+        const activeModal = String(req.body.active_modal || '').trim().slice(0, 120);
+        const activityTrail = Array.isArray(req.body.activity_trail)
+            ? req.body.activity_trail.slice(-30).map(item => ({
+                time: compactReportValue(item?.time, 40),
+                type: compactReportValue(item?.type, 40),
+                label: compactReportValue(item?.label, 160),
+                page: compactReportValue(item?.page, 80),
+                modal: compactReportValue(item?.modal, 120),
+                details: item?.details && typeof item.details === 'object'
+                    ? Object.fromEntries(
+                        Object.entries(item.details)
+                            .filter(([k]) => !/password|token|secret|authorization/i.test(String(k)))
+                            .slice(0, 8)
+                            .map(([k, v]) => [compactReportValue(k, 40), compactReportValue(v, 160)])
+                    )
+                    : {}
+            }))
+            : [];
+
+        if (message.length < 10) return res.status(400).json({ error: '請至少輸入 10 個字的問題內容' });
+        if (!ADMIN_EMAIL) return res.status(503).json({ error: '問題回報信箱尚未設定' });
+
+        const user = dbGet('SELECT id,name,email,phone,account_code,account_source,created_at FROM users WHERE id=?', [req.user.id]) || {};
+        const publicUserEmail = publicEmail(user) || '';
+        const subjectCategory = category || '使用問題';
+
+        try {
+            await sendEmail({
+                to: ADMIN_EMAIL,
+                subject: `藥護家問題回報：${subjectCategory}`,
+                html: `
+                    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:720px;margin:0 auto;padding:24px;color:#1f2937;">
+                        <h2 style="margin:0 0 16px;color:#0f766e;">藥護家問題回報</h2>
+                        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;margin-bottom:16px;">
+                            <div><b>類型：</b>${escapeHTML(subjectCategory)}</div>
+                            <div><b>送出時間：</b>${escapeHTML(new Date().toISOString())}</div>
+                        </div>
+                        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px;">
+                            <h3 style="margin:0 0 8px;color:#111827;">問題內容</h3>
+                            <div style="white-space:pre-wrap;line-height:1.7;">${escapeHTML(message)}</div>
+                        </div>
+                        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;margin-bottom:16px;font-size:14px;line-height:1.8;">
+                            <h3 style="margin:0 0 8px;color:#1e40af;">使用者當時狀態</h3>
+                            <div><b>目前頁面：</b>${escapeHTML(currentPage || '未提供')}</div>
+                            <div><b>目前彈窗：</b>${escapeHTML(activeModal || '無')}</div>
+                            <div style="margin-top:10px;"><b>最近操作：</b></div>
+                            ${
+                                activityTrail.length
+                                    ? '<ol style="margin:6px 0 0 20px;padding:0;">' + activityTrail.map(item => {
+                                        const details = Object.entries(item.details || {})
+                                            .map(([k, v]) => `${escapeHTML(k)}=${escapeHTML(v)}`)
+                                            .join('，');
+                                        return `<li style="margin:4px 0;"><span style="color:#64748b;">${escapeHTML(item.time)}</span> · ${escapeHTML(item.type)} · ${escapeHTML(item.label)} <span style="color:#64748b;">${escapeHTML(item.page || '')}${item.modal ? ' / ' + escapeHTML(item.modal) : ''}${details ? ' · ' + details : ''}</span></li>`;
+                                    }).join('') + '</ol>'
+                                    : '<div style="color:#64748b;">未提供最近操作紀錄</div>'
+                            }
+                        </div>
+                        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:16px;font-size:14px;line-height:1.8;">
+                            <div><b>使用者：</b>${escapeHTML(user.name || req.user.name || '')}</div>
+                            <div><b>裝置編號：</b>${escapeHTML(user.account_code || '')}</div>
+                            <div><b>User ID：</b>${escapeHTML(user.id || req.user.id)}</div>
+                            <div><b>Email：</b>${escapeHTML(publicUserEmail || '裝置帳號未提供')}</div>
+                            <div><b>電話：</b>${escapeHTML(user.phone || '未提供')}</div>
+                            <div><b>聯絡方式：</b>${escapeHTML(contact || '未填')}</div>
+                            <div><b>頁面：</b>${escapeHTML(pageUrl || '未提供')}</div>
+                            <div><b>瀏覽器：</b>${escapeHTML(userAgent || '未提供')}</div>
+                        </div>
+                    </div>`
+            });
+            res.json({ message: '問題回報已送出，謝謝您的回饋' });
+        } catch (error) {
+            console.error('Support report email failed:', error);
+            res.status(500).json({ error: '問題回報寄送失敗，請稍後再試' });
+        }
     });
     
     // ====== 家人未吃藥通知 ======
@@ -1597,8 +1824,9 @@ async function init() {
     app.post('/api/appointments', auth, (req, res) => {
         const { title, appointment_date, clinic_name, notes } = req.body;
         if (!title || !appointment_date) return res.status(400).json({ error: '請填寫標題和日期' });
+        if (!isValidDateString(appointment_date)) return res.status(400).json({ error: '回診日期格式不正確' });
         dbRun('INSERT INTO appointments (user_id, title, appointment_date, clinic_name, notes) VALUES (?,?,?,?,?)',
-            [req.user.id, title, appointment_date, clinic_name || null, notes || null]);
+            [req.user.id, String(title).trim().slice(0, 120), appointment_date, clinic_name ? String(clinic_name).trim().slice(0, 120) : null, notes ? String(notes).trim().slice(0, 500) : null]);
         saveDB();
         res.json({ message: '回診已設定' });
     });
@@ -1746,15 +1974,70 @@ async function init() {
     });
 
     app.get('/api/subscription/status', auth, (req, res) => {
+        const sub = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [req.user.id]);
+        const active = isSubscriptionActive(sub);
+        const catalog = subscriptionCatalog();
         res.json({
-            plan: 'free_preview',
-            active: true,
+            plan: active ? (sub.plan || 'pro') : 'free',
+            active,
+            entitlement: SUBSCRIPTION_ENTITLEMENT_ID,
+            product_identifier: sub?.product_identifier || null,
+            expires_at: sub?.expires_at || null,
+            source: sub?.source || null,
             tiers: {
-                free: ['用藥提醒', '健康紀錄', '基本 AI 掃描', '緊急卡'],
-                premium: ['家人通知', '家庭月報', 'AI 風險摘要', '多人照護', 'PDF 報告', '通知中心進階處理']
+                free: ['基本用藥提醒', '基本健康紀錄', '每日 1 次免費 AI 掃描', '看廣告兌換 AI 掃描'],
+                premium: catalog.features
             },
-            premium_locked: ['家人通知', '家庭月報', 'AI 風險摘要', '多人照護', 'PDF 報告'],
-            features: ['用藥提醒', '健康紀錄', '基本 AI 掃描', '緊急卡', '家人通知預覽', '月報預覽']
+            premium_locked: catalog.features,
+            products: {
+                monthly: catalog.monthly,
+                yearly: catalog.yearly
+            },
+            revenueCat: catalog.revenueCat,
+            features: active
+                ? ['用藥提醒', '健康紀錄', 'AI 藥袋辨識 Pro 額度', '家人照護 Pro', '匯出與備份']
+                : ['基本用藥提醒', '基本健康紀錄', '免費 AI 掃描', '獎勵廣告兌換']
+        });
+    });
+
+    app.post('/api/subscription/revenuecat-sync', auth, (req, res) => {
+        const { customerInfo } = req.body || {};
+        if (!customerInfo || typeof customerInfo !== 'object') {
+            return res.status(400).json({ error: '缺少 RevenueCat customerInfo' });
+        }
+        const pro = extractRevenueCatProStatus(customerInfo);
+        dbRun(
+            `INSERT INTO subscriptions (user_id, plan, entitlement, product_identifier, store, is_pro, expires_at, source, raw_customer_info, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+             ON CONFLICT(user_id) DO UPDATE SET
+                plan=excluded.plan,
+                entitlement=excluded.entitlement,
+                product_identifier=excluded.product_identifier,
+                store=excluded.store,
+                is_pro=excluded.is_pro,
+                expires_at=excluded.expires_at,
+                source=excluded.source,
+                raw_customer_info=excluded.raw_customer_info,
+                updated_at=CURRENT_TIMESTAMP`,
+            [
+                req.user.id,
+                pro.isPro ? planFromProduct(pro.productIdentifier) : 'free',
+                SUBSCRIPTION_ENTITLEMENT_ID,
+                pro.productIdentifier || null,
+                pro.store || null,
+                pro.isPro ? 1 : 0,
+                pro.expiresAt || null,
+                'revenuecat_client',
+                JSON.stringify(customerInfo).slice(0, 60000)
+            ]
+        );
+        saveDB();
+        const sub = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [req.user.id]);
+        res.json({
+            message: pro.isPro ? 'Pro 訂閱已同步' : '訂閱狀態已同步',
+            plan: isSubscriptionActive(sub) ? (sub.plan || 'pro') : 'free',
+            active: isSubscriptionActive(sub),
+            expires_at: sub?.expires_at || null
         });
     });
 

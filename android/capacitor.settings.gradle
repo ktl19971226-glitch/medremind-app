@@ -13,3 +13,6 @@ project(':capacitor-splash-screen').projectDir = new File('../node_modules/@capa
 
 include ':capgo-capacitor-admob'
 project(':capgo-capacitor-admob').projectDir = new File('../node_modules/@capgo/capacitor-admob/android')
+
+include ':revenuecat-purchases-capacitor'
+project(':revenuecat-purchases-capacitor').projectDir = new File('../node_modules/@revenuecat/purchases-capacitor/android')

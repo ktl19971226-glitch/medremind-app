@@ -1,12 +1,13 @@
 # 藥護家 App Store 上架準備
 
-最後整理：2026-06-20
+最後整理：2026-06-23
 
 ## 目前專案狀態
 
 - App 顯示名稱：藥護家
 - 英文品牌：MedCare Home
 - Bundle ID：app.yaojidecare
+- Android package/applicationId：app.yaojidecare
 - 版本號：1.0
 - Build：1
 - 正式網站：https://yaojidecare.app/
@@ -109,6 +110,12 @@ AI用藥提醒與家人照護
 - AdMob app-ads.txt 已公開上線。
 - 已取得 AdMob App ID：iOS `ca-app-pub-7217388641578552~6880209470`、Android `ca-app-pub-7217388641578552~1204678131`。
 - App 已導入獎勵廣告邏輯：每天免費 AI 掃描 1 次，超過後看獎勵廣告換 1 次，每天最多兌換 3 次。
+- 已定案商店內訂閱方案「藥護家 Pro」：
+  - 月訂閱：NT$75/月，Product ID `yaojidecare_pro_monthly`
+  - 年訂閱：NT$750/年，Product ID `yaojidecare_pro_yearly`
+  - Entitlement ID：`pro`
+  - Pro 解鎖：無廣告、更多 AI 藥袋辨識額度、家人照護人數增加、進階健康紀錄匯出與備份
+- 已加入 RevenueCat Capacitor SDK 與前端購買/恢復購買骨架；正式測試前需先在 Apple / Google / RevenueCat 後台建立同名商品並填入 public SDK keys。
 - 支援信箱統一為 `admin@yaojidecare.app`。
 - `Info.plist` 已補上相機使用說明。
 - `Info.plist` 已補上相簿使用說明。
@@ -134,6 +141,44 @@ AI用藥提醒與家人照護
 - 填寫年齡分級問卷。
 - 填寫出口合規問卷，因僅使用標準 HTTPS，通常選擇未使用非豁免加密。
 - 確認是否需要醫療器材相關聲明；目前定位應維持為提醒/紀錄工具，不作診斷或治療。
+- 建立商店內訂閱商品並完成 RevenueCat 設定，詳細步驟見 `SUBSCRIPTION_SETUP.md`。
+
+## Android / Google Play 打包狀態
+
+- 2026-06-23 已在本機專案目錄安裝臨時 Android 打包工具鏈：
+  - JDK：`.build-tools/jdk`
+  - Android SDK：`.build-tools/android-sdk`
+- 已將 Android `applicationId` / namespace 從 `com.medremind.app` 改為 `app.yaojidecare`，避免 Google Play 永久套件名稱殘留舊品牌。
+- 已建立本機 Google Play upload key：
+  - Keystore：`private_artifacts/yaojidecare-upload-key.jks`
+  - 密碼設定：`private_artifacts/android-upload-key.properties`
+  - 注意：這兩個檔案是上架簽名材料，不能提交到 Git，也不能貼到聊天。
+- 已產生可上傳 Google Play 的 release AAB：
+  - `build_output/yaojidecare-android-release-v1.0-1-20260623.aab`
+  - SHA256：`7573d7add90a5a7227179a51a20d227e250d4b23c8ff130e6aa3c3d19a11389b`
+- 2026-06-23 加入藥護家 Pro / RevenueCat 後已重新產生 release AAB：
+  - `build_output/yaojidecare-android-release-v1.0-1-pro-20260623.aab`
+  - SHA256：`cbeec7392bb322564a8e91a1b4b6ca8a975b6492d43988a5c780afd81a550f4a`
+- Google Play 仍需準備：
+  - 建立 Google Play app record。
+  - 上傳 AAB 到 internal testing 或 closed testing。
+  - 填寫 Data Safety、內容分級、App access、廣告聲明、隱私權政策。
+  - 準備手機截圖、短描述、完整描述與 feature graphic。
+
+## 上架素材包
+
+- 2026-06-23 已產生可先上傳/填表的素材包：
+  - 素材目錄：`store_assets/20260623/`
+  - 打包檔：`store_assets/20260623/yaojidecare-store-assets-20260623.zip`
+  - ZIP SHA256：`ce3bdfdb64a5fb2b423ac74b6ff99a639f5aa1ab9604f7adefd55d976af1695f`
+- 內容包含：
+  - iPhone 6.7 吋截圖 5 張：首頁今日用藥、新增用藥/AI 藥袋辨識、用藥清單/補藥、家人照護、健康紀錄/問題回報。
+  - Google Play feature graphic：`google-play/feature-graphic-1024x500.png`。
+  - App icon：`public/icon-512.png`、`public/icon-192.png`。
+  - Google Play 上架文字：`docs/google-play-listing.md`。
+  - App Store Connect 上架文字：`docs/app-store-listing.md`。
+  - 審查備註：`docs/review-notes.md`。
+  - Android release AAB：`build_output/yaojidecare-android-release-v1.0-1-20260623.aab`。
 
 ## 官方參考
 

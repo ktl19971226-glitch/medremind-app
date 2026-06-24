@@ -1,4 +1,4 @@
-package com.medremind.app;
+package app.yaojidecare;
 
 import com.getcapacitor.BridgeActivity;
 
