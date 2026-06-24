@@ -121,3 +121,26 @@ jobs:
           name: yaojidecare-ios-ipa
           path: build/*.ipa
           retention-days: 30
+
+      - name: Upload IPA to App Store Connect
+        env:
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          : "${APPSTORE_KEY_ID:?Missing APPSTORE_KEY_ID secret}"
+          : "${APPSTORE_ISSUER_ID:?Missing APPSTORE_ISSUER_ID secret}"
+          : "${APPSTORE_PRIVATE_KEY_BASE64:?Missing APPSTORE_PRIVATE_KEY_BASE64 secret}"
+
+          mkdir -p "$HOME/private_keys"
+          echo "$APPSTORE_PRIVATE_KEY_BASE64" | base64 --decode > "$HOME/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          chmod 600 "$HOME/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+
+          IPA_PATH="$(find "$GITHUB_WORKSPACE/build" -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$IPA_PATH"
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$IPA_PATH" \
+            --apiKey "$APPSTORE_KEY_ID" \
+            --apiIssuer "$APPSTORE_ISSUER_ID"
