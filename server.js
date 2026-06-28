@@ -36,7 +36,7 @@ const PRO_MONTHLY_PRODUCT_ID = process.env.PRO_MONTHLY_PRODUCT_ID || 'yaojidecar
 const PRO_YEARLY_PRODUCT_ID = process.env.PRO_YEARLY_PRODUCT_ID || 'yaojidecare_pro_yearly';
 const REVENUECAT_IOS_API_KEY = process.env.REVENUECAT_IOS_API_KEY || '';
 const REVENUECAT_ANDROID_API_KEY = process.env.REVENUECAT_ANDROID_API_KEY || '';
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8050,http://localhost:3000')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8050,http://localhost:3000,https://yaojidecare.app,https://www.yaojidecare.app,capacitor://localhost,ionic://localhost')
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);

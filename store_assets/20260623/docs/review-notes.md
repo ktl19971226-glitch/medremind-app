@@ -12,4 +12,5 @@
 
 隱私權政策：https://yaojidecare.app/privacy.html
 使用者條款：https://yaojidecare.app/terms.html
+Apple 標準使用條款（EULA）：https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 支援信箱：admin@yaojidecare.app

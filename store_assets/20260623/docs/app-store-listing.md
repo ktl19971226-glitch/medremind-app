@@ -25,3 +25,6 @@ App 名稱：藥護家
 
 重要提醒：
 藥護家提供的是提醒、紀錄與資訊整理功能，不提供醫療診斷、治療建議或處方建議。AI 藥袋辨識結果可能不完整或有誤，請務必以藥袋、處方、藥師或醫師說明為準。如有任何用藥疑問，請諮詢合格醫療專業人員。
+
+使用條款（EULA）：
+https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

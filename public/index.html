@@ -2209,9 +2209,9 @@
         let authToken = '';
         let currentUser = null;
 
-        // API 基礎網址(App 內使用絕對網址)
+        // API 基礎網址(App 內使用正式 HTTPS 網域，避免 iOS 審查環境擋下非加密連線)
         const isNative = window.location.protocol === 'capacitor:' || window.location.protocol === 'file:';
-        const API = isNative ? 'http://220.135.250.9:8050' : '';
+        const API = isNative ? 'https://yaojidecare.app' : '';
         const INSTALL_DISMISSED_KEY = 'medremind_install_dismissed';
         const DEVICE_ID_KEY = 'medremind_device_identifier';
         const AUTH_TOKEN_KEY = 'medremind_auth_token';
