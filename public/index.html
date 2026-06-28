@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>藥護家 - 智慧用藥提醒</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -55,6 +55,12 @@
             padding-bottom: 80px;
         }
 
+        body.login-active {
+            height: 100dvh;
+            overflow: hidden;
+            padding-bottom: 0;
+        }
+
         .sr-only {
             position: absolute;
             width: 1px;
@@ -71,7 +77,7 @@
         .header {
             background: linear-gradient(135deg, #1F8F53, var(--green));
             color: white;
-            padding: 14px 18px;
+            padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 14px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -589,12 +595,13 @@
 
         /* 登入頁面特殊樣式 */
         #login-page.active {
-            min-height: 100vh;
+            height: 100dvh;
             padding: 24px;
             background:
                 linear-gradient(110deg, rgba(245,250,247,0.98), rgba(238,246,255,0.92)),
                 radial-gradient(circle at 86% 18%, rgba(52,152,219,0.14), transparent 30%),
                 radial-gradient(circle at 16% 86%, rgba(243,156,18,0.14), transparent 26%);
+            overflow: hidden;
         }
 
         .login-container {
@@ -757,9 +764,11 @@
             }
 
             .login-container {
-                min-height: auto;
+                height: calc(100dvh - 32px);
                 grid-template-columns: 1fr;
                 gap: 16px;
+                align-content: center;
+                overflow: hidden;
             }
 
             .login-brand-panel {
@@ -809,7 +818,7 @@
 
         @media (max-width: 520px) {
             .header {
-                padding: 10px 12px;
+                padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
                 gap: 8px;
             }
 
@@ -1445,7 +1454,7 @@
         }
     </style>
 </head>
-<body>
+<body class="login-active">
     <!-- 提示訊息容器 -->
     <div id="toast-container"></div>
 
@@ -2785,6 +2794,7 @@
         function showLogin(autoStart = true) {
             document.getElementById('login-page').style.display = 'block';
             document.getElementById('main-app').style.display = 'none';
+            document.body.classList.add('login-active');
             document.body.classList.remove('simple-mode');
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById('login-page').classList.add('active');
@@ -2822,6 +2832,7 @@
         function showMainApp() {
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
+            document.body.classList.remove('login-active');
             window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
             document.body.classList.remove('desktop-mode');
             document.getElementById('header-username').textContent = getDisplayUserName(currentUser);
@@ -3180,12 +3191,14 @@
 
             // 優先使用 AI 辨識
             try {
-                const aiRes = await fetch('/api/drugs/ai-scan', {
+                const aiRes = await fetch(API + '/api/drugs/ai-scan', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token },
                     body: formData
                 });
-                const aiData = await aiRes.json();
+                const aiData = await aiRes.json().catch(function() {
+                    return { success: false, error: 'AI 服務回應格式錯誤' };
+                });
 
                 if (aiData.success && aiData.ai_result) {
                     window._aiResult = aiData.ai_result;
@@ -3193,7 +3206,7 @@
                     return;
                 }
                 // AI 失敗時自動改用 OCR，避免使用者卡住。
-                showToast('AI 目前不可用，已改用文字掃描');
+                showToast(aiData.message || aiData.error || 'AI 目前不可用，已改用文字掃描');
             } catch (e) {
                 console.log('AI scan error, fallback to OCR:', e.message);
             }
@@ -3281,12 +3294,17 @@
             formData2.append('image', file);
 
             try {
-                const response = await fetch('/api/drugs/scan', {
+                const response = await fetch(API + '/api/drugs/scan', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token },
                     body: formData2
                 });
-                const data = await response.json();
+                const data = await response.json().catch(function() {
+                    return { success: false, error: '辨識服務回應格式錯誤' };
+                });
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || '辨識服務暫時無法使用');
+                }
 
                 if (data.success && data.candidates && data.candidates.length > 0) {
                     const img = document.querySelector('#scan-result img');
@@ -3337,7 +3355,9 @@
                         '</div>';
                 }
             } catch (err) {
-                resultDiv.innerHTML = '<div style="padding:12px;background:#fde8e8;border-radius:8px;font-size:15px;color:var(--red);">❌ 辨識失敗:' + err.message + '</div>';
+                const message = String(err && err.message ? err.message : '辨識服務暫時無法使用')
+                    .replace('The string did not match the expected pattern.', 'App 連線格式已修正，請關閉後重新開啟再試一次');
+                resultDiv.innerHTML = '<div style="padding:12px;background:#fde8e8;border-radius:8px;font-size:15px;color:var(--red);">❌ 辨識失敗：' + escapeHTML(message) + '</div>';
             }
         }
 
