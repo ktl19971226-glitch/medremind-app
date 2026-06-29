@@ -437,7 +437,7 @@
 
       .actions {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
         margin-top: 12px;
       }
@@ -496,6 +496,12 @@
         font-size: 13px;
         font-weight: 800;
         text-decoration: none;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
       }
 
       .tabs {
@@ -609,6 +615,8 @@
         bookingFilter: "upcoming",
         bookingSearch: "",
         customerSearch: "",
+        newBookingOpen: false,
+        editingBookingId: "",
         data: null,
         loading: false,
         error: "",
@@ -625,6 +633,21 @@
       const isSameDay = (left, right) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
       const digits = (value) => String(value || "").replace(/[^\d+]/g, "");
       const textMatch = (value, query) => String(value || "").toLowerCase().includes(query);
+      const dateValue = (value) => {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+      };
+      const timeValue = (value) => {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      };
+      const defaultDate = () => new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+      const defaultTime = () => {
+        const date = new Date(Date.now() + 60 * 60 * 1000);
+        date.setMinutes(Math.ceil(date.getMinutes() / 30) * 30, 0, 0);
+        return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      };
 
       function setTab(tab, options = {}) {
         state.tab = tab;
@@ -644,6 +667,24 @@
 
       function setCustomerSearch(value) {
         state.customerSearch = value;
+        render();
+      }
+
+      function openNewBooking() {
+        state.newBookingOpen = true;
+        state.editingBookingId = "";
+        render();
+      }
+
+      function closeBookingForm() {
+        state.newBookingOpen = false;
+        state.editingBookingId = "";
+        render();
+      }
+
+      function editBooking(id) {
+        state.editingBookingId = id;
+        state.newBookingOpen = false;
         render();
       }
 
@@ -810,6 +851,64 @@
         }
       }
 
+      async function createBooking(event) {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        state.loading = true;
+        state.error = "";
+        render();
+        try {
+          await api("/bookings", {
+            method: "POST",
+            body: JSON.stringify({
+              studioId: String(form.get("studioId") || ""),
+              serviceId: String(form.get("serviceId") || ""),
+              customerName: String(form.get("customerName") || ""),
+              phone: String(form.get("phone") || ""),
+              date: String(form.get("date") || ""),
+              time: String(form.get("time") || ""),
+              finalAmount: String(form.get("finalAmount") || ""),
+              note: String(form.get("note") || "")
+            })
+          });
+          state.newBookingOpen = false;
+          state.bookingFilter = "upcoming";
+          await load();
+        } catch (error) {
+          state.error = error.message;
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function saveBooking(event) {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        state.loading = true;
+        state.error = "";
+        render();
+        try {
+          await api(`/bookings/${String(form.get("id") || "")}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              serviceId: String(form.get("serviceId") || ""),
+              customerName: String(form.get("customerName") || ""),
+              phone: String(form.get("phone") || ""),
+              date: String(form.get("date") || ""),
+              time: String(form.get("time") || ""),
+              finalAmount: String(form.get("finalAmount") || ""),
+              note: String(form.get("note") || "")
+            })
+          });
+          state.editingBookingId = "";
+          await load();
+        } catch (error) {
+          state.error = error.message;
+          state.loading = false;
+          render();
+        }
+      }
+
       async function checkLine(studioId) {
         state.loading = true;
         render();
@@ -928,11 +1027,73 @@
             <p class="meta">${item.phone || ""}${item.finalAmount ? ` · ${money(item.finalAmount)}` : ""}${item.note ? ` · ${item.note}` : ""}</p>
             ${phone ? `<a class="link-action" href="tel:${phone}">撥打 ${item.customerName}</a>` : ""}
             <div class="actions">
+              <button class="secondary" onclick="editBooking('${item.id}')">編輯</button>
               <button class="secondary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>
               <button class="secondary" onclick="updateBooking('${item.id}', { status: 'NO_SHOW' })">爽約</button>
               <button class="danger" onclick="updateBooking('${item.id}', { status: 'CANCELLED' })">取消</button>
             </div>
           </article>
+        `;
+      }
+
+      function serviceOptions(selectedId) {
+        return state.data.services
+          .filter((service) => service.active)
+          .map((service) => `<option value="${service.id}" ${service.id === selectedId ? "selected" : ""}>${service.name} · ${money(service.price)}</option>`)
+          .join("");
+      }
+
+      function bookingFormView(item) {
+        const isEdit = Boolean(item);
+        const firstStudio = state.data.studios[0];
+        const firstService = state.data.services.find((service) => service.active);
+
+        if (!firstStudio || !firstService) {
+          return `<div class="empty">請先建立工作室與服務項目</div>`;
+        }
+
+        return `
+          <form class="card" onsubmit="${isEdit ? "saveBooking(event)" : "createBooking(event)"}">
+            <div class="section-head">
+              <h2 class="section-title">${isEdit ? "編輯預約" : "新增預約"}</h2>
+              <button class="secondary" type="button" onclick="closeBookingForm()">收起</button>
+            </div>
+            <input type="hidden" name="id" value="${item?.id || ""}" />
+            <input type="hidden" name="studioId" value="${firstStudio.id}" />
+            <div class="field">
+              <label>服務</label>
+              <select name="serviceId">${serviceOptions(item?.service?.id || firstService.id)}</select>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label>日期</label>
+                <input name="date" type="date" value="${item ? dateValue(item.startsAt) : defaultDate()}" required />
+              </div>
+              <div class="field">
+                <label>時間</label>
+                <input name="time" type="time" value="${item ? timeValue(item.startsAt) : defaultTime()}" required />
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label>客人姓名</label>
+                <input name="customerName" value="${attr(item?.customerName || "")}" required />
+              </div>
+              <div class="field">
+                <label>電話</label>
+                <input name="phone" value="${attr(item?.phone || "")}" inputmode="tel" required />
+              </div>
+            </div>
+            <div class="field">
+              <label>金額</label>
+              <input name="finalAmount" type="number" min="0" value="${item?.finalAmount ?? firstService.price}" />
+            </div>
+            <div class="field">
+              <label>備註</label>
+              <textarea name="note">${attr(item?.note || "")}</textarea>
+            </div>
+            <button class="primary" type="submit">${state.loading ? "儲存中" : isEdit ? "儲存預約" : "建立預約"}</button>
+          </form>
         `;
       }
 
@@ -946,8 +1107,10 @@
                 <h2 class="section-title">預約</h2>
                 <p class="section-note">顯示 ${items.length} / ${allItems.length} 筆</p>
               </div>
-              <button class="secondary" onclick="load()">更新</button>
+              <button class="secondary" onclick="openNewBooking()">新增</button>
             </div>
+            ${state.newBookingOpen ? bookingFormView(null) : ""}
+            ${state.editingBookingId ? bookingFormView(allItems.find((item) => item.id === state.editingBookingId)) : ""}
             <div class="toolbar">
               <input class="search" value="${attr(state.bookingSearch)}" oninput="setBookingSearch(this.value)" placeholder="搜尋姓名、電話、服務、備註" />
               <div class="segmented">
@@ -1118,10 +1281,15 @@
       window.setBookingFilter = setBookingFilter;
       window.setBookingSearch = setBookingSearch;
       window.setCustomerSearch = setCustomerSearch;
+      window.openNewBooking = openNewBooking;
+      window.closeBookingForm = closeBookingForm;
+      window.editBooking = editBooking;
       window.login = login;
       window.logout = logout;
       window.load = load;
       window.updateBooking = updateBooking;
+      window.createBooking = createBooking;
+      window.saveBooking = saveBooking;
       window.checkLine = checkLine;
       window.saveLine = saveLine;
       render();
