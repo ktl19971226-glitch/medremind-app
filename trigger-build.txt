@@ -1,1 +1,1 @@
-2026-06-29 xiaoyue ios TestFlight build 3 intro landing trigger
+2026-06-29 xiaoyue ios TestFlight build 4 locked intro trigger

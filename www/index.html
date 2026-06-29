@@ -38,6 +38,14 @@
           linear-gradient(180deg, #fffaf5 0%, #fff3ec 45%, #f8fbfa 100%);
       }
 
+      body.intro-locked {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+
       button,
       input,
       select,
@@ -117,11 +125,11 @@
       }
 
       .landing {
-        min-height: 100vh;
+        height: 100vh;
+        height: 100dvh;
         padding: max(22px, env(safe-area-inset-top)) 0 calc(24px + env(safe-area-inset-bottom));
         display: grid;
-        align-content: space-between;
-        gap: 22px;
+        overflow: hidden;
       }
 
       .hero {
@@ -149,10 +157,11 @@
       }
 
       .intro-hero {
-        min-height: 520px;
+        min-height: 0;
+        height: 100%;
         display: grid;
         align-content: space-between;
-        gap: 24px;
+        gap: 18px;
         overflow: hidden;
         background:
           linear-gradient(160deg, rgba(217, 68, 53, 0.94), rgba(174, 49, 40, 0.9)),
@@ -180,7 +189,7 @@
 
       .intro-title {
         margin: 0;
-        font-size: 38px;
+        font-size: 34px;
         line-height: 1.12;
         letter-spacing: 0;
       }
@@ -504,6 +513,26 @@
           grid-template-columns: repeat(4, minmax(0, 1fr));
         }
       }
+
+      @media (max-height: 760px) {
+        .intro-title {
+          font-size: 30px;
+        }
+
+        .intro-copy {
+          font-size: 15px;
+          line-height: 1.5;
+        }
+
+        .intro-kicker {
+          margin-top: 18px;
+        }
+
+        .intro-panel {
+          gap: 8px;
+          padding: 12px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -647,7 +676,6 @@
                 <button class="secondary" onclick="showLogin()">店家登入</button>
               </div>
             </section>
-            <p class="intro-proof">已建立帳號的店家可直接登入測試所有功能</p>
           </main>
         `;
       }
@@ -927,6 +955,7 @@
       }
 
       function render() {
+        document.body.classList.toggle("intro-locked", !state.token && state.authView !== "login");
         root.innerHTML = state.token ? shell() : (state.authView === "login" ? loginView() : introView());
       }
 
