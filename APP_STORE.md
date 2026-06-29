@@ -10,6 +10,7 @@
 - 年齡分級：4+
 - 版本：1.0.0
 - App Store provisioning profile：Local Alert App Store 2026
+- TestFlight internal group：Internal Testers
 
 ## 簡短描述
 
