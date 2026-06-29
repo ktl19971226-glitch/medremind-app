@@ -2489,13 +2489,87 @@
 
         // 原生通知初始化
         let LocalNotifications = null;
+        let PushNotifications = null;
+        let nativeNotificationReady = false;
+        let pushListenersReady = false;
+        let pendingPushToken = '';
+
+        async function loadCapacitorPlugin(globalName, moduleUrl, exportName) {
+            const globalPlugin = window.Capacitor?.Plugins?.[globalName];
+            if (globalPlugin) return globalPlugin;
+            const mod = await import(moduleUrl);
+            return mod[exportName || globalName];
+        }
+
         async function initNativeNotifications() {
             if (!isNative) return;
             try {
-                const mod = await import('https://unpkg.com/@capacitor/local-notifications@6/dist/esm/index.js');
-                LocalNotifications = mod.LocalNotifications;
-                await LocalNotifications.requestPermissions();
+                LocalNotifications = await loadCapacitorPlugin(
+                    'LocalNotifications',
+                    'https://unpkg.com/@capacitor/local-notifications@8/dist/esm/index.js',
+                    'LocalNotifications'
+                );
+                const permissions = await LocalNotifications.requestPermissions();
+                nativeNotificationReady = permissions?.display === 'granted' || permissions?.display === 'prompt';
             } catch(e) { console.log('通知初始化略過:', e.message); }
+        }
+
+        async function registerNativePushToken(token) {
+            const cleanToken = String(token || '').trim();
+            if (!cleanToken || !getToken()) {
+                pendingPushToken = cleanToken;
+                return;
+            }
+            const deviceId = localStorage.getItem(DEVICE_ID_KEY) || '';
+            const platform = window.Capacitor?.getPlatform?.() || (isNative ? 'native' : 'web');
+            const { status } = await api('/api/push/register', {
+                method: 'POST',
+                body: JSON.stringify({
+                    token: cleanToken,
+                    platform,
+                    device_id: deviceId,
+                    app_version: '1.0'
+                })
+            });
+            if (status === 200) pendingPushToken = '';
+        }
+
+        async function initPushNotifications() {
+            if (!isNative) return;
+            try {
+                PushNotifications = await loadCapacitorPlugin(
+                    'PushNotifications',
+                    'https://unpkg.com/@capacitor/push-notifications@8/dist/esm/index.js',
+                    'PushNotifications'
+                );
+                if (!PushNotifications) return;
+
+                if (!pushListenersReady) {
+                    PushNotifications.addListener('registration', token => {
+                        registerNativePushToken(token?.value || token).catch(e => console.log('推播 token 註冊略過:', e.message));
+                    });
+                    PushNotifications.addListener('registrationError', err => {
+                        console.log('推播註冊失敗:', err?.error || err?.message || err);
+                    });
+                    PushNotifications.addListener('pushNotificationReceived', notification => {
+                        updateNotificationBadge();
+                        if (notification?.title) showToast(notification.title);
+                    });
+                    PushNotifications.addListener('pushNotificationActionPerformed', event => {
+                        const actionUrl = event?.notification?.data?.action_url || '';
+                        if (String(actionUrl).includes('#family')) switchPage('family');
+                        else if (String(actionUrl).includes('#medications')) switchPage('medications');
+                        else switchPage('home');
+                    });
+                    pushListenersReady = true;
+                }
+
+                const permissions = await PushNotifications.requestPermissions();
+                if (permissions?.receive === 'granted') {
+                    await PushNotifications.register();
+                    if (pendingPushToken) await registerNativePushToken(pendingPushToken);
+                }
+            } catch(e) { console.log('遠端推播初始化略過:', e.message); }
         }
 
         // Token 管理
@@ -2854,6 +2928,8 @@
             checkOnboarding();
             initLargeFont();
             initSimpleMode();
+            initNativeNotifications();
+            initPushNotifications();
             acceptInviteFromUrl();
             updateInstallBanner();
         }
@@ -3433,7 +3509,7 @@
             if (status === 200) {
                 document.querySelector('.modal-overlay')?.remove();
                 showToast(t('用藥已添加'));
-                scheduleLocalNotifications(drug_name, remind_time, duration_days);
+                scheduleLocalNotifications(data.medication?.id, drug_name, dosage, remind_time, duration_days);
                 window._lastMedicationImage = null;
                 loadMedicationsPage();
             } else {
@@ -3522,6 +3598,7 @@
             if (status === 200) {
                 document.getElementById('edit-med-modal')?.remove();
                 showToast(data.message || t('設定已更新'));
+                await rescheduleLocalNotifications(id, drug_name, dosage, remind_time, duration_days);
                 loadMedicationsPage();
                 loadHomePage();
             } else {
@@ -3534,6 +3611,7 @@
 
             const { status } = await api(`/api/medications/${id}`, { method: 'DELETE' });
             if (status === 200) {
+                await cancelLocalNotificationsForMedication(id);
                 showToast(t('用藥已刪除'));
                 loadMedicationsPage();
                 loadHomePage();
@@ -3813,23 +3891,94 @@
             }
         });
         // ========== 原生通知排程 ==========
-        async function scheduleLocalNotifications(drugName, remindTimes, durationDays) {
-            if (!LocalNotifications) return;
+        function localNotificationId(medicationId, dayOffset, timeIndex) {
+            const medPart = Math.abs(Number(medicationId || 0)) % 20000;
+            return medPart * 100000 + dayOffset * 100 + timeIndex + 1;
+        }
+
+        function nextReminderDate(time, dayOffset = 0) {
+            const [h, m] = String(time || '09:00').split(':').map(Number);
+            const date = new Date();
+            date.setDate(date.getDate() + dayOffset);
+            date.setHours(Number.isFinite(h) ? h : 9, Number.isFinite(m) ? m : 0, 0, 0);
+            return date;
+        }
+
+        function normalizeReminderList(remindTimes) {
+            return Array.isArray(remindTimes) ? remindTimes : [];
+        }
+
+        async function cancelLocalNotificationsForMedication(medicationId) {
+            if (!LocalNotifications || !medicationId) return;
             try {
-                const schedules = remindTimes.map((time, idx) => {
-                    const [h, m] = time.split(':').map(Number);
-                    return {
-                        id: Date.now() + idx,
-                        title: '💊 ' + t('用藥提醒'),
-                        body: drugName + ' · ' + t('劑量') + '提醒',
-                        schedule: {
-                            on: { hour: h, minute: m },
-                            repeats: true
+                const pending = await LocalNotifications.getPending?.();
+                const matched = (pending?.notifications || [])
+                    .filter(n => String(n?.extra?.medicationId || '') === String(medicationId))
+                    .map(n => ({ id: n.id }));
+                if (matched.length > 0) {
+                    await LocalNotifications.cancel({ notifications: matched });
+                    return;
+                }
+            } catch(e) {
+                console.log('讀取待排通知略過:', e.message);
+            }
+            try {
+                const fallback = [];
+                const base = Math.abs(Number(medicationId || 0)) % 20000;
+                for (let day = 0; day <= 90; day++) {
+                    for (let idx = 0; idx < 20; idx++) fallback.push({ id: base * 100000 + day * 100 + idx + 1 });
+                }
+                await LocalNotifications.cancel({ notifications: fallback });
+            } catch(e) { console.log('取消通知略過:', e.message); }
+        }
+
+        async function scheduleLocalNotifications(medicationId, drugName, dosage, remindTimes, durationDays) {
+            if (!LocalNotifications || !medicationId) return;
+            if (!nativeNotificationReady) await initNativeNotifications();
+            if (!nativeNotificationReady) return;
+            try {
+                const times = normalizeReminderList(remindTimes);
+                const days = parseInt(durationDays, 10);
+                const hasFiniteDuration = Number.isFinite(days) && days > 0;
+                const schedules = [];
+                const maxFiniteDays = Math.min(hasFiniteDuration ? days : 1, 60);
+                const now = new Date();
+
+                times.forEach((time, idx) => {
+                    if (hasFiniteDuration) {
+                        for (let day = 0; day < maxFiniteDays; day++) {
+                            const at = nextReminderDate(time, day);
+                            if (at <= now) continue;
+                            schedules.push({
+                                id: localNotificationId(medicationId, day, idx),
+                                title: '用藥提醒',
+                                body: `${drugName} · ${dosage || t('劑量')} · ${time}`,
+                                schedule: { at },
+                                extra: { medicationId: String(medicationId), type: 'medication_reminder', remindTime: time }
+                            });
                         }
-                    };
+                    } else {
+                        const [h, m] = String(time || '09:00').split(':').map(Number);
+                        schedules.push({
+                            id: localNotificationId(medicationId, 0, idx),
+                            title: '用藥提醒',
+                            body: `${drugName} · ${dosage || t('劑量')} · ${time}`,
+                            schedule: {
+                                on: { hour: Number.isFinite(h) ? h : 9, minute: Number.isFinite(m) ? m : 0 },
+                                repeats: true
+                            },
+                            extra: { medicationId: String(medicationId), type: 'medication_reminder', remindTime: time }
+                        });
+                    }
                 });
+                if (schedules.length === 0) return;
                 await LocalNotifications.schedule({ notifications: schedules });
             } catch(e) { console.log('通知排程略過'); }
+        }
+
+        async function rescheduleLocalNotifications(medicationId, drugName, dosage, remindTimes, durationDays) {
+            await cancelLocalNotificationsForMedication(medicationId);
+            await scheduleLocalNotifications(medicationId, drugName, dosage, remindTimes, durationDays);
         }
 
         // 初始化

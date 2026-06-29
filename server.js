@@ -11,7 +11,14 @@ const helmet = require('helmet');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const fs = require('fs');
+const http2 = require('http2');
 const { spawn } = require('child_process');
+let firebaseAdmin = null;
+try {
+    firebaseAdmin = require('firebase-admin');
+} catch (e) {
+    firebaseAdmin = null;
+}
 
 const PORT = Number(process.env.PORT || 8050);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -36,6 +43,14 @@ const PRO_MONTHLY_PRODUCT_ID = process.env.PRO_MONTHLY_PRODUCT_ID || 'yaojidecar
 const PRO_YEARLY_PRODUCT_ID = process.env.PRO_YEARLY_PRODUCT_ID || 'yaojidecare_pro_yearly';
 const REVENUECAT_IOS_API_KEY = process.env.REVENUECAT_IOS_API_KEY || '';
 const REVENUECAT_ANDROID_API_KEY = process.env.REVENUECAT_ANDROID_API_KEY || '';
+const FIREBASE_SERVICE_ACCOUNT_JSON = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
+const FIREBASE_SERVICE_ACCOUNT_BASE64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || '';
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || '';
+const APNS_KEY_ID = process.env.APNS_KEY_ID || '';
+const APNS_TEAM_ID = process.env.APNS_TEAM_ID || '';
+const APNS_AUTH_KEY_BASE64 = process.env.APNS_AUTH_KEY_BASE64 || '';
+const APNS_BUNDLE_ID = process.env.APNS_BUNDLE_ID || 'app.yaojidecare';
+const APNS_ENV = process.env.APNS_ENV || (process.env.NODE_ENV === 'production' ? 'production' : 'sandbox');
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8050,http://localhost:3000,https://yaojidecare.app,https://www.yaojidecare.app,capacitor://localhost,ionic://localhost')
     .split(',')
     .map(origin => origin.trim())
@@ -99,6 +114,158 @@ function makeAccountCode(id) {
 function publicEmail(user) {
     const email = user && user.email ? String(user.email) : '';
     return email.endsWith('@device.yaojidecare.local') ? null : email;
+}
+
+function parseFirebaseServiceAccount() {
+    const raw = FIREBASE_SERVICE_ACCOUNT_BASE64
+        ? Buffer.from(FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8')
+        : FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (!raw) return null;
+    const credentials = JSON.parse(raw);
+    if (credentials.private_key) credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+    if (FIREBASE_PROJECT_ID && !credentials.project_id) credentials.project_id = FIREBASE_PROJECT_ID;
+    return credentials;
+}
+
+function getFirebaseMessaging() {
+    if (!firebaseAdmin) return null;
+    try {
+        if (!firebaseAdmin.apps.length) {
+            const credentials = parseFirebaseServiceAccount();
+            if (!credentials) return null;
+            firebaseAdmin.initializeApp({
+                credential: firebaseAdmin.credential.cert(credentials),
+                projectId: credentials.project_id || FIREBASE_PROJECT_ID || undefined
+            });
+        }
+        return firebaseAdmin.messaging();
+    } catch (e) {
+        console.error('Firebase messaging unavailable:', e.message);
+        return null;
+    }
+}
+
+function getApnsAuthKey() {
+    if (!APNS_AUTH_KEY_BASE64) return '';
+    return Buffer.from(APNS_AUTH_KEY_BASE64, 'base64').toString('utf8').replace(/\\n/g, '\n');
+}
+
+function getApnsAuthToken() {
+    const key = getApnsAuthKey();
+    if (!key || !APNS_KEY_ID || !APNS_TEAM_ID) return '';
+    return jwt.sign(
+        { iss: APNS_TEAM_ID, iat: Math.floor(Date.now() / 1000) },
+        key,
+        { algorithm: 'ES256', header: { alg: 'ES256', kid: APNS_KEY_ID } }
+    );
+}
+
+function sendApnsNotification(token, payload = {}) {
+    return new Promise((resolve, reject) => {
+        const authToken = getApnsAuthToken();
+        if (!authToken) return resolve({ skipped: 'apns_not_configured' });
+        const host = APNS_ENV === 'production' ? 'https://api.push.apple.com' : 'https://api.sandbox.push.apple.com';
+        const client = http2.connect(host);
+        let settled = false;
+        const finish = (err, result) => {
+            if (settled) return;
+            settled = true;
+            client.close();
+            if (err) reject(err);
+            else resolve(result || {});
+        };
+        client.on('error', finish);
+        const body = JSON.stringify({
+            aps: {
+                alert: {
+                    title: String(payload.title || '藥護家通知').slice(0, 120),
+                    body: String(payload.body || payload.message || '').slice(0, 240)
+                },
+                sound: 'default',
+                badge: 1
+            },
+            ...(payload.data || {})
+        });
+        const req = client.request({
+            ':method': 'POST',
+            ':path': `/3/device/${token}`,
+            authorization: `bearer ${authToken}`,
+            'apns-topic': APNS_BUNDLE_ID,
+            'apns-push-type': 'alert',
+            'content-type': 'application/json'
+        });
+        let response = '';
+        let status = 0;
+        req.on('response', headers => { status = Number(headers[':status'] || 0); });
+        req.setEncoding('utf8');
+        req.on('data', chunk => { response += chunk; });
+        req.on('end', () => {
+            if (status >= 200 && status < 300) return finish(null, { sent: 1 });
+            const err = new Error(`APNs ${status}: ${response}`);
+            err.status = status;
+            err.response = response;
+            finish(err);
+        });
+        req.on('error', finish);
+        req.end(body);
+    });
+}
+
+function normalizePushPlatform(value) {
+    const platform = String(value || '').trim().toLowerCase();
+    if (['ios', 'android', 'web'].includes(platform)) return platform;
+    return 'unknown';
+}
+
+async function sendPushToUser(userId, payload = {}) {
+    const messaging = getFirebaseMessaging();
+    const tokenRows = dbAll(
+        "SELECT token, platform FROM push_tokens WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC LIMIT 20",
+        [userId]
+    ).filter(row => row.token);
+    if (tokenRows.length === 0) return { sent: 0, skipped: 'no_tokens' };
+
+    let sent = 0;
+    let skipped = 0;
+    for (const row of tokenRows) {
+        const token = row.token;
+        try {
+            if (row.platform === 'ios') {
+                const result = await sendApnsNotification(token, payload);
+                if (result.skipped) skipped += 1;
+                else sent += 1;
+            } else {
+                if (!messaging) {
+                    skipped += 1;
+                    continue;
+                }
+                await messaging.send({
+                    token,
+                    notification: {
+                        title: String(payload.title || '藥護家通知').slice(0, 120),
+                        body: String(payload.body || payload.message || '').slice(0, 240)
+                    },
+                    data: Object.fromEntries(Object.entries(payload.data || {}).map(([key, value]) => [key, String(value ?? '')])),
+                    android: {
+                        priority: 'high',
+                        notification: {
+                            sound: 'default',
+                            channelId: 'medication_reminders'
+                        }
+                    }
+                });
+                sent += 1;
+            }
+        } catch (e) {
+            const code = e.code || '';
+            console.error('Push send failed:', code || e.message);
+            if (/registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code) || /BadDeviceToken|Unregistered|DeviceTokenNotForTopic/.test(e.response || '')) {
+                dbRun('UPDATE push_tokens SET enabled=0, updated_at=CURRENT_TIMESTAMP WHERE token=?', [token]);
+            }
+        }
+    }
+    if (sent > 0) saveDB();
+    return { sent, skipped };
 }
 
 const FAMILY_RELATIONSHIPS = new Set(['子女', '父母', '配偶', '家人', '照護者']);
@@ -344,6 +511,7 @@ function deleteUserData(uid) {
     dbRun('DELETE FROM family_invites WHERE inviter_user_id=? OR used_by=?', [uid, uid]);
     dbRun('DELETE FROM family_messages WHERE sender_id=? OR target_user_id=?', [uid, uid]);
     dbRun('DELETE FROM notifications WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM push_tokens WHERE user_id=?', [uid]);
     dbRun('DELETE FROM user_settings WHERE user_id=?', [uid]);
     dbRun('DELETE FROM medication_changes WHERE user_id=?', [uid]);
     dbRun('DELETE FROM users WHERE id=?', [uid]);
@@ -405,6 +573,24 @@ async function init() {
         "ALTER TABLE notifications ADD COLUMN status TEXT DEFAULT 'unread'",
         "ALTER TABLE notifications ADD COLUMN snooze_until DATETIME",
         "ALTER TABLE notifications ADD COLUMN action_url TEXT",
+        `CREATE TABLE IF NOT EXISTS push_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            platform TEXT DEFAULT 'unknown',
+            device_id TEXT,
+            app_version TEXT,
+            enabled INTEGER DEFAULT 1,
+            last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        "ALTER TABLE push_tokens ADD COLUMN app_version TEXT",
+        "ALTER TABLE push_tokens ADD COLUMN enabled INTEGER DEFAULT 1",
+        "ALTER TABLE push_tokens ADD COLUMN last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE push_tokens ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_push_tokens_token ON push_tokens(token)",
+        "CREATE INDEX IF NOT EXISTS idx_push_tokens_user_id ON push_tokens(user_id)",
         `CREATE TABLE IF NOT EXISTS family_invites (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             inviter_user_id INTEGER NOT NULL,
@@ -747,6 +933,48 @@ async function init() {
         if (u) u.email = publicEmail(u);
         res.json(u ? { user:u } : { error:'用戶不存在' });
     });
+
+    app.post('/api/push/register', auth, (req, res) => {
+        const token = String(req.body.token || '').trim();
+        if (!token || token.length < 20 || token.length > 4096) {
+            return res.status(400).json({ error: '推播 token 無效' });
+        }
+        const platform = normalizePushPlatform(req.body.platform);
+        const deviceId = String(req.body.device_id || '').trim().slice(0, 180) || null;
+        const appVersion = String(req.body.app_version || '').trim().slice(0, 40) || null;
+        dbRun(
+            `INSERT INTO push_tokens (user_id, token, platform, device_id, app_version, enabled, last_seen_at, updated_at)
+             VALUES (?,?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+             ON CONFLICT(token) DO UPDATE SET
+                user_id=excluded.user_id,
+                platform=excluded.platform,
+                device_id=excluded.device_id,
+                app_version=excluded.app_version,
+                enabled=1,
+                last_seen_at=CURRENT_TIMESTAMP,
+                updated_at=CURRENT_TIMESTAMP`,
+            [req.user.id, token, platform, deviceId, appVersion]
+        );
+        saveDB();
+        res.json({ message: '推播裝置已註冊', firebase_ready: !!getFirebaseMessaging() });
+    });
+
+    app.post('/api/push/unregister', auth, (req, res) => {
+        const token = String(req.body.token || '').trim();
+        if (token) dbRun('UPDATE push_tokens SET enabled=0, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND token=?', [req.user.id, token]);
+        else dbRun('UPDATE push_tokens SET enabled=0, updated_at=CURRENT_TIMESTAMP WHERE user_id=?', [req.user.id]);
+        saveDB();
+        res.json({ message: '推播裝置已停用' });
+    });
+
+    app.post('/api/push/test', auth, async (req, res) => {
+        const result = await sendPushToUser(req.user.id, {
+            title: '藥護家測試通知',
+            body: '這是一則 App 原生推播測試。',
+            data: { type: 'push_test', action_url: '/#home' }
+        });
+        res.json({ message: result.sent > 0 ? '測試推播已送出' : '目前尚未送出推播', result });
+    });
     
     // ====== 用藥 API ======
     app.get('/api/medications', auth, (req, res) => {
@@ -791,7 +1019,18 @@ async function init() {
         const newMed = dbGet('SELECT last_insert_rowid() AS id');
         logMedicationChange(req.user.id, newMed?.id, cleanName, 'created', null, { drug_name: cleanName, dosage: cleanDosage, usage_notes, remind_time: times, duration_days: days, total_quantity: total, remaining: remain });
         saveDB();
-        res.json({ message: '用藥已添加', end_date: endDate });
+        res.json({
+            message: '用藥已添加',
+            end_date: endDate,
+            medication: {
+                id: newMed?.id,
+                drug_name: cleanName,
+                dosage: cleanDosage,
+                remind_time: times,
+                duration_days: days,
+                end_date: endDate
+            }
+        });
     });
     
     app.put('/api/medications/:id', auth, (req, res) => {
@@ -815,7 +1054,18 @@ async function init() {
             [cleanName,cleanDosage,String(usage_notes || '').trim().slice(0, 500),JSON.stringify(times),days,endDate,total,remain,daily,threshold, image, req.params.id]);
         logMedicationChange(req.user.id, req.params.id, cleanName || before.drug_name, 'updated', before, { drug_name: cleanName, dosage: cleanDosage, usage_notes, remind_time: times, duration_days: days, total_quantity: total, remaining: remain, daily_amount: daily, refill_threshold: threshold });
         saveDB();
-        res.json({ message: '用藥已更新', end_date: endDate });
+        res.json({
+            message: '用藥已更新',
+            end_date: endDate,
+            medication: {
+                id: Number(req.params.id),
+                drug_name: cleanName,
+                dosage: cleanDosage,
+                remind_time: times,
+                duration_days: days,
+                end_date: endDate
+            }
+        });
     });
     
     app.delete('/api/medications/:id', auth, (req, res) => {
@@ -1403,7 +1653,7 @@ async function init() {
     });
     
     // ====== 家人未吃藥通知 ======
-    app.get('/api/family/check-missed', auth, (req, res) => {
+    app.get('/api/family/check-missed', auth, async (req, res) => {
         const today = new Date().toISOString().split('T')[0];
         const now = new Date();
         const ct = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -1423,7 +1673,21 @@ async function init() {
                             const msg = `${f.name} 錯過了 ${t} 的 ${m.drug_name}`;
                             const existed = dbGet('SELECT id FROM notifications WHERE user_id=? AND type=? AND message=? AND created_at LIKE ?', [req.user.id, 'missed_alert', msg, today + '%']);
                             if (!existed) {
-                                dbRun('INSERT INTO notifications (user_id, type, title, message, is_read) VALUES (?,?,?,?,0)', [req.user.id, 'missed_alert', '⚠️ 家人未吃藥', msg]);
+                                dbRun(
+                                    'INSERT INTO notifications (user_id, type, title, message, is_read, status, action_url) VALUES (?,?,?,?,0,?,?)',
+                                    [req.user.id, 'missed_alert', '⚠️ 家人未吃藥', msg, 'unread', '/#family']
+                                );
+                                sendPushToUser(req.user.id, {
+                                    title: '家人未吃藥',
+                                    body: msg,
+                                    data: {
+                                        type: 'missed_alert',
+                                        action_url: '/#family',
+                                        related_user_id: f.related_user_id,
+                                        medication_id: m.id,
+                                        remind_time: t
+                                    }
+                                }).catch(e => console.error('Family push failed:', e.message));
                             }
                         }
                     }

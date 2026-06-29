@@ -116,6 +116,21 @@ CREATE TABLE IF NOT EXISTS notifications (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+-- 原生 App 推播 token
+CREATE TABLE IF NOT EXISTS push_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    platform TEXT DEFAULT 'unknown',
+    device_id TEXT,
+    app_version TEXT,
+    enabled INTEGER DEFAULT 1,
+    last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 -- 家人邀請碼
 CREATE TABLE IF NOT EXISTS family_invites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
