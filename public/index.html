@@ -2328,22 +2328,6 @@
             return adUnitId === IOS_TEST_REWARDED_AD_UNIT_ID || adUnitId === ANDROID_TEST_REWARDED_AD_UNIT_ID;
         }
 
-        async function requestAdTrackingAuthorizationIfNeeded(AdMob) {
-            const platform = window.Capacitor?.getPlatform?.() || '';
-            if (platform !== 'ios' || !AdMob?.trackingAuthorizationStatus || !AdMob?.requestTrackingAuthorization) {
-                return;
-            }
-
-            try {
-                const { status } = await AdMob.trackingAuthorizationStatus();
-                if (status === 0 || status === 'notDetermined') {
-                    await AdMob.requestTrackingAuthorization();
-                }
-            } catch (error) {
-                console.warn('ATT authorization skipped:', error?.message || error);
-            }
-        }
-
         async function prepareAiScanRewardedAd() {
             const AdMob = getAdMobPlugin();
             const adUnitId = getRewardedAdUnitId();
@@ -2359,7 +2343,6 @@
             }
 
             if (!aiScanRewardedAdCreated) {
-                await requestAdTrackingAuthorizationIfNeeded(AdMob);
                 await AdMob.start();
                 await AdMob.configure?.({ appMuted: false, appVolume: 1 });
                 await AdMob.configRequest?.({
