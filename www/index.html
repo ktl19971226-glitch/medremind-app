@@ -520,7 +520,7 @@
         max-width: 760px;
         margin: 0 auto;
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 4px;
       }
 
@@ -606,6 +606,7 @@
         ["bookings", "預約", "M8 2v4M16 2v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"],
         ["services", "服務", "M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7l3-7Z"],
         ["customers", "客戶", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
+        ["payroll", "薪資", "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"],
         ["line", "權限", "M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"]
       ];
       const state = {
@@ -617,6 +618,7 @@
         customerSearch: "",
         newBookingOpen: false,
         editingBookingId: "",
+        payrollRate: Number(localStorage.getItem("xiaoyue_payroll_rate") || 40),
         data: null,
         loading: false,
         error: "",
@@ -648,6 +650,7 @@
         date.setMinutes(Math.ceil(date.getMinutes() / 30) * 30, 0, 0);
         return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
       };
+      const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 
       function setTab(tab, options = {}) {
         state.tab = tab;
@@ -685,6 +688,12 @@
       function editBooking(id) {
         state.editingBookingId = id;
         state.newBookingOpen = false;
+        render();
+      }
+
+      function setPayrollRate(value) {
+        state.payrollRate = Math.max(0, Math.min(100, Number(value || 0)));
+        localStorage.setItem("xiaoyue_payroll_rate", String(state.payrollRate));
         render();
       }
 
@@ -869,6 +878,7 @@
               time: String(form.get("time") || ""),
               finalAmount: String(form.get("finalAmount") || ""),
               note: String(form.get("note") || "")
+              ,staffId: String(form.get("staffId") || "")
             })
           });
           state.newBookingOpen = false;
@@ -898,6 +908,7 @@
               time: String(form.get("time") || ""),
               finalAmount: String(form.get("finalAmount") || ""),
               note: String(form.get("note") || "")
+              ,staffId: String(form.get("staffId") || "")
             })
           });
           state.editingBookingId = "";
@@ -1020,7 +1031,7 @@
             <div class="row">
               <div class="title">
                 ${item.customerName}
-                <small>${fmtDate(item.startsAt)} · ${item.service?.name || ""} · ${item.studio?.name || ""}</small>
+                <small>${fmtDate(item.startsAt)} · ${item.service?.name || ""} · ${item.staff?.name || "未指派"} · ${item.studio?.name || ""}</small>
               </div>
               <span class="pill ${pillClass(item.status)}">${statusLabel(item.status)}</span>
             </div>
@@ -1043,6 +1054,13 @@
           .join("");
       }
 
+      function staffOptions(selectedId) {
+        return `<option value="">未指派</option>${(state.data.staff || [])
+          .filter((staff) => staff.active)
+          .map((staff) => `<option value="${staff.id}" ${staff.id === selectedId ? "selected" : ""}>${staff.name}${staff.role ? ` · ${staff.role}` : ""}</option>`)
+          .join("")}`;
+      }
+
       function bookingFormView(item) {
         const isEdit = Boolean(item);
         const firstStudio = state.data.studios[0];
@@ -1063,6 +1081,10 @@
             <div class="field">
               <label>服務</label>
               <select name="serviceId">${serviceOptions(item?.service?.id || firstService.id)}</select>
+            </div>
+            <div class="field">
+              <label>負責員工</label>
+              <select name="staffId">${staffOptions(item?.staff?.id || "")}</select>
             </div>
             <div class="form-grid">
               <div class="field">
@@ -1182,6 +1204,77 @@
         `;
       }
 
+      function payrollView() {
+        const now = new Date();
+        const currentMonth = monthKey(now);
+        const monthBookings = state.data.bookings.filter((booking) => monthKey(new Date(booking.startsAt)) === currentMonth);
+        const rows = new Map();
+
+        for (const staff of state.data.staff || []) {
+          rows.set(staff.id, {
+            id: staff.id,
+            name: staff.name,
+            role: staff.role || "",
+            bookings: 0,
+            completed: 0,
+            revenue: 0
+          });
+        }
+
+        rows.set("unassigned", {
+          id: "unassigned",
+          name: "未指派",
+          role: "待排班",
+          bookings: 0,
+          completed: 0,
+          revenue: 0
+        });
+
+        for (const booking of monthBookings) {
+          const key = booking.staff?.id || "unassigned";
+          const row = rows.get(key) || rows.get("unassigned");
+          row.bookings += 1;
+          row.completed += booking.status === "COMPLETED" ? 1 : 0;
+          row.revenue += Number(booking.finalAmount || 0);
+        }
+
+        const data = [...rows.values()].filter((row) => row.bookings > 0 || row.id !== "unassigned");
+        const totalRevenue = data.reduce((sum, row) => sum + row.revenue, 0);
+        const estimatedPay = Math.round(totalRevenue * state.payrollRate / 100);
+
+        return `
+          <section class="grid">
+            <div class="stat"><b>${monthBookings.length}</b><span>本月預約</span></div>
+            <div class="stat"><b>${money(totalRevenue)}</b><span>本月營收</span></div>
+            <div class="stat"><b>${state.payrollRate}%</b><span>抽成估算</span></div>
+            <div class="stat"><b>${money(estimatedPay)}</b><span>預估薪資</span></div>
+          </section>
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">薪資估算</h2>
+                <p class="section-note">${currentMonth} · 依預約 finalAmount 計算</p>
+              </div>
+            </div>
+            <div class="field">
+              <label>抽成比例</label>
+              <input type="number" min="0" max="100" value="${state.payrollRate}" oninput="setPayrollRate(this.value)" />
+            </div>
+            <div class="list" style="margin-top:12px;">
+              ${data.map((row) => `
+                <article class="card">
+                  <div class="row">
+                    <div class="title">${row.name}<small>${row.role || "員工"} · ${row.bookings} 筆 · 完成 ${row.completed} 筆</small></div>
+                    <span class="pill">${money(Math.round(row.revenue * state.payrollRate / 100))}</span>
+                  </div>
+                  <p class="meta">營收 ${money(row.revenue)}${row.id === "unassigned" ? " · 請回預約頁補負責員工" : ""}</p>
+                </article>
+              `).join("") || `<div class="empty">本月還沒有可估算的預約</div>`}
+            </div>
+          </section>
+        `;
+      }
+
       function lineView() {
         const studios = state.data.studios;
         const studio = studios[0];
@@ -1235,6 +1328,7 @@
                 bookings: bookingsView,
                 services: servicesView,
                 customers: customersView,
+                payroll: payrollView,
                 line: lineView
               }[state.tab] || dashboardView)();
 
@@ -1284,6 +1378,7 @@
       window.openNewBooking = openNewBooking;
       window.closeBookingForm = closeBookingForm;
       window.editBooking = editBooking;
+      window.setPayrollRate = setPayrollRate;
       window.login = login;
       window.logout = logout;
       window.load = load;
