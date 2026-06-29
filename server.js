@@ -217,6 +217,22 @@ function normalizePushPlatform(value) {
     return 'unknown';
 }
 
+function getPushConfigStatus() {
+    return {
+        firebase: {
+            configured: !!(FIREBASE_SERVICE_ACCOUNT_JSON || FIREBASE_SERVICE_ACCOUNT_BASE64),
+            project_id: FIREBASE_PROJECT_ID || null
+        },
+        apns: {
+            configured: !!(APNS_KEY_ID && APNS_TEAM_ID && APNS_AUTH_KEY_BASE64 && APNS_BUNDLE_ID),
+            key_id: APNS_KEY_ID ? `${APNS_KEY_ID.slice(0, 4)}...` : null,
+            team_id: APNS_TEAM_ID || null,
+            bundle_id: APNS_BUNDLE_ID,
+            env: APNS_ENV
+        }
+    };
+}
+
 async function sendPushToUser(userId, payload = {}) {
     const messaging = getFirebaseMessaging();
     const tokenRows = dbAll(
@@ -1742,6 +1758,52 @@ async function init() {
             totalUsers, totalMeds, todayLogs, todayTaken,
             todayAdherence: todayLogs > 0 ? Math.round(todayTaken / todayLogs * 100) : 0,
             healthRecords
+        });
+    });
+
+    app.get('/api/admin/push/status', auth, adminAuth, (req, res) => {
+        const counts = dbAll(`
+            SELECT platform,
+                   COUNT(*) AS total,
+                   SUM(CASE WHEN enabled=1 THEN 1 ELSE 0 END) AS enabled
+            FROM push_tokens
+            GROUP BY platform
+            ORDER BY platform
+        `);
+        const recent = dbAll(`
+            SELECT pt.id, pt.user_id, u.name, u.email, pt.platform, pt.app_version, pt.enabled,
+                   pt.last_seen_at, pt.created_at, substr(pt.token, -10) AS token_tail
+            FROM push_tokens pt
+            LEFT JOIN users u ON u.id = pt.user_id
+            ORDER BY pt.last_seen_at DESC
+            LIMIT 30
+        `).map(row => ({ ...row, email: publicEmail(row) }));
+        const total = dbGet('SELECT COUNT(*) AS c FROM push_tokens')?.c || 0;
+        const enabled = dbGet('SELECT COUNT(*) AS c FROM push_tokens WHERE enabled=1')?.c || 0;
+        res.json({
+            config: getPushConfigStatus(),
+            totals: { total, enabled },
+            counts,
+            recent
+        });
+    });
+
+    app.post('/api/admin/push/test', auth, adminAuth, async (req, res) => {
+        const userId = parseInt(req.body.user_id, 10);
+        if (!userId) return res.status(400).json({ error: '請指定用戶 ID' });
+        const user = dbGet('SELECT id,name FROM users WHERE id=?', [userId]);
+        if (!user) return res.status(404).json({ error: '用戶不存在' });
+        const title = String(req.body.title || '藥護家後台測試通知').trim().slice(0, 120);
+        const body = String(req.body.body || '這是一則由管理後台發出的原生推播測試。').trim().slice(0, 240);
+        const result = await sendPushToUser(userId, {
+            title,
+            body,
+            data: { type: 'admin_push_test', action_url: '/#home' }
+        });
+        res.json({
+            message: result.sent > 0 ? `已送出測試推播給 ${user.name}` : `尚未送出推播給 ${user.name}`,
+            result,
+            config: getPushConfigStatus()
         });
     });
 
