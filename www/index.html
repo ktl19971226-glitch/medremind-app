@@ -110,9 +110,18 @@
       }
 
       .screen,
+      .landing,
       .login {
         max-width: 760px;
         margin: 0 auto;
+      }
+
+      .landing {
+        min-height: 100vh;
+        padding: max(22px, env(safe-area-inset-top)) 0 calc(24px + env(safe-area-inset-bottom));
+        display: grid;
+        align-content: space-between;
+        gap: 22px;
       }
 
       .hero {
@@ -137,6 +146,120 @@
         margin: 0;
         font-size: 24px;
         letter-spacing: 0;
+      }
+
+      .intro-hero {
+        min-height: 520px;
+        display: grid;
+        align-content: space-between;
+        gap: 24px;
+        overflow: hidden;
+        background:
+          linear-gradient(160deg, rgba(217, 68, 53, 0.94), rgba(174, 49, 40, 0.9)),
+          radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.35), transparent 34%);
+        color: white;
+      }
+
+      .intro-hero .brand p,
+      .intro-copy,
+      .intro-proof {
+        color: rgba(255, 255, 255, 0.82);
+      }
+
+      .intro-hero .mark {
+        background: white;
+        color: var(--brand);
+      }
+
+      .intro-kicker {
+        margin: 26px 0 10px;
+        font-size: 13px;
+        font-weight: 800;
+        color: rgba(255, 255, 255, 0.78);
+      }
+
+      .intro-title {
+        margin: 0;
+        font-size: 38px;
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      .intro-copy {
+        margin: 14px 0 0;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+
+      .intro-panel {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.14);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      }
+
+      .intro-item {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .intro-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      .intro-icon svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .intro-item b {
+        display: block;
+        font-size: 15px;
+      }
+
+      .intro-item span {
+        display: block;
+        margin-top: 3px;
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .intro-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .intro-actions .primary {
+        margin-top: 0;
+        background: white;
+        color: var(--brand);
+      }
+
+      .intro-actions .secondary {
+        background: rgba(255, 255, 255, 0.12);
+        color: white;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.26);
+      }
+
+      .intro-proof {
+        margin: 0;
+        text-align: center;
+        font-size: 12px;
+      }
+
+      .landing > .intro-proof {
+        color: var(--muted);
       }
 
       .field {
@@ -397,6 +520,7 @@
       const state = {
         token: localStorage.getItem("xiaoyue_mobile_token") || "",
         tab: "dashboard",
+        authView: "intro",
         data: null,
         loading: false,
         error: "",
@@ -471,8 +595,61 @@
       function logout() {
         state.token = "";
         state.data = null;
+        state.authView = "intro";
         localStorage.removeItem("xiaoyue_mobile_token");
         render();
+      }
+
+      function showLogin() {
+        state.authView = "login";
+        state.error = "";
+        render();
+      }
+
+      function showIntro() {
+        state.authView = "intro";
+        state.error = "";
+        render();
+      }
+
+      function introView() {
+        return `
+          <main class="landing">
+            <section class="hero intro-hero">
+              <div>
+                <div class="brand">
+                  <div class="mark">約</div>
+                  <div>
+                    <h1>小約</h1>
+                    <p>個人工作室預約管理</p>
+                  </div>
+                </div>
+                <p class="intro-kicker">給美容、美甲、課程、諮詢與一人服務品牌</p>
+                <h2 class="intro-title">把預約、客戶與 LINE 通知收進同一個工作台</h2>
+                <p class="intro-copy">小約讓店家用手機掌握每日預約、服務項目、客戶資料與官方帳號權限，少漏單、少手抄、少來回確認。</p>
+              </div>
+              <div class="intro-panel">
+                <div class="intro-item">
+                  <div class="intro-icon">${icon("M8 2v4M16 2v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z")}</div>
+                  <div><b>預約一眼看懂</b><span>快速確認今日安排、客人資訊、服務內容與狀態。</span></div>
+                </div>
+                <div class="intro-item">
+                  <div class="intro-icon">${icon("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75")}</div>
+                  <div><b>客戶資料集中</b><span>累積電話、備註、消費與標籤，回訪時不用翻訊息。</span></div>
+                </div>
+                <div class="intro-item">
+                  <div class="intro-icon">${icon("M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z")}</div>
+                  <div><b>LINE 權限可管理</b><span>店家可設定官方帳號串接，讓提醒與通知流程更順。</span></div>
+                </div>
+              </div>
+              <div class="intro-actions">
+                <button class="primary" onclick="showLogin()">開始使用</button>
+                <button class="secondary" onclick="showLogin()">店家登入</button>
+              </div>
+            </section>
+            <p class="intro-proof">已建立帳號的店家可直接登入測試所有功能</p>
+          </main>
+        `;
       }
 
       async function updateBooking(id, data) {
@@ -538,6 +715,7 @@
                   <p>店家工作台</p>
                 </div>
               </div>
+              <button class="secondary" type="button" onclick="showIntro()" style="width:100%;margin-top:18px;">返回介紹</button>
               <form onsubmit="login(event)">
                 <div class="field">
                   <label>帳號</label>
@@ -749,9 +927,11 @@
       }
 
       function render() {
-        root.innerHTML = state.token ? shell() : loginView();
+        root.innerHTML = state.token ? shell() : (state.authView === "login" ? loginView() : introView());
       }
 
+      window.showLogin = showLogin;
+      window.showIntro = showIntro;
       window.login = login;
       window.logout = logout;
       window.load = load;
