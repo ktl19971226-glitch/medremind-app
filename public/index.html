@@ -1039,8 +1039,9 @@
 
         /* 提示訊息 */
         .toast {
+            --toast-top: calc(max(env(safe-area-inset-top, 0px), 44px) + 12px);
             position: fixed;
-            top: 20px;
+            top: var(--toast-top);
             left: 50%;
             transform: translateX(-50%);
             background: #333;
@@ -1048,16 +1049,23 @@
             padding: 12px 24px;
             border-radius: 12px;
             font-size: 16px;
+            line-height: 1.45;
+            width: max-content;
+            max-width: min(76vw, 360px);
+            white-space: normal;
+            overflow-wrap: anywhere;
+            text-align: left;
             z-index: 200;
             animation: fadeInOut 2s ease;
             pointer-events: none;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
         }
 
         @keyframes fadeInOut {
-            0% { opacity: 0; top: 0; }
-            15% { opacity: 1; top: 20px; }
-            85% { opacity: 1; top: 20px; }
-            100% { opacity: 0; top: 0; }
+            0% { opacity: 0; transform: translate(-50%, -10px); }
+            15% { opacity: 1; transform: translate(-50%, 0); }
+            85% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, -10px); }
         }
 
         /* 隱藏未登入時的底部導航 */
