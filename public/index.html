@@ -2510,7 +2510,7 @@
                     'LocalNotifications'
                 );
                 const permissions = await LocalNotifications.requestPermissions();
-                nativeNotificationReady = permissions?.display === 'granted' || permissions?.display === 'prompt';
+                nativeNotificationReady = permissions?.display === 'granted';
             } catch(e) { console.log('通知初始化略過:', e.message); }
         }
 
@@ -2930,6 +2930,8 @@
             initSimpleMode();
             initNativeNotifications();
             initPushNotifications();
+            syncMedicationLocalNotifications({ force: true })
+                .catch(e => console.log('登入後用藥通知同步略過:', e.message));
             acceptInviteFromUrl();
             updateInstallBanner();
         }
@@ -3125,6 +3127,8 @@
                         </div>
                     </div>`;
             }).join('');
+            syncMedicationLocalNotificationsFromList(data.medications)
+                .catch(e => console.log('用藥通知同步略過:', e.message));
         }
 
         function showAddMedication() {
@@ -3509,7 +3513,8 @@
             if (status === 200) {
                 document.querySelector('.modal-overlay')?.remove();
                 showToast(t('用藥已添加'));
-                scheduleLocalNotifications(data.medication?.id, drug_name, dosage, remind_time, duration_days);
+                scheduleLocalNotifications(data.medication?.id, drug_name, dosage, remind_time, duration_days)
+                    .catch(e => console.log('新增用藥通知排程略過:', e.message));
                 window._lastMedicationImage = null;
                 loadMedicationsPage();
             } else {
@@ -3908,6 +3913,22 @@
             return Array.isArray(remindTimes) ? remindTimes : [];
         }
 
+        function parseMedicationReminderTimes(med) {
+            const raw = med?.remind_time;
+            if (Array.isArray(raw)) return raw;
+            try {
+                const parsed = JSON.parse(raw || '[]');
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function parseMedicationDurationDays(med) {
+            const value = parseInt(med?.duration_days, 10);
+            return Number.isFinite(value) && value > 0 ? value : null;
+        }
+
         async function cancelLocalNotificationsForMedication(medicationId) {
             if (!LocalNotifications || !medicationId) return;
             try {
@@ -3933,9 +3954,9 @@
         }
 
         async function scheduleLocalNotifications(medicationId, drugName, dosage, remindTimes, durationDays) {
-            if (!LocalNotifications || !medicationId) return;
-            if (!nativeNotificationReady) await initNativeNotifications();
-            if (!nativeNotificationReady) return;
+            if (!medicationId) return 0;
+            if (!LocalNotifications || !nativeNotificationReady) await initNativeNotifications();
+            if (!LocalNotifications || !nativeNotificationReady) return 0;
             try {
                 const times = normalizeReminderList(remindTimes);
                 const days = parseInt(durationDays, 10);
@@ -3971,14 +3992,60 @@
                         });
                     }
                 });
-                if (schedules.length === 0) return;
+                if (schedules.length === 0) return 0;
                 await LocalNotifications.schedule({ notifications: schedules });
-            } catch(e) { console.log('通知排程略過'); }
+                return schedules.length;
+            } catch(e) {
+                console.log('通知排程略過:', e.message);
+                return 0;
+            }
         }
 
         async function rescheduleLocalNotifications(medicationId, drugName, dosage, remindTimes, durationDays) {
             await cancelLocalNotificationsForMedication(medicationId);
-            await scheduleLocalNotifications(medicationId, drugName, dosage, remindTimes, durationDays);
+            return scheduleLocalNotifications(medicationId, drugName, dosage, remindTimes, durationDays);
+        }
+
+        let medicationNotificationSyncInFlight = null;
+        let medicationNotificationLastSync = 0;
+
+        async function syncMedicationLocalNotificationsFromList(medications, options = {}) {
+            if (!isNative || !Array.isArray(medications)) return 0;
+            const now = Date.now();
+            if (!options.force && medicationNotificationSyncInFlight) return medicationNotificationSyncInFlight;
+            if (!options.force && now - medicationNotificationLastSync < 15000) return 0;
+
+            medicationNotificationLastSync = now;
+            medicationNotificationSyncInFlight = (async () => {
+                if (!LocalNotifications || !nativeNotificationReady) await initNativeNotifications();
+                if (!LocalNotifications || !nativeNotificationReady) return 0;
+                let total = 0;
+                for (const med of medications) {
+                    const times = parseMedicationReminderTimes(med);
+                    if (!med?.id || times.length === 0) continue;
+                    total += await rescheduleLocalNotifications(
+                        med.id,
+                        med.drug_name || '用藥',
+                        med.dosage || '',
+                        times,
+                        parseMedicationDurationDays(med)
+                    );
+                }
+                return total;
+            })();
+
+            try {
+                return await medicationNotificationSyncInFlight;
+            } finally {
+                medicationNotificationSyncInFlight = null;
+            }
+        }
+
+        async function syncMedicationLocalNotifications(options = {}) {
+            if (!isNative || !getToken()) return 0;
+            const { status, data } = await api('/api/medications');
+            if (status !== 200) return 0;
+            return syncMedicationLocalNotificationsFromList(data.medications || [], options);
         }
 
         // 初始化
