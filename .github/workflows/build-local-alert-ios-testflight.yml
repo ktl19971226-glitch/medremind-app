@@ -59,6 +59,7 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/local-alert-signing.keychain-db"
 
           echo "$IOS_DISTRIBUTION_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          export PROFILE_PATH APPSTORE_PROFILE_ID
 
           node <<'NODE'
           const crypto = require('crypto');

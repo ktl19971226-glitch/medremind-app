@@ -1,1 +1,1 @@
-trigger local alert iOS build 1 TestFlight 2026-06-30T17:48:00Z
+trigger local alert iOS build 2 TestFlight 2026-06-29T17:53:34Z
