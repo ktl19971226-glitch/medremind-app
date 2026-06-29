@@ -21,7 +21,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'app.yaojidecare.localalert',
-      buildNumber: '1',
+      buildNumber: '2',
       icon: './assets/icon.png',
       config: {
         usesNonExemptEncryption: false
@@ -29,7 +29,7 @@ module.exports = {
       infoPlist: {
         CFBundleDisplayName: '在地雷達',
         NSUserNotificationsUsageDescription: '在地雷達會傳送所在地點的即時提醒與測試通知。',
-        NSLocationWhenInUseUsageDescription: '在地雷達可依你設定的地點提供在地提醒；目前不會自動讀取定位。'
+        NSLocationWhenInUseUsageDescription: '在地雷達會使用目前位置協助建立監控地點與提供在地提醒。'
       },
       entitlements: {
         'aps-environment': 'production'

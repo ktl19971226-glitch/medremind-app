@@ -1,6 +1,6 @@
 # Local Alert App
 
-全方位在地資訊提醒 App。第一版採用 Expo 手機 App + Node.js 後端提醒引擎。
+全方位在地資訊提醒 App。採用 Expo 手機 App + Node.js 後端提醒引擎。
 
 ## 功能範圍
 
@@ -22,6 +22,16 @@ API 預設 port：`8061`。
 
 手機推播使用 Expo Push Token。手機 App 會向後端註冊 token，後端可透過 `/api/test-push` 測試推播。
 
+## 已新增的產品功能
+
+- 初次設定：每台手機會建立獨立 device scope，設定主要監控地點並啟用推播。
+- 使用者隔離：規則、地點、提醒、裝置 token 依 `X-Device-Id` 分開。
+- 地點管理：新增、編輯、刪除地點，並可使用目前定位帶入城市與行政區。
+- 提醒中心：未讀數、提醒詳情、全部已讀、單筆已讀、封存。
+- 推播規則：支援一般/重大提醒，排程提醒會尊重 quiet hours，重大警示不靜音。
+- 資料源框架：可用 `CWA_API_KEY` / `MOENV_API_KEY` 接天氣、地震、空氣品質；未設定時會回退系統範例。
+- 管理摘要：`/api/admin/summary` 可查看裝置、使用者、地點、提醒與啟用規則數。
+
 ## iOS 原生 App
 
 手機端已產生 iOS 原生工程：`apps/mobile/ios`。
@@ -32,7 +42,7 @@ API 預設 port：`8061`。
 - Bundle ID：`app.yaojidecare.localalert`
 - API：`https://local-alert.yaojidecare.app`
 - iOS 版本：`1.0.0`
-- Build Number：`1`
+- Build Number：`2`
 
 常用指令：
 
