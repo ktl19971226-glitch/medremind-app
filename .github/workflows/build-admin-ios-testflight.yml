@@ -47,6 +47,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 藥護家後台" ios/App/App/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleName YaojidecareAdmin" ios/App/App/Info.plist
           /usr/libexec/PlistBuddy -c "Delete :GADApplicationIdentifier" ios/App/App/Info.plist || true
+          sed -i '' '/CODE_SIGN_ENTITLEMENTS = App\\/App.entitlements;/d' ios/App/App.xcodeproj/project.pbxproj
 
       - name: Install Apple signing assets
         env:
