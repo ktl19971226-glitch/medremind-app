@@ -1,0 +1,6 @@
+node_modules/
+*.log
+apps/api/data/db.json
+.expo/
+dist/
+private_artifacts/

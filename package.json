@@ -1,0 +1,13 @@
+{
+  "name": "local-alert-app",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/api",
+    "apps/mobile"
+  ],
+  "scripts": {
+    "api": "npm --workspace apps/api run dev",
+    "mobile": "npm --workspace apps/mobile run start"
+  }
+}
