@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#fffaf5" />
+    <title>小約</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #fffaf5;
+        --surface: #ffffff;
+        --ink: #241f21;
+        --muted: #746864;
+        --line: #eadfd8;
+        --brand: #d94435;
+        --brand-dark: #ae3128;
+        --mint: #2f8a73;
+        --blue: #385f9f;
+        --gold: #a66b16;
+        --shadow: 0 18px 48px rgba(45, 31, 24, 0.12);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--paper);
+        color: var(--ink);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background:
+          linear-gradient(180deg, #fffaf5 0%, #fff3ec 45%, #f8fbfa 100%);
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      .app {
+        min-height: 100vh;
+        padding: max(18px, env(safe-area-inset-top)) 16px calc(92px + env(safe-area-inset-bottom));
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 2px auto 18px;
+        max-width: 760px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        background: var(--brand);
+        color: white;
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .brand p,
+      .section-note {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .icon-btn {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--ink);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+
+      .screen,
+      .login {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+
+      .hero {
+        padding: 22px;
+        border-radius: 8px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .login {
+        min-height: calc(100vh - 80px);
+        display: grid;
+        align-items: center;
+      }
+
+      .login .hero {
+        width: 100%;
+      }
+
+      .hero h2,
+      .section-title {
+        margin: 0;
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      .field {
+        display: grid;
+        gap: 7px;
+        margin-top: 14px;
+      }
+
+      label {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffdfb;
+        color: var(--ink);
+        outline: none;
+        padding: 12px 13px;
+      }
+
+      textarea {
+        min-height: 86px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: rgba(217, 68, 53, 0.5);
+        box-shadow: 0 0 0 3px rgba(217, 68, 53, 0.12);
+      }
+
+      .primary,
+      .secondary,
+      .danger {
+        min-height: 44px;
+        border-radius: 8px;
+        padding: 0 14px;
+        font-weight: 800;
+      }
+
+      .primary {
+        width: 100%;
+        margin-top: 18px;
+        background: var(--brand);
+        color: white;
+      }
+
+      .secondary {
+        background: #ffffff;
+        color: var(--ink);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+
+      .danger {
+        background: #fff0ee;
+        color: var(--brand-dark);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .stat,
+      .card {
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+
+      .stat {
+        padding: 15px;
+      }
+
+      .stat b {
+        display: block;
+        font-size: 26px;
+        line-height: 1;
+      }
+
+      .stat span,
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .section {
+        margin-top: 18px;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .card {
+        padding: 14px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .title {
+        min-width: 0;
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .title small {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .pill {
+        border-radius: 999px;
+        padding: 6px 9px;
+        flex: 0 0 auto;
+        background: #f5efe9;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .pill.confirmed {
+        background: #eaf6f2;
+        color: var(--mint);
+      }
+
+      .pill.cancelled {
+        background: #fff0ee;
+        color: var(--brand-dark);
+      }
+
+      .pill.completed {
+        background: #edf3ff;
+        color: var(--blue);
+      }
+
+      .pill.no_show {
+        background: #fff5df;
+        color: var(--gold);
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .tabs {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+        background: rgba(255, 250, 245, 0.92);
+        backdrop-filter: blur(18px);
+        border-top: 1px solid rgba(234, 223, 216, 0.9);
+      }
+
+      .tabbar {
+        max-width: 760px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 4px;
+      }
+
+      .tab {
+        min-height: 54px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        gap: 3px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .tab svg,
+      .icon-btn svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      .tab.active {
+        background: #ffffff;
+        color: var(--brand);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+
+      .empty,
+      .error {
+        padding: 18px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .error {
+        color: var(--brand-dark);
+        background: #fff0ee;
+      }
+
+      .hide {
+        display: none !important;
+      }
+
+      @media (min-width: 720px) {
+        .app {
+          padding-inline: 24px;
+        }
+
+        .grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const API = "https://xiaoyue.yaojidecare.app/api/mobile";
+      const tabs = [
+        ["dashboard", "總覽", "M4 13h16M4 7h16M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"],
+        ["bookings", "預約", "M8 2v4M16 2v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"],
+        ["services", "服務", "M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7l3-7Z"],
+        ["customers", "客戶", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
+        ["line", "權限", "M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"]
+      ];
+      const state = {
+        token: localStorage.getItem("xiaoyue_mobile_token") || "",
+        tab: "dashboard",
+        data: null,
+        loading: false,
+        error: "",
+        lineStatus: null
+      };
+
+      const root = document.getElementById("root");
+      const icon = (path) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"></path></svg>`;
+      const fmtDate = (value) => new Intl.DateTimeFormat("zh-TW", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+      const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
+      const statusLabel = (status) => ({ CONFIRMED: "已確認", CANCELLED: "已取消", COMPLETED: "已完成", NO_SHOW: "爽約" }[status] || status);
+      const pillClass = (status) => String(status || "").toLowerCase();
+
+      async function api(path, options = {}) {
+        const response = await fetch(`${API}${path}`, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+            ...(options.headers || {})
+          }
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "連線失敗");
+        return body;
+      }
+
+      async function login(event) {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        state.loading = true;
+        state.error = "";
+        render();
+        try {
+          const result = await api("/login", {
+            method: "POST",
+            body: JSON.stringify({
+              email: String(form.get("email") || ""),
+              password: String(form.get("password") || "")
+            })
+          });
+          state.token = result.token;
+          localStorage.setItem("xiaoyue_mobile_token", result.token);
+          await load();
+        } catch (error) {
+          state.error = error.message;
+        } finally {
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function load() {
+        if (!state.token) return;
+        state.loading = true;
+        state.error = "";
+        render();
+        try {
+          state.data = await api("/summary");
+        } catch (error) {
+          if (error.message === "Unauthorized") {
+            logout();
+            return;
+          }
+          state.error = error.message;
+        } finally {
+          state.loading = false;
+          render();
+        }
+      }
+
+      function logout() {
+        state.token = "";
+        state.data = null;
+        localStorage.removeItem("xiaoyue_mobile_token");
+        render();
+      }
+
+      async function updateBooking(id, data) {
+        state.loading = true;
+        render();
+        try {
+          await api(`/bookings/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+          await load();
+        } catch (error) {
+          state.error = error.message;
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function checkLine(studioId) {
+        state.loading = true;
+        render();
+        try {
+          state.lineStatus = await api("/line-settings", { method: "POST", body: JSON.stringify({ studioId }) });
+        } catch (error) {
+          state.error = error.message;
+        } finally {
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function saveLine(event) {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        state.loading = true;
+        render();
+        try {
+          await api("/line-settings", {
+            method: "PATCH",
+            body: JSON.stringify({
+              studioId: String(form.get("studioId") || ""),
+              lineChannelAccessToken: String(form.get("token") || ""),
+              lineChannelSecret: String(form.get("secret") || ""),
+              lineWebhookUrl: String(form.get("webhookUrl") || ""),
+              lineAdminUserId: String(form.get("adminUserId") || ""),
+              lineWebhookEnabled: form.get("enabled") === "on"
+            })
+          });
+          state.lineStatus = null;
+          await load();
+        } catch (error) {
+          state.error = error.message;
+          state.loading = false;
+          render();
+        }
+      }
+
+      function loginView() {
+        return `
+          <main class="login">
+            <section class="hero">
+              <div class="brand">
+                <div class="mark">約</div>
+                <div>
+                  <h1>小約</h1>
+                  <p>店家工作台</p>
+                </div>
+              </div>
+              <form onsubmit="login(event)">
+                <div class="field">
+                  <label>帳號</label>
+                  <input name="email" type="email" autocomplete="username" required />
+                </div>
+                <div class="field">
+                  <label>密碼</label>
+                  <input name="password" type="password" autocomplete="current-password" required />
+                </div>
+                ${state.error ? `<p class="error">${state.error}</p>` : ""}
+                <button class="primary" type="submit">${state.loading ? "登入中" : "登入"}</button>
+              </form>
+            </section>
+          </main>
+        `;
+      }
+
+      function dashboardView() {
+        const data = state.data;
+        const upcoming = [...data.bookings].filter((item) => new Date(item.startsAt) >= new Date()).reverse().slice(0, 5);
+        return `
+          <section class="grid">
+            <div class="stat"><b>${data.stats.studios}</b><span>工作室</span></div>
+            <div class="stat"><b>${data.stats.bookings}</b><span>近期預約</span></div>
+            <div class="stat"><b>${data.stats.services}</b><span>服務項目</span></div>
+            <div class="stat"><b>${data.stats.customers}</b><span>客戶</span></div>
+          </section>
+          <section class="section">
+            <div class="section-head">
+              <h2 class="section-title">接下來</h2>
+              <button class="secondary" onclick="load()">更新</button>
+            </div>
+            <div class="list">
+              ${upcoming.length ? upcoming.map(bookingCard).join("") : `<div class="empty">目前沒有即將到來的預約</div>`}
+            </div>
+          </section>
+        `;
+      }
+
+      function bookingCard(item) {
+        return `
+          <article class="card">
+            <div class="row">
+              <div class="title">
+                ${item.customerName}
+                <small>${fmtDate(item.startsAt)} · ${item.service?.name || ""} · ${item.studio?.name || ""}</small>
+              </div>
+              <span class="pill ${pillClass(item.status)}">${statusLabel(item.status)}</span>
+            </div>
+            <p class="meta">${item.phone || ""}${item.finalAmount ? ` · ${money(item.finalAmount)}` : ""}${item.note ? ` · ${item.note}` : ""}</p>
+            <div class="actions">
+              <button class="secondary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>
+              <button class="secondary" onclick="updateBooking('${item.id}', { status: 'NO_SHOW' })">爽約</button>
+              <button class="danger" onclick="updateBooking('${item.id}', { status: 'CANCELLED' })">取消</button>
+            </div>
+          </article>
+        `;
+      }
+
+      function bookingsView() {
+        const items = state.data.bookings;
+        return `
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">預約</h2>
+                <p class="section-note">最新 ${items.length} 筆</p>
+              </div>
+              <button class="secondary" onclick="load()">更新</button>
+            </div>
+            <div class="list">${items.length ? items.map(bookingCard).join("") : `<div class="empty">沒有預約</div>`}</div>
+          </section>
+        `;
+      }
+
+      function servicesView() {
+        const services = state.data.services;
+        return `
+          <section class="section">
+            <div class="section-head">
+              <h2 class="section-title">服務</h2>
+              <span class="pill">${services.length} 項</span>
+            </div>
+            <div class="list">
+              ${services.map((service) => `
+                <article class="card">
+                  <div class="row">
+                    <div class="title">
+                      ${service.name}
+                      <small>${service.category} · ${service.durationMin} 分鐘</small>
+                    </div>
+                    <span class="pill">${service.active ? "上架" : "停用"}</span>
+                  </div>
+                  <p class="meta">${money(service.price)} · ${service.description || ""}</p>
+                </article>
+              `).join("") || `<div class="empty">沒有服務</div>`}
+            </div>
+          </section>
+        `;
+      }
+
+      function customersView() {
+        const customers = state.data.customers;
+        return `
+          <section class="section">
+            <div class="section-head">
+              <h2 class="section-title">客戶</h2>
+              <span class="pill">${customers.length} 位</span>
+            </div>
+            <div class="list">
+              ${customers.map((customer) => `
+                <article class="card">
+                  <div class="row">
+                    <div class="title">
+                      ${customer.name}
+                      <small>${customer.phone}${customer.memberLevel ? ` · ${customer.memberLevel}` : ""}</small>
+                    </div>
+                    <span class="pill">${customer.totalBookings} 次</span>
+                  </div>
+                  <p class="meta">${customer.tags || "未標籤"}${customer.isVip ? " · VIP" : ""}${customer.isBlocked ? " · 封鎖" : ""}</p>
+                </article>
+              `).join("") || `<div class="empty">沒有客戶</div>`}
+            </div>
+          </section>
+        `;
+      }
+
+      function lineView() {
+        const studios = state.data.studios;
+        const studio = studios[0];
+        if (!studio) return `<div class="empty">尚未建立工作室</div>`;
+        return `
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">LINE 權限</h2>
+                <p class="section-note">${studio.name}</p>
+              </div>
+              <button class="secondary" onclick="checkLine('${studio.id}')">檢查</button>
+            </div>
+            ${state.lineStatus ? `<div class="card"><b>${state.lineStatus.displayName || "LINE 狀態"}</b><p class="meta">${state.lineStatus.webhookUrl || ""}</p></div>` : ""}
+            <form class="card" onsubmit="saveLine(event)">
+              <input type="hidden" name="studioId" value="${studio.id}" />
+              <div class="field">
+                <label>Channel access token</label>
+                <textarea name="token" placeholder="${studio.hasLineChannelAccessToken ? "已儲存，留空不變" : ""}"></textarea>
+              </div>
+              <div class="field">
+                <label>Channel secret</label>
+                <input name="secret" type="password" placeholder="${studio.hasLineChannelSecret ? "已儲存，留空不變" : ""}" />
+              </div>
+              <div class="field">
+                <label>Webhook URL</label>
+                <input name="webhookUrl" value="${studio.lineWebhookUrl || `https://xiaoyue.yaojidecare.app/api/line/webhook/${studio.slug}`}" />
+              </div>
+              <div class="field">
+                <label>Admin User ID</label>
+                <input name="adminUserId" />
+              </div>
+              <label class="row" style="justify-content:flex-start;margin-top:14px;">
+                <input name="enabled" type="checkbox" ${studio.lineWebhookEnabled ? "checked" : ""} style="width:auto;" />
+                啟用 webhook
+              </label>
+              <button class="primary" type="submit">儲存</button>
+            </form>
+          </section>
+        `;
+      }
+
+      function shell() {
+        const data = state.data;
+        const content = state.loading && !data
+          ? `<div class="empty">載入中</div>`
+          : state.error
+            ? `<div class="error">${state.error}</div>`
+            : ({
+              dashboard: dashboardView,
+              bookings: bookingsView,
+              services: servicesView,
+              customers: customersView,
+              line: lineView
+            }[state.tab] || dashboardView)();
+
+        return `
+          <div class="app">
+            <header class="topbar">
+              <div class="brand">
+                <div class="mark">約</div>
+                <div>
+                  <h1>小約</h1>
+                  <p>${data?.owner?.name || "店家工作台"}</p>
+                </div>
+              </div>
+              <button class="icon-btn" onclick="logout()" aria-label="登出">${icon("M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9")}</button>
+            </header>
+            <main class="screen">${content}</main>
+          </div>
+          <nav class="tabs">
+            <div class="tabbar">
+              ${tabs.map(([key, label, path]) => `
+                <button class="tab ${state.tab === key ? "active" : ""}" onclick="state.tab='${key}';render();">
+                  ${icon(path)}
+                  <span>${label}</span>
+                </button>
+              `).join("")}
+            </div>
+          </nav>
+        `;
+      }
+
+      function render() {
+        root.innerHTML = state.token ? shell() : loginView();
+      }
+
+      window.login = login;
+      window.logout = logout;
+      window.load = load;
+      window.updateBooking = updateBooking;
+      window.checkLine = checkLine;
+      window.saveLine = saveLine;
+      render();
+      load();
+    </script>
+  </body>
+</html>
