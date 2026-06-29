@@ -52,6 +52,17 @@ jobs:
             .replace(/\n\s*CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/g, '');
           fs.writeFileSync(projectPath, project);
           NODE
+          node <<'NODE'
+          const fs = require('fs');
+          const packagePath = 'ios/App/CapApp-SPM/Package.swift';
+          let source = fs.readFileSync(packagePath, 'utf8');
+          source = source
+            .replace(/\n\s*\.package\(name: "CapgoCapacitorAdmob", path: "[^"]+"\),?/g, '')
+            .replace(/\n\s*\.package\(name: "RevenuecatPurchasesCapacitor", path: "[^"]+"\),?/g, '')
+            .replace(/\n\s*\.product\(name: "CapgoCapacitorAdmob", package: "CapgoCapacitorAdmob"\),?/g, '')
+            .replace(/\n\s*\.product\(name: "RevenuecatPurchasesCapacitor", package: "RevenuecatPurchasesCapacitor"\),?/g, '');
+          fs.writeFileSync(packagePath, source);
+          NODE
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 藥護家後台" ios/App/App/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleName YaojidecareAdmin" ios/App/App/Info.plist
           /usr/libexec/PlistBuddy -c "Delete :GADApplicationIdentifier" ios/App/App/Info.plist || true
