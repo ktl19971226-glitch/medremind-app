@@ -462,7 +462,7 @@
 
       .segmented {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
       }
 
@@ -651,6 +651,11 @@
         return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
       };
       const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const isUnpaid = (item) => {
+        const finalAmount = Number(item.finalAmount || 0);
+        const paidAmount = Number(item.paidAmount || 0);
+        return !["PAID", "WAIVED"].includes(item.paymentStatus) && finalAmount > paidAmount;
+      };
 
       function setTab(tab, options = {}) {
         state.tab = tab;
@@ -706,6 +711,8 @@
             if (state.bookingFilter === "today" && !isSameDay(startsAt, now)) return false;
             if (state.bookingFilter === "upcoming" && startsAt < now) return false;
             if (state.bookingFilter === "active" && ["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status)) return false;
+            if (state.bookingFilter === "unpaid" && !isUnpaid(item)) return false;
+            if (state.bookingFilter === "unassigned" && item.staff?.id) return false;
             if (!query) return true;
             return [
               item.customerName,
@@ -991,15 +998,22 @@
       function dashboardView() {
         const data = state.data;
         const now = new Date();
+        const currentMonth = monthKey(now);
         const todayBookings = data.bookings.filter((item) => isSameDay(new Date(item.startsAt), now));
         const upcoming = [...data.bookings].filter((item) => new Date(item.startsAt) >= now).sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt)).slice(0, 5);
         const todayRevenue = todayBookings.reduce((sum, item) => sum + Number(item.finalAmount || 0), 0);
+        const monthBookings = data.bookings.filter((item) => monthKey(new Date(item.startsAt)) === currentMonth);
+        const monthRevenue = monthBookings.reduce((sum, item) => sum + Number(item.finalAmount || 0), 0);
+        const unpaidBookings = data.bookings.filter(isUnpaid);
+        const unpaidAmount = unpaidBookings.reduce((sum, item) => sum + Math.max(Number(item.finalAmount || 0) - Number(item.paidAmount || 0), 0), 0);
+        const unassignedBookings = data.bookings.filter((item) => !item.staff?.id && !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status));
+        const todayTodo = todayBookings.filter((item) => !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status));
         return `
           <section class="grid">
-            <div class="stat"><b>${data.stats.studios}</b><span>工作室</span></div>
-            <div class="stat"><b>${todayBookings.length}</b><span>今日預約</span></div>
-            <div class="stat"><b>${data.stats.services}</b><span>服務項目</span></div>
-            <div class="stat"><b>${money(todayRevenue)}</b><span>今日金額</span></div>
+            <div class="stat"><b>${money(monthRevenue)}</b><span>本月營收</span></div>
+            <div class="stat"><b>${money(unpaidAmount)}</b><span>待收款</span></div>
+            <div class="stat"><b>${unassignedBookings.length}</b><span>待補排班</span></div>
+            <div class="stat"><b>${todayTodo.length}</b><span>今日待辦</span></div>
           </section>
           <section class="section">
             <div class="section-head">
@@ -1008,8 +1022,23 @@
             <div class="quick-actions">
               <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'today' })">今日預約</button>
               <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'upcoming' })">即將到來</button>
+              <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'unpaid' })">待收款</button>
+              <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'unassigned' })">未指派</button>
               <button class="secondary" onclick="setTab('customers')">找客戶</button>
               <button class="secondary" onclick="setTab('line')">LINE 權限</button>
+            </div>
+          </section>
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">營運提醒</h2>
+                <p class="section-note">老闆每天先看這裡</p>
+              </div>
+            </div>
+            <div class="list">
+              ${todayTodo.length ? `<article class="card"><div class="row"><div class="title">今日還有 ${todayTodo.length} 筆待處理<small>${todayTodo.slice(0, 3).map((item) => item.customerName).join("、")}</small></div><span class="pill confirmed">今天</span></div></article>` : `<article class="card"><div class="title">今日預約已處理完<small>目前沒有未完成的今日預約</small></div></article>`}
+              ${unpaidBookings.length ? `<article class="card"><div class="row"><div class="title">待收款 ${unpaidBookings.length} 筆<small>尚待收 ${money(unpaidAmount)}</small></div><span class="pill no_show">收款</span></div></article>` : `<article class="card"><div class="title">沒有待收款<small>目前付款狀態看起來乾淨</small></div></article>`}
+              ${unassignedBookings.length ? `<article class="card"><div class="row"><div class="title">未指派員工 ${unassignedBookings.length} 筆<small>${unassignedBookings.slice(0, 3).map((item) => item.customerName).join("、")}</small></div><span class="pill cancelled">排班</span></div></article>` : `<article class="card"><div class="title">排班已補齊<small>目前沒有未指派的有效預約</small></div></article>`}
             </div>
           </section>
           <section class="section">
@@ -1139,6 +1168,8 @@
                 <button class="segment ${state.bookingFilter === "today" ? "active" : ""}" onclick="setBookingFilter('today')">今日</button>
                 <button class="segment ${state.bookingFilter === "upcoming" ? "active" : ""}" onclick="setBookingFilter('upcoming')">即將</button>
                 <button class="segment ${state.bookingFilter === "active" ? "active" : ""}" onclick="setBookingFilter('active')">未結案</button>
+                <button class="segment ${state.bookingFilter === "unpaid" ? "active" : ""}" onclick="setBookingFilter('unpaid')">待收款</button>
+                <button class="segment ${state.bookingFilter === "unassigned" ? "active" : ""}" onclick="setBookingFilter('unassigned')">未指派</button>
                 <button class="segment ${state.bookingFilter === "all" ? "active" : ""}" onclick="setBookingFilter('all')">全部</button>
               </div>
             </div>
@@ -1149,6 +1180,18 @@
 
       function servicesView() {
         const services = state.data.services;
+        const currentMonth = monthKey(new Date());
+        const serviceStats = new Map();
+
+        for (const booking of state.data.bookings.filter((item) => monthKey(new Date(item.startsAt)) === currentMonth)) {
+          const id = booking.service?.id;
+          if (!id) continue;
+          const stat = serviceStats.get(id) || { count: 0, revenue: 0 };
+          stat.count += 1;
+          stat.revenue += Number(booking.finalAmount || 0);
+          serviceStats.set(id, stat);
+        }
+
         return `
           <section class="section">
             <div class="section-head">
@@ -1165,7 +1208,7 @@
                     </div>
                     <span class="pill">${service.active ? "上架" : "停用"}</span>
                   </div>
-                  <p class="meta">${money(service.price)} · ${service.description || ""}</p>
+                  <p class="meta">${money(service.price)} · 本月 ${serviceStats.get(service.id)?.count || 0} 筆 · ${money(serviceStats.get(service.id)?.revenue || 0)}${service.description ? ` · ${service.description}` : ""}</p>
                 </article>
               `).join("") || `<div class="empty">沒有服務</div>`}
             </div>
