@@ -442,6 +442,62 @@
         margin-top: 12px;
       }
 
+      .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .toolbar {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .search {
+        min-height: 42px;
+        padding: 10px 12px;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .segment {
+        min-height: 38px;
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--muted);
+        box-shadow: inset 0 0 0 1px var(--line);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .segment.active {
+        background: var(--brand);
+        color: #ffffff;
+        box-shadow: none;
+      }
+
+      .link-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        margin-top: 10px;
+        border-radius: 8px;
+        padding: 0 12px;
+        background: #fffdfb;
+        color: var(--brand);
+        box-shadow: inset 0 0 0 1px var(--line);
+        font-size: 13px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
       .tabs {
         position: fixed;
         left: 0;
@@ -550,6 +606,9 @@
         token: localStorage.getItem("xiaoyue_mobile_token") || "",
         tab: "dashboard",
         authView: "intro",
+        bookingFilter: "upcoming",
+        bookingSearch: "",
+        customerSearch: "",
         data: null,
         loading: false,
         error: "",
@@ -562,6 +621,64 @@
       const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
       const statusLabel = (status) => ({ CONFIRMED: "已確認", CANCELLED: "已取消", COMPLETED: "已完成", NO_SHOW: "爽約" }[status] || status);
       const pillClass = (status) => String(status || "").toLowerCase();
+      const attr = (value) => String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+      const isSameDay = (left, right) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+      const digits = (value) => String(value || "").replace(/[^\d+]/g, "");
+      const textMatch = (value, query) => String(value || "").toLowerCase().includes(query);
+
+      function setTab(tab, options = {}) {
+        state.tab = tab;
+        if (options.bookingFilter) state.bookingFilter = options.bookingFilter;
+        render();
+      }
+
+      function setBookingFilter(value) {
+        state.bookingFilter = value;
+        render();
+      }
+
+      function setBookingSearch(value) {
+        state.bookingSearch = value;
+        render();
+      }
+
+      function setCustomerSearch(value) {
+        state.customerSearch = value;
+        render();
+      }
+
+      function filteredBookings(items) {
+        const now = new Date();
+        const query = state.bookingSearch.trim().toLowerCase();
+        return [...items]
+          .filter((item) => {
+            const startsAt = new Date(item.startsAt);
+            if (state.bookingFilter === "today" && !isSameDay(startsAt, now)) return false;
+            if (state.bookingFilter === "upcoming" && startsAt < now) return false;
+            if (state.bookingFilter === "active" && ["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status)) return false;
+            if (!query) return true;
+            return [
+              item.customerName,
+              item.phone,
+              item.note,
+              item.service?.name,
+              item.studio?.name,
+              statusLabel(item.status)
+            ].some((value) => textMatch(value, query));
+          })
+          .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt));
+      }
+
+      function filteredCustomers(items) {
+        const query = state.customerSearch.trim().toLowerCase();
+        if (!query) return items;
+        return items.filter((customer) => [
+          customer.name,
+          customer.phone,
+          customer.tags,
+          customer.memberLevel
+        ].some((value) => textMatch(value, query)));
+      }
 
       async function api(path, options = {}) {
         const response = await fetch(`${API}${path}`, {
@@ -763,13 +880,27 @@
 
       function dashboardView() {
         const data = state.data;
-        const upcoming = [...data.bookings].filter((item) => new Date(item.startsAt) >= new Date()).reverse().slice(0, 5);
+        const now = new Date();
+        const todayBookings = data.bookings.filter((item) => isSameDay(new Date(item.startsAt), now));
+        const upcoming = [...data.bookings].filter((item) => new Date(item.startsAt) >= now).sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt)).slice(0, 5);
+        const todayRevenue = todayBookings.reduce((sum, item) => sum + Number(item.finalAmount || 0), 0);
         return `
           <section class="grid">
             <div class="stat"><b>${data.stats.studios}</b><span>工作室</span></div>
-            <div class="stat"><b>${data.stats.bookings}</b><span>近期預約</span></div>
+            <div class="stat"><b>${todayBookings.length}</b><span>今日預約</span></div>
             <div class="stat"><b>${data.stats.services}</b><span>服務項目</span></div>
-            <div class="stat"><b>${data.stats.customers}</b><span>客戶</span></div>
+            <div class="stat"><b>${money(todayRevenue)}</b><span>今日金額</span></div>
+          </section>
+          <section class="section">
+            <div class="section-head">
+              <h2 class="section-title">快速操作</h2>
+            </div>
+            <div class="quick-actions">
+              <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'today' })">今日預約</button>
+              <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'upcoming' })">即將到來</button>
+              <button class="secondary" onclick="setTab('customers')">找客戶</button>
+              <button class="secondary" onclick="setTab('line')">LINE 權限</button>
+            </div>
           </section>
           <section class="section">
             <div class="section-head">
@@ -784,6 +915,7 @@
       }
 
       function bookingCard(item) {
+        const phone = digits(item.phone);
         return `
           <article class="card">
             <div class="row">
@@ -794,6 +926,7 @@
               <span class="pill ${pillClass(item.status)}">${statusLabel(item.status)}</span>
             </div>
             <p class="meta">${item.phone || ""}${item.finalAmount ? ` · ${money(item.finalAmount)}` : ""}${item.note ? ` · ${item.note}` : ""}</p>
+            ${phone ? `<a class="link-action" href="tel:${phone}">撥打 ${item.customerName}</a>` : ""}
             <div class="actions">
               <button class="secondary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>
               <button class="secondary" onclick="updateBooking('${item.id}', { status: 'NO_SHOW' })">爽約</button>
@@ -804,15 +937,25 @@
       }
 
       function bookingsView() {
-        const items = state.data.bookings;
+        const allItems = state.data.bookings;
+        const items = filteredBookings(allItems);
         return `
           <section class="section">
             <div class="section-head">
               <div>
                 <h2 class="section-title">預約</h2>
-                <p class="section-note">最新 ${items.length} 筆</p>
+                <p class="section-note">顯示 ${items.length} / ${allItems.length} 筆</p>
               </div>
               <button class="secondary" onclick="load()">更新</button>
+            </div>
+            <div class="toolbar">
+              <input class="search" value="${attr(state.bookingSearch)}" oninput="setBookingSearch(this.value)" placeholder="搜尋姓名、電話、服務、備註" />
+              <div class="segmented">
+                <button class="segment ${state.bookingFilter === "today" ? "active" : ""}" onclick="setBookingFilter('today')">今日</button>
+                <button class="segment ${state.bookingFilter === "upcoming" ? "active" : ""}" onclick="setBookingFilter('upcoming')">即將</button>
+                <button class="segment ${state.bookingFilter === "active" ? "active" : ""}" onclick="setBookingFilter('active')">未結案</button>
+                <button class="segment ${state.bookingFilter === "all" ? "active" : ""}" onclick="setBookingFilter('all')">全部</button>
+              </div>
             </div>
             <div class="list">${items.length ? items.map(bookingCard).join("") : `<div class="empty">沒有預約</div>`}</div>
           </section>
@@ -846,12 +989,16 @@
       }
 
       function customersView() {
-        const customers = state.data.customers;
+        const allCustomers = state.data.customers;
+        const customers = filteredCustomers(allCustomers);
         return `
           <section class="section">
             <div class="section-head">
               <h2 class="section-title">客戶</h2>
-              <span class="pill">${customers.length} 位</span>
+              <span class="pill">${customers.length} / ${allCustomers.length} 位</span>
+            </div>
+            <div class="toolbar">
+              <input class="search" value="${attr(state.customerSearch)}" oninput="setCustomerSearch(this.value)" placeholder="搜尋姓名、電話、標籤、會員等級" />
             </div>
             <div class="list">
               ${customers.map((customer) => `
@@ -864,6 +1011,7 @@
                     <span class="pill">${customer.totalBookings} 次</span>
                   </div>
                   <p class="meta">${customer.tags || "未標籤"}${customer.isVip ? " · VIP" : ""}${customer.isBlocked ? " · 封鎖" : ""}</p>
+                  ${digits(customer.phone) ? `<a class="link-action" href="tel:${digits(customer.phone)}">撥打 ${customer.name}</a>` : ""}
                 </article>
               `).join("") || `<div class="empty">沒有客戶</div>`}
             </div>
@@ -944,7 +1092,7 @@
           <nav class="tabs">
             <div class="tabbar">
               ${tabs.map(([key, label, path]) => `
-                <button class="tab ${state.tab === key ? "active" : ""}" onclick="state.tab='${key}';render();">
+                <button class="tab ${state.tab === key ? "active" : ""}" onclick="setTab('${key}')">
                   ${icon(path)}
                   <span>${label}</span>
                 </button>
@@ -961,6 +1109,10 @@
 
       window.showLogin = showLogin;
       window.showIntro = showIntro;
+      window.setTab = setTab;
+      window.setBookingFilter = setBookingFilter;
+      window.setBookingSearch = setBookingSearch;
+      window.setCustomerSearch = setCustomerSearch;
       window.login = login;
       window.logout = logout;
       window.load = load;
