@@ -1063,17 +1063,17 @@
 
       function shell() {
         const data = state.data;
-        const content = state.loading && !data
-          ? `<div class="empty">載入中</div>`
-          : state.error
+        const content = state.error
             ? `<div class="error">${state.error}</div>`
-            : ({
-              dashboard: dashboardView,
-              bookings: bookingsView,
-              services: servicesView,
-              customers: customersView,
-              line: lineView
-            }[state.tab] || dashboardView)();
+            : !data
+              ? `<div class="empty">載入中</div>`
+              : ({
+                dashboard: dashboardView,
+                bookings: bookingsView,
+                services: servicesView,
+                customers: customersView,
+                line: lineView
+              }[state.tab] || dashboardView)();
 
         return `
           <div class="app">
@@ -1104,7 +1104,12 @@
 
       function render() {
         document.body.classList.toggle("intro-locked", !state.token && state.authView !== "login");
-        root.innerHTML = state.token ? shell() : (state.authView === "login" ? loginView() : introView());
+        try {
+          root.innerHTML = state.token ? shell() : (state.authView === "login" ? loginView() : introView());
+        } catch (error) {
+          console.error(error);
+          root.innerHTML = `<main class="login"><section class="hero"><div class="brand"><div class="mark">約</div><div><h1>小約</h1><p>店家工作台</p></div></div><p class="error">畫面載入失敗，請重新登入。</p><button class="primary" onclick="logout()">重新登入</button></section></main>`;
+        }
       }
 
       window.showLogin = showLogin;
