@@ -20,7 +20,7 @@
     }
     .header h1 { font-size: 20px; }
     .header button { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
-    .container { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+    .container { max-width: 1120px; margin: 0 auto; padding: 20px 16px 60px; }
     .login-box { max-width: 400px; margin: 80px auto; padding: 32px 24px; background: white; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
     .login-box h2 { text-align: center; margin-bottom: 24px; color: var(--green); }
     .form-group { margin-bottom: 16px; }
@@ -36,6 +36,13 @@
     .stat-value { font-size: 26px; font-weight: 700; color: var(--green); }
     .stat-label { font-size: 13px; color: var(--text-light); margin-top: 2px; }
     .card { background: var(--card-bg); border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) 150px 120px 120px; gap: 8px; margin-bottom: 12px; }
+    .toolbar input, .toolbar select { width: 100%; padding: 10px 12px; border: 2px solid var(--border); border-radius: 10px; font-size: 14px; background: white; }
+    .mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .mini-row { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
+    .mini-row:last-child { border-bottom:none; }
+    .risk-high { color: var(--red); font-weight: 700; }
+    .risk-watch { color: #b45309; font-weight: 700; }
     .section-title { font-size: 18px; font-weight: 600; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
     table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
     th { background: #e8f5e9; padding: 10px 12px; text-align: left; font-weight: 600; font-size: 14px; }
@@ -54,6 +61,11 @@
     .clickable { cursor: pointer; color: var(--blue); text-decoration: underline; }
     .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
     .info-label { color: var(--text-light); }
+    @media (max-width: 760px) {
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      table { min-width: 760px; }
+      .container { overflow-x: hidden; }
+    }
   </style>
 </head>
 <body>
@@ -81,6 +93,22 @@
       <div class="stat-card"><div class="stat-value" id="s-logs">-</div><div class="stat-label">今日服藥紀錄</div></div>
       <div class="stat-card"><div class="stat-value" id="s-adh">-</div><div class="stat-label">今日遵從率</div></div>
       <div class="stat-card"><div class="stat-value" id="s-health">-</div><div class="stat-label">健康數據</div></div>
+    </div>
+
+    <div class="section-title">📈 用戶成長與營運狀態</div>
+    <div class="mini-grid" style="margin-bottom:16px;">
+      <div class="card">
+        <h3 style="font-size:15px;margin-bottom:8px;">用戶漏斗</h3>
+        <div id="growth-summary"></div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;margin-bottom:8px;">今日待關注</h3>
+        <div id="ops-summary"></div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;margin-bottom:8px;">風險用戶</h3>
+        <div id="attention-list"></div>
+      </div>
     </div>
 
     <!-- 管理員分析面板 -->
@@ -129,10 +157,30 @@
     </div>
 
     <div class="section-title">👥 用戶列表</div>
+    <div class="toolbar">
+      <input id="user-search" type="search" placeholder="搜尋姓名 / Email / 手機 / 用戶碼">
+      <select id="user-status">
+        <option value="all">全部帳號</option>
+        <option value="users">一般用戶</option>
+        <option value="pro">Pro 用戶</option>
+        <option value="no_push">未註冊推播</option>
+        <option value="unverified">Email 未驗證</option>
+        <option value="admins">管理員</option>
+      </select>
+      <select id="user-limit">
+        <option value="25">每頁 25</option>
+        <option value="50" selected>每頁 50</option>
+        <option value="100">每頁 100</option>
+      </select>
+      <button class="btn btn-outline" onclick="loadUsers(1)">搜尋</button>
+    </div>
+    <div id="user-pagination" style="font-size:13px;color:var(--text-light);margin-bottom:8px;"></div>
+    <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>姓名</th><th>Email</th><th>角色</th><th>用藥</th><th>今日遵從</th><th>註冊日</th><th>操作</th></tr></thead>
-      <tbody id="users-table"><tr><td colspan="7" style="text-align:center;color:var(--text-light);">載入中...</td></tr></tbody>
+      <thead><tr><th>姓名</th><th>Email</th><th>狀態</th><th>用藥</th><th>7日遵從</th><th>推播</th><th>通知</th><th>註冊日</th><th>操作</th></tr></thead>
+      <tbody id="users-table"><tr><td colspan="9" style="text-align:center;color:var(--text-light);">載入中...</td></tr></tbody>
     </table>
+    </div>
   </div>
 </div>
 
@@ -144,6 +192,7 @@ const ADMIN_APP_CONFIG = window.ADMIN_APP_CONFIG || {};
 const API_URL = (ADMIN_APP_CONFIG.apiBaseUrl || 'https://yaojidecare.app').replace(/\/+$/, '');
 let token = '';
 let booting = false;
+let usersPage = 1;
 
 function showToast(msg, dur = 2000) {
   const el = document.createElement('div');
@@ -234,6 +283,13 @@ function doLogout() {
 }
 
 document.addEventListener('DOMContentLoaded', bootAdminApp);
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('user-search')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadUsers(1);
+  });
+  document.getElementById('user-status')?.addEventListener('change', () => loadUsers(1));
+  document.getElementById('user-limit')?.addEventListener('change', () => loadUsers(1));
+});
 
 async function loadDashboard() {
   // 系統摘要
@@ -245,24 +301,11 @@ async function loadDashboard() {
     document.getElementById('s-adh').textContent = stats.todayAdherence + '%';
     document.getElementById('s-health').textContent = stats.healthRecords;
   }
+  loadOverview();
   // 載入分析面板
   loadAnalytics();
   loadPushAdmin();
-  // 用戶列表
-  const { data: users } = await api('/api/admin/users');
-  if (users && users.users) {
-    document.getElementById('users-table').innerHTML = users.users.map(u => `
-      <tr>
-        <td><span class="clickable" onclick="showUserDetail(${u.id})">${u.name}</span></td>
-        <td>${u.email}</td>
-        <td><span class="badge badge-${u.role==='admin'?'admin':'user'}">${u.role==='admin'?'管理員':'使用者'}</span></td>
-        <td>${u.med_count}</td>
-        <td>${typeof u.today_adherence==='number' ? u.today_adherence+'%' : u.today_adherence}</td>
-        <td>${(u.created_at||'').split('T')[0]}</td>
-        <td>${u.role!=='admin' ? `<button onclick="deleteUser(${u.id},'${u.name}')" class="btn btn-danger btn-sm" style="margin-right:4px;">刪除</button><button onclick="showResetPassword(${u.id},'${u.name}')" class="btn btn-outline btn-sm" style="margin-right:4px;">改密</button><button onclick="exportUserCSV(${u.id},'${u.name}')" class="btn btn-outline btn-sm">匯出</button>` : '-'}</td>
-      </tr>
-    `).join('');
-  }
+  loadUsers(1);
 }
 
 async function deleteUser(id, name) {
@@ -280,6 +323,115 @@ function pushCountByPlatform(counts, platform) {
 function formatDateTime(value) {
   if (!value) return '-';
   return String(value).replace('T', ' ').replace(/\.\d+Z?$/, '').slice(0, 16);
+}
+
+function formatDate(value) {
+  if (!value) return '-';
+  return String(value).split('T')[0].slice(0, 10);
+}
+
+function badge(text, type = 'user') {
+  const cls = type === 'ok' ? 'badge-ok'
+    : type === 'warn' ? 'badge-warn'
+    : type === 'admin' ? 'badge-admin'
+    : type === 'danger' ? 'badge-missed'
+    : 'badge-user';
+  return `<span class="badge ${cls}">${escapeHTML(text)}</span>`;
+}
+
+function miniRow(label, value) {
+  return `<div class="mini-row"><span>${escapeHTML(label)}</span><strong>${value}</strong></div>`;
+}
+
+async function loadOverview() {
+  const { status, data } = await api('/api/admin/overview');
+  if (status !== 200) return;
+  const s = data.summary || {};
+  document.getElementById('growth-summary').innerHTML = [
+    miniRow('總一般用戶', Number(s.totalUsers || 0)),
+    miniRow('今日新增', Number(s.newToday || 0)),
+    miniRow('近7天新增', Number(s.new7 || 0)),
+    miniRow('Email 已驗證', `${Number(s.emailVerified || 0)} / ${Number(s.totalUsers || 0)}`),
+    miniRow('裝置快速帳號', Number(s.deviceAccounts || 0))
+  ].join('');
+  document.getElementById('ops-summary').innerHTML = [
+    miniRow('近7天活躍', Number(s.active7 || 0)),
+    miniRow('近30天活躍', Number(s.active30 || 0)),
+    miniRow('Pro 用戶', Number(s.proUsers || 0)),
+    miniRow('有推播裝置', Number(s.pushUsers || 0)),
+    miniRow('今日遵從率', `${Number(s.todayAdherence || 0)}%`),
+    miniRow('未讀通知', Number(s.unreadNotifications || 0)),
+    miniRow('低庫存用藥', Number(s.lowStock || 0)),
+    miniRow('已過期仍啟用用藥', Number(s.expiredMeds || 0))
+  ].join('');
+  const attention = data.attention || [];
+  document.getElementById('attention-list').innerHTML = attention.length ? attention.slice(0, 8).map(u => {
+    const cls = u.risk === 'high' ? 'risk-high' : 'risk-watch';
+    return `<div class="mini-row"><span><span class="${cls}">●</span> <span class="clickable" onclick="showUserDetail(${Number(u.id)})">${escapeHTML(u.name || '未命名')}</span></span><span>${escapeHTML((u.riskReasons || []).join('、') || '需追蹤')}</span></div>`;
+  }).join('') : '<div style="color:var(--green);font-size:14px;">目前沒有高風險用戶</div>';
+}
+
+function renderUserStatus(u) {
+  const tags = [];
+  tags.push(u.role === 'admin' ? badge('管理員', 'admin') : badge('使用者', 'user'));
+  if (Number(u.is_pro || 0) === 1) tags.push(badge('Pro', 'ok'));
+  if (Number(u.email_verified || 0) !== 1 && u.email) tags.push(badge('未驗證', 'warn'));
+  if (u.account_code) tags.push(`<div style="font-size:12px;color:var(--text-light);margin-top:3px;">${escapeHTML(u.account_code)}</div>`);
+  return tags.join(' ');
+}
+
+function renderAdherence(u) {
+  const a = u.week_adherence || {};
+  if (!a.total) return '<span style="color:var(--text-light);">尚無紀錄</span>';
+  const type = a.rate < 50 ? 'danger' : a.rate < 75 ? 'warn' : 'ok';
+  return `${badge(a.rate + '%', type)}<div style="font-size:12px;color:var(--text-light);">${Number(a.taken || 0)}/${Number(a.total || 0)} 次</div>`;
+}
+
+function renderUserRow(u) {
+  const safeName = escapeHTML(u.name || '未命名');
+  const safeEmail = escapeHTML(u.email || '-');
+  const id = Number(u.id || 0);
+  const actionName = safeName.replace(/'/g, '&#39;');
+  const actions = u.role !== 'admin'
+    ? `<button onclick="deleteUser(${id},'${actionName}')" class="btn btn-danger btn-sm" style="margin-right:4px;">刪除</button><button onclick="showResetPassword(${id},'${actionName}')" class="btn btn-outline btn-sm" style="margin-right:4px;">改密</button><button onclick="exportUserCSV(${id},'${actionName}')" class="btn btn-outline btn-sm">匯出</button>`
+    : '-';
+  return `
+    <tr>
+      <td><span class="clickable" onclick="showUserDetail(${id})">${safeName}</span><div style="font-size:12px;color:var(--text-light);">ID ${id}</div></td>
+      <td>${safeEmail}</td>
+      <td>${renderUserStatus(u)}</td>
+      <td>${Number(u.med_count || 0)}</td>
+      <td>${renderAdherence(u)}</td>
+      <td>${Number(u.push_count || 0) ? badge(Number(u.push_count || 0) + ' 台', 'ok') : badge('無裝置', 'warn')}</td>
+      <td>${Number(u.unread_notifications || 0) ? badge(Number(u.unread_notifications || 0) + ' 未讀', 'warn') : '-'}</td>
+      <td>${formatDate(u.created_at)}</td>
+      <td>${actions}</td>
+    </tr>
+  `;
+}
+
+async function loadUsers(page = usersPage) {
+  usersPage = page;
+  const q = encodeURIComponent(document.getElementById('user-search')?.value || '');
+  const status = encodeURIComponent(document.getElementById('user-status')?.value || 'all');
+  const limit = encodeURIComponent(document.getElementById('user-limit')?.value || '50');
+  document.getElementById('users-table').innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-light);">載入中...</td></tr>';
+  const { status: httpStatus, data } = await api(`/api/admin/users?q=${q}&status=${status}&limit=${limit}&page=${page}`);
+  if (httpStatus !== 200 || !data.users) {
+    document.getElementById('users-table').innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--red);">${escapeHTML(data.error || '載入用戶失敗')}</td></tr>`;
+    return;
+  }
+  document.getElementById('users-table').innerHTML = data.users.length
+    ? data.users.map(renderUserRow).join('')
+    : '<tr><td colspan="9" style="text-align:center;color:var(--text-light);">沒有符合條件的用戶</td></tr>';
+  const p = data.pagination || { page: 1, totalPages: 1, total: data.users.length };
+  const prevDisabled = p.page <= 1 ? 'disabled' : '';
+  const nextDisabled = p.page >= p.totalPages ? 'disabled' : '';
+  document.getElementById('user-pagination').innerHTML = `
+    共 ${Number(p.total || 0)} 筆，第 ${Number(p.page || 1)} / ${Number(p.totalPages || 1)} 頁
+    <button class="btn btn-outline btn-sm" ${prevDisabled} onclick="loadUsers(${Number(p.page || 1) - 1})">上一頁</button>
+    <button class="btn btn-outline btn-sm" ${nextDisabled} onclick="loadUsers(${Number(p.page || 1) + 1})">下一頁</button>
+  `;
 }
 
 function renderPushConfig(config) {
@@ -360,11 +512,9 @@ function showResetPassword(uid, name) {
 
 // 管理員匯出 CSV
 function exportUserCSV(uid, name) {
-  const a = document.createElement('a');
-  a.href = '/api/admin/users/' + uid + '/export';
   const tok = token;
   // 用 fetch 加 auth header 下載
-  fetch(a.href, { headers: { 'Authorization': 'Bearer ' + tok } }).then(res => {
+  fetch(API_URL + '/api/admin/users/' + uid + '/export', { headers: { 'Authorization': 'Bearer ' + tok } }).then(res => {
     if (!res.ok) return showToast('匯出失敗');
     return res.blob();
   }).then(blob => {
@@ -406,27 +556,72 @@ async function showUserDetail(uid) {
       `).join('');
   }
 
+  const subHTML = `
+    <div style="margin-top:16px;"><strong>💳 訂閱與帳號狀態</strong></div>
+    <div class="info-row"><span class="info-label">Pro 狀態</span><span>${Number(u.is_pro || 0) ? badge('Pro 啟用', 'ok') : badge('Free', 'user')}</span></div>
+    <div class="info-row"><span class="info-label">方案</span><span>${escapeHTML(u.plan || u.product_identifier || '-')}</span></div>
+    <div class="info-row"><span class="info-label">到期日</span><span>${formatDateTime(u.expires_at)}</span></div>
+    <div class="info-row"><span class="info-label">Email 驗證</span><span>${Number(u.email_verified || 0) ? badge('已驗證', 'ok') : badge('未驗證', 'warn')}</span></div>
+    <div class="info-row"><span class="info-label">用戶碼</span><span>${escapeHTML(u.account_code || '-')}</span></div>
+    <div class="info-row"><span class="info-label">來源</span><span>${escapeHTML(u.account_source || '-')}</span></div>`;
+
+  const adherence = data.adherence || {};
+  const adherenceHTML = `
+    <div style="margin-top:16px;"><strong>📈 遵從率</strong></div>
+    <div class="info-row"><span class="info-label">近7天</span><span>${Number(adherence.sevenDays?.rate ?? 0)}%（${Number(adherence.sevenDays?.taken || 0)}/${Number(adherence.sevenDays?.total || 0)}）</span></div>
+    <div class="info-row"><span class="info-label">近30天</span><span>${Number(adherence.thirtyDays?.rate ?? 0)}%（${Number(adherence.thirtyDays?.taken || 0)}/${Number(adherence.thirtyDays?.total || 0)}）</span></div>`;
+
+  const deviceHTML = '<div style="margin-top:16px;"><strong>📱 推播裝置</strong></div>' +
+    ((data.pushTokens || []).map(p => `
+      <div class="info-row">
+        <span>${escapeHTML(p.platform || 'unknown')} ${p.app_version ? '· ' + escapeHTML(p.app_version) : ''}</span>
+        <span>${p.enabled ? badge('啟用', 'ok') : badge('停用', 'warn')} ...${escapeHTML(p.token_tail || '')} · ${formatDateTime(p.last_seen_at)}</span>
+      </div>
+    `).join('') || '<div style="color:var(--text-light);font-size:14px;">尚無推播裝置</div>');
+
+  const familyBody = ((data.familyMembers || []).map(f => `
+      <div class="info-row"><span>照護 ${escapeHTML(f.related_name || '-')}</span><span>${escapeHTML(f.relationship || '-')} / ${escapeHTML(f.permission_level || 'view')}</span></div>
+    `).join('') || '') +
+    ((data.familyWatchers || []).map(f => `
+      <div class="info-row"><span>被 ${escapeHTML(f.owner_name || '-')} 照護</span><span>${escapeHTML(f.relationship || '-')} / ${escapeHTML(f.permission_level || 'view')}</span></div>
+    `).join('') || '');
+  const familyHTML = '<div style="margin-top:16px;"><strong>👪 家人照護關係</strong></div>' +
+    (familyBody || '<div style="color:var(--text-light);font-size:14px;">尚無家人關係</div>');
+
+  const notificationHTML = '<div style="margin-top:16px;"><strong>🔔 最近通知</strong></div>' +
+    ((data.notifications || []).slice(0, 8).map(n => `
+      <div class="info-row">
+        <span>${escapeHTML(n.title || n.type || '-')}<div style="font-size:12px;color:var(--text-light);">${escapeHTML(n.message || '')}</div></span>
+        <span>${escapeHTML(n.status || (n.is_read ? 'read' : 'unread'))}<br><small>${formatDateTime(n.created_at)}</small></span>
+      </div>
+    `).join('') || '<div style="color:var(--text-light);font-size:14px;">尚無通知</div>');
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal">
-      <h2>👤 ${u.name} 詳細資料</h2>
-      <div class="info-row"><span class="info-label">Email</span><span>${u.email}</span></div>
+      <h2>👤 ${escapeHTML(u.name)} 詳細資料</h2>
+      <div class="info-row"><span class="info-label">Email</span><span>${escapeHTML(u.email || '-')}</span></div>
       <div class="info-row"><span class="info-label">電話</span><span>${u.phone || '-'}</span></div>
       <div class="info-row"><span class="info-label">年齡</span><span>${u.age || '-'}</span></div>
       <div class="info-row"><span class="info-label">角色</span><span>${u.role==='admin'?'管理員':'使用者'}</span></div>
       <div class="info-row"><span class="info-label">註冊日</span><span>${(u.created_at||'').split('T')[0]}</span></div>
+      ${subHTML}
+      ${adherenceHTML}
       ${todayHTML}
 
       <div style="margin-top:16px;"><strong>💊 用藥列表（${data.medications ? data.medications.length : 0} 筆）</strong></div>
       ${(data.medications||[]).map(m => `
         <div class="info-row">
-          <span>${m.drug_name} ${m.dosage}</span>
-          <span>${(m.remind_time||'').replace(/[\[\]\"]/g,'')}</span>
+          <span>${escapeHTML(m.drug_name)} ${escapeHTML(m.dosage)}</span>
+          <span>${escapeHTML((m.remind_time||'').replace(/[\[\]\"]/g,''))} ${Number(m.is_active ?? 1) ? '' : badge('停用','warn')}</span>
         </div>
       `).join('') || '<div style="color:var(--text-light);font-size:14px;">尚無用藥</div>'}
 
       ${healthHTML}
+      ${deviceHTML}
+      ${familyHTML}
+      ${notificationHTML}
 
       <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-outline" style="width:100%;margin-top:16px;">關閉</button>
     </div>`;

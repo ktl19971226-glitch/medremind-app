@@ -1825,6 +1825,94 @@ async function init() {
         });
     });
 
+    app.get('/api/admin/overview', auth, adminAuth, (req, res) => {
+        const today = new Date().toISOString().split('T')[0];
+        const dayStart = `${today} 00:00:00`;
+        const d7 = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+        const d30 = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+        const totalUsers = dbGet("SELECT COUNT(*) AS c FROM users WHERE COALESCE(role,'user')!='admin'")?.c || 0;
+        const newToday = dbGet("SELECT COUNT(*) AS c FROM users WHERE COALESCE(role,'user')!='admin' AND created_at>=?", [dayStart])?.c || 0;
+        const new7 = dbGet("SELECT COUNT(*) AS c FROM users WHERE COALESCE(role,'user')!='admin' AND date(created_at)>=?", [d7])?.c || 0;
+        const emailVerified = dbGet("SELECT COUNT(*) AS c FROM users WHERE COALESCE(role,'user')!='admin' AND email_verified=1")?.c || 0;
+        const deviceAccounts = dbGet("SELECT COUNT(*) AS c FROM users WHERE COALESCE(role,'user')!='admin' AND account_source='device'")?.c || 0;
+        const active7 = dbGet('SELECT COUNT(DISTINCT user_id) AS c FROM medication_logs WHERE log_date>=?', [d7])?.c || 0;
+        const active30 = dbGet('SELECT COUNT(DISTINCT user_id) AS c FROM medication_logs WHERE log_date>=?', [d30])?.c || 0;
+        const medUsers = dbGet("SELECT COUNT(DISTINCT user_id) AS c FROM medications WHERE COALESCE(is_active,1)=1")?.c || 0;
+        const proUsers = dbGet("SELECT COUNT(*) AS c FROM subscriptions WHERE is_pro=1 AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)")?.c || 0;
+        const pushUsers = dbGet('SELECT COUNT(DISTINCT user_id) AS c FROM push_tokens WHERE enabled=1')?.c || 0;
+        const unreadNotifications = dbGet("SELECT COUNT(*) AS c FROM notifications WHERE COALESCE(status,'unread')='unread'")?.c || 0;
+        const todayLogs = dbGet('SELECT COUNT(*) AS c FROM medication_logs WHERE log_date=?', [today])?.c || 0;
+        const todayTaken = dbGet('SELECT COUNT(*) AS c FROM medication_logs WHERE log_date=? AND taken_status=1', [today])?.c || 0;
+        const lowStock = dbGet(`
+            SELECT COUNT(*) AS c
+            FROM medications
+            WHERE COALESCE(is_active,1)=1
+              AND remaining IS NOT NULL
+              AND remaining <= COALESCE(refill_threshold,7)
+        `)?.c || 0;
+        const expiredMeds = dbGet(`
+            SELECT COUNT(*) AS c
+            FROM medications
+            WHERE COALESCE(is_active,1)=1
+              AND end_date IS NOT NULL
+              AND end_date < ?
+        `, [today])?.c || 0;
+        const daily = [];
+        for (let i = 13; i >= 0; i--) {
+            const date = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
+            const signups = dbGet("SELECT COUNT(*) AS c FROM users WHERE COALESCE(role,'user')!='admin' AND date(created_at)=?", [date])?.c || 0;
+            const active = dbGet('SELECT COUNT(DISTINCT user_id) AS c FROM medication_logs WHERE log_date=?', [date])?.c || 0;
+            const total = dbGet('SELECT COUNT(*) AS c FROM medication_logs WHERE log_date=?', [date])?.c || 0;
+            const taken = dbGet('SELECT COUNT(*) AS c FROM medication_logs WHERE log_date=? AND taken_status=1', [date])?.c || 0;
+            daily.push({ date, signups, activeUsers: active, adherenceRate: total ? Math.round(taken / total * 100) : 0 });
+        }
+        const users = dbAll(`
+            SELECT u.id, u.name, u.email, u.phone, u.account_code, u.account_source, u.email_verified, u.created_at,
+                   COALESCE(s.is_pro,0) AS is_pro,
+                   (SELECT COUNT(*) FROM medications m WHERE m.user_id=u.id AND COALESCE(m.is_active,1)=1) AS active_meds,
+                   (SELECT COUNT(*) FROM push_tokens pt WHERE pt.user_id=u.id AND pt.enabled=1) AS push_devices,
+                   (SELECT MAX(last_seen_at) FROM push_tokens pt WHERE pt.user_id=u.id) AS last_push_seen,
+                   (SELECT MAX(log_date) FROM medication_logs ml WHERE ml.user_id=u.id) AS last_log_date,
+                   (SELECT COUNT(*) FROM notifications n WHERE n.user_id=u.id AND COALESCE(n.status,'unread')='unread') AS unread_count
+            FROM users u
+            LEFT JOIN subscriptions s ON s.user_id=u.id
+            WHERE COALESCE(u.role,'user')!='admin'
+            ORDER BY u.created_at DESC
+            LIMIT 300
+        `).map(u => {
+            const adherence = summarizeAdherence(u.id, 7);
+            let risk = 'normal';
+            const reasons = [];
+            if (u.active_meds > 0 && adherence.total === 0) { risk = 'watch'; reasons.push('近7天無服藥打卡'); }
+            if (adherence.total > 0 && adherence.rate < 50) { risk = 'high'; reasons.push(`遵從率 ${adherence.rate}%`); }
+            else if (adherence.total > 0 && adherence.rate < 75 && risk !== 'high') { risk = 'watch'; reasons.push(`遵從率 ${adherence.rate}%`); }
+            if (u.active_meds > 0 && Number(u.push_devices || 0) === 0) { if (risk === 'normal') risk = 'watch'; reasons.push('未註冊推播裝置'); }
+            if (Number(u.unread_count || 0) >= 5) { if (risk === 'normal') risk = 'watch'; reasons.push(`未讀通知 ${u.unread_count}`); }
+            return { ...u, email: publicEmail(u), adherence, risk, riskReasons: reasons };
+        });
+        res.json({
+            summary: {
+                totalUsers,
+                newToday,
+                new7,
+                emailVerified,
+                deviceAccounts,
+                active7,
+                active30,
+                medUsers,
+                proUsers,
+                pushUsers,
+                unreadNotifications,
+                lowStock,
+                expiredMeds,
+                todayAdherence: todayLogs > 0 ? Math.round(todayTaken / todayLogs * 100) : 0
+            },
+            daily,
+            attention: users.filter(u => u.risk !== 'normal').slice(0, 30),
+            latestUsers: users.slice(0, 20)
+        });
+    });
+
     app.get('/api/admin/push/status', auth, adminAuth, (req, res) => {
         const counts = dbAll(`
             SELECT platform,
@@ -1879,18 +1967,47 @@ async function init() {
 
     // 管理員查看所有用戶
     app.get('/api/admin/users', auth, adminAuth, (req, res) => {
+        const q = String(req.query.q || '').trim().toLowerCase();
+        const status = String(req.query.status || 'all');
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(100, Math.max(10, parseInt(req.query.limit, 10) || 50));
+        const offset = (page - 1) * limit;
+        const where = [];
+        const params = [];
+        if (q) {
+            where.push('(LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(COALESCE(u.phone,\'\')) LIKE ? OR LOWER(COALESCE(u.account_code,\'\')) LIKE ?)');
+            params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+        }
+        if (status === 'users') where.push("COALESCE(u.role,'user')!='admin'");
+        if (status === 'admins') where.push("COALESCE(u.role,'user')='admin'");
+        if (status === 'pro') where.push('COALESCE(s.is_pro,0)=1 AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)');
+        if (status === 'no_push') where.push("COALESCE(u.role,'user')!='admin' AND NOT EXISTS (SELECT 1 FROM push_tokens pt WHERE pt.user_id=u.id AND pt.enabled=1)");
+        if (status === 'unverified') where.push("COALESCE(u.role,'user')!='admin' AND COALESCE(u.email_verified,0)=0");
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const total = dbGet(`SELECT COUNT(*) AS c FROM users u LEFT JOIN subscriptions s ON s.user_id=u.id ${whereSql}`, params)?.c || 0;
         const users = dbAll(`
-            SELECT u.id, u.name, u.email, u.phone, u.age, u.role, u.created_at,
-                   (SELECT COUNT(*) FROM medications WHERE user_id = u.id) AS med_count,
-                   (SELECT COUNT(*) FROM medication_logs WHERE user_id = u.id) AS log_count
-            FROM users u ORDER BY u.created_at DESC
-        `);
+            SELECT u.id, u.name, u.email, u.phone, u.age, u.role, u.account_code, u.account_source,
+                   u.email_verified, u.last_device_login_at, u.created_at,
+                   COALESCE(s.is_pro,0) AS is_pro, s.plan, s.product_identifier, s.expires_at,
+                   (SELECT COUNT(*) FROM medications WHERE user_id = u.id AND COALESCE(is_active,1)=1) AS med_count,
+                   (SELECT COUNT(*) FROM medication_logs WHERE user_id = u.id) AS log_count,
+                   (SELECT COUNT(*) FROM push_tokens WHERE user_id = u.id AND enabled=1) AS push_count,
+                   (SELECT COUNT(*) FROM notifications WHERE user_id = u.id AND COALESCE(status,'unread')='unread') AS unread_notifications,
+                   (SELECT MAX(log_date) FROM medication_logs WHERE user_id = u.id) AS last_log_date
+            FROM users u
+            LEFT JOIN subscriptions s ON s.user_id=u.id
+            ${whereSql}
+            ORDER BY u.created_at DESC
+            LIMIT ? OFFSET ?
+        `, [...params, limit, offset]);
         for (const u of users) {
             const todayLogs = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE user_id = ? AND log_date = ?', [u.id, new Date().toISOString().split('T')[0]])?.cnt || 0;
             const todayTaken = dbGet('SELECT COUNT(*) AS cnt FROM medication_logs WHERE user_id = ? AND log_date = ? AND taken_status = 1', [u.id, new Date().toISOString().split('T')[0]])?.cnt || 0;
             u.today_adherence = todayLogs > 0 ? Math.round(todayTaken / todayLogs * 100) : '-';
+            u.week_adherence = summarizeAdherence(u.id, 7);
+            u.email = publicEmail(u);
         }
-        res.json({ users });
+        res.json({ users, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
     });
 
     // 管理員刪除用戶
@@ -1905,7 +2022,15 @@ async function init() {
     // 管理員查看特定用戶詳細資料
     app.get('/api/admin/users/:id/detail', auth, adminAuth, (req, res) => {
         const uid = parseInt(req.params.id);
-        const user = dbGet('SELECT id, name, email, phone, age, role, created_at FROM users WHERE id=?', [uid]);
+        const user = dbGet(`
+            SELECT u.id, u.name, u.email, u.phone, u.age, u.role, u.account_code, u.account_source,
+                   u.email_verified, u.email_verified_at, u.last_device_login_at, u.created_at,
+                   COALESCE(s.is_pro,0) AS is_pro, s.plan, s.entitlement, s.product_identifier,
+                   s.store, s.expires_at, s.source, s.updated_at AS subscription_updated_at
+            FROM users u
+            LEFT JOIN subscriptions s ON s.user_id=u.id
+            WHERE u.id=?
+        `, [uid]);
         if (!user) return res.status(404).json({ error: '用戶不存在' });
         const medications = dbAll('SELECT * FROM medications WHERE user_id=? ORDER BY created_at DESC', [uid]);
         const healthRecords = dbAll('SELECT * FROM health_records WHERE user_id=? ORDER BY record_date DESC LIMIT 30', [uid]);
@@ -1921,7 +2046,36 @@ async function init() {
             FROM family_members fm 
             JOIN users u ON fm.related_user_id = u.id 
             WHERE fm.user_id=?`, [uid]);
-        res.json({ user, medications, healthRecords, todayLogs, familyMembers });
+        const familyWatchers = dbAll(`
+            SELECT fm.*, u.name AS owner_name, u.email AS owner_email
+            FROM family_members fm
+            JOIN users u ON fm.user_id = u.id
+            WHERE fm.related_user_id=?`, [uid]).map(row => ({ ...row, owner_email: publicEmail({ email: row.owner_email }) }));
+        const pushTokens = dbAll(`
+            SELECT id, platform, device_id, app_version, enabled, last_seen_at, created_at, substr(token, -10) AS token_tail
+            FROM push_tokens
+            WHERE user_id=?
+            ORDER BY last_seen_at DESC
+            LIMIT 20`, [uid]);
+        const notifications = dbAll(`
+            SELECT id, type, title, message, status, is_read, created_at
+            FROM notifications
+            WHERE user_id=?
+            ORDER BY created_at DESC
+            LIMIT 20`, [uid]);
+        const adherence7 = summarizeAdherence(uid, 7);
+        const adherence30 = summarizeAdherence(uid, 30);
+        res.json({
+            user: { ...user, email: publicEmail(user) },
+            medications,
+            healthRecords,
+            todayLogs,
+            familyMembers,
+            familyWatchers,
+            pushTokens,
+            notifications,
+            adherence: { sevenDays: adherence7, thirtyDays: adherence30 }
+        });
     });
 
     // ====== 使用者帳號管理 ======
