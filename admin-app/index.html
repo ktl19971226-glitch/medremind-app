@@ -31,6 +31,8 @@
     .btn-danger { background: var(--red); color: white; }
     .btn-outline { background: white; border: 2px solid var(--green); color: var(--green); }
     .btn-sm { padding: 5px 12px; font-size: 12px; width: auto; }
+    .select-cell { width: 38px; text-align: center; }
+    .select-cell input { width: 18px; height: 18px; }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 24px; }
     .stat-card { background: var(--card-bg); border-radius: 12px; padding: 16px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: default; }
     .stat-value { font-size: 26px; font-weight: 700; color: var(--green); }
@@ -144,9 +146,14 @@
         <label>測試內容</label>
         <input type="text" id="push-test-body" value="這是一則由管理後台發出的原生推播測試。">
       </div>
+      <div class="form-group">
+        <label>已選收件人</label>
+        <div id="push-selected-users" style="min-height:44px;padding:10px 12px;border:2px solid var(--border);border-radius:10px;background:#fbfcfd;color:var(--text-light);font-size:14px;">尚未選擇用戶</div>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-outline" style="width:auto;" onclick="loadPushAdmin()">重新整理</button>
-        <button class="btn btn-primary" style="width:auto;" onclick="sendAdminPushTest()">發送測試推播</button>
+        <button class="btn btn-outline" style="width:auto;" onclick="clearSelectedPushUsers()">清空收件人</button>
+        <button class="btn btn-primary" style="width:auto;" onclick="sendAdminPushTest()">發送推播</button>
       </div>
       <div style="margin-top:14px;overflow-x:auto;">
         <table>
@@ -177,8 +184,8 @@
     <div id="user-pagination" style="font-size:13px;color:var(--text-light);margin-bottom:8px;"></div>
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>姓名</th><th>Email</th><th>狀態</th><th>用藥</th><th>7日遵從</th><th>推播</th><th>通知</th><th>註冊日</th><th>操作</th></tr></thead>
-      <tbody id="users-table"><tr><td colspan="9" style="text-align:center;color:var(--text-light);">載入中...</td></tr></tbody>
+      <thead><tr><th class="select-cell"><input type="checkbox" id="select-page-users" onchange="toggleCurrentPageUsers(this.checked)" title="選取本頁"></th><th>姓名</th><th>Email</th><th>狀態</th><th>用藥</th><th>7日遵從</th><th>推播</th><th>通知</th><th>註冊日</th><th>操作</th></tr></thead>
+      <tbody id="users-table"><tr><td colspan="10" style="text-align:center;color:var(--text-light);">載入中...</td></tr></tbody>
     </table>
     </div>
   </div>
@@ -193,6 +200,8 @@ const API_URL = (ADMIN_APP_CONFIG.apiBaseUrl || 'https://yaojidecare.app').repla
 let token = '';
 let booting = false;
 let usersPage = 1;
+const selectedPushUsers = new Map();
+let currentPageUserIds = [];
 
 function showToast(msg, dur = 2000) {
   const el = document.createElement('div');
@@ -339,6 +348,44 @@ function badge(text, type = 'user') {
   return `<span class="badge ${cls}">${escapeHTML(text)}</span>`;
 }
 
+function updateSelectedPushUsers() {
+  const box = document.getElementById('push-selected-users');
+  if (!box) return;
+  const values = [...selectedPushUsers.values()];
+  if (!values.length) {
+    box.textContent = '尚未選擇用戶';
+    box.style.color = 'var(--text-light)';
+  } else {
+    box.style.color = 'var(--text)';
+    box.innerHTML = `${values.length} 位：` + values.slice(0, 8).map(u => `${escapeHTML(u.name || '未命名')} <span style="color:var(--text-light);">#${Number(u.id)}</span>`).join('、') + (values.length > 8 ? ` 等 ${values.length} 位` : '');
+  }
+  document.querySelectorAll('.push-user-checkbox').forEach(cb => {
+    cb.checked = selectedPushUsers.has(Number(cb.value));
+  });
+  const pageBox = document.getElementById('select-page-users');
+  if (pageBox) pageBox.checked = currentPageUserIds.length > 0 && currentPageUserIds.every(id => selectedPushUsers.has(id));
+}
+
+function setSelectedPushUser(id, name, checked) {
+  const uid = Number(id || 0);
+  if (!uid) return;
+  if (checked) selectedPushUsers.set(uid, { id: uid, name: name || '未命名' });
+  else selectedPushUsers.delete(uid);
+  updateSelectedPushUsers();
+}
+
+function toggleCurrentPageUsers(checked) {
+  currentPageUserIds.forEach(id => {
+    const cb = document.querySelector(`.push-user-checkbox[value="${id}"]`);
+    if (cb) setSelectedPushUser(id, cb.dataset.name || '未命名', checked);
+  });
+}
+
+function clearSelectedPushUsers() {
+  selectedPushUsers.clear();
+  updateSelectedPushUsers();
+}
+
 function miniRow(label, value) {
   return `<div class="mini-row"><span>${escapeHTML(label)}</span><strong>${value}</strong></div>`;
 }
@@ -392,11 +439,13 @@ function renderUserRow(u) {
   const safeEmail = escapeHTML(u.email || '-');
   const id = Number(u.id || 0);
   const actionName = safeName.replace(/'/g, '&#39;');
+  const canSelect = u.role !== 'admin';
   const actions = u.role !== 'admin'
     ? `<button onclick="deleteUser(${id},'${actionName}')" class="btn btn-danger btn-sm" style="margin-right:4px;">刪除</button><button onclick="showResetPassword(${id},'${actionName}')" class="btn btn-outline btn-sm" style="margin-right:4px;">改密</button><button onclick="exportUserCSV(${id},'${actionName}')" class="btn btn-outline btn-sm">匯出</button>`
     : '-';
   return `
     <tr>
+      <td class="select-cell">${canSelect ? `<input type="checkbox" class="push-user-checkbox" value="${id}" data-name="${safeName}" onchange="setSelectedPushUser(${id}, this.dataset.name, this.checked)" ${selectedPushUsers.has(id) ? 'checked' : ''}>` : ''}</td>
       <td><span class="clickable" onclick="showUserDetail(${id})">${safeName}</span><div style="font-size:12px;color:var(--text-light);">ID ${id}</div></td>
       <td>${safeEmail}</td>
       <td>${renderUserStatus(u)}</td>
@@ -415,15 +464,16 @@ async function loadUsers(page = usersPage) {
   const q = encodeURIComponent(document.getElementById('user-search')?.value || '');
   const status = encodeURIComponent(document.getElementById('user-status')?.value || 'all');
   const limit = encodeURIComponent(document.getElementById('user-limit')?.value || '50');
-  document.getElementById('users-table').innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-light);">載入中...</td></tr>';
+  document.getElementById('users-table').innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-light);">載入中...</td></tr>';
   const { status: httpStatus, data } = await api(`/api/admin/users?q=${q}&status=${status}&limit=${limit}&page=${page}`);
   if (httpStatus !== 200 || !data.users) {
-    document.getElementById('users-table').innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--red);">${escapeHTML(data.error || '載入用戶失敗')}</td></tr>`;
+    document.getElementById('users-table').innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--red);">${escapeHTML(data.error || '載入用戶失敗')}</td></tr>`;
     return;
   }
+  currentPageUserIds = (data.users || []).filter(u => u.role !== 'admin').map(u => Number(u.id || 0)).filter(Boolean);
   document.getElementById('users-table').innerHTML = data.users.length
     ? data.users.map(renderUserRow).join('')
-    : '<tr><td colspan="9" style="text-align:center;color:var(--text-light);">沒有符合條件的用戶</td></tr>';
+    : '<tr><td colspan="10" style="text-align:center;color:var(--text-light);">沒有符合條件的用戶</td></tr>';
   const p = data.pagination || { page: 1, totalPages: 1, total: data.users.length };
   const prevDisabled = p.page <= 1 ? 'disabled' : '';
   const nextDisabled = p.page >= p.totalPages ? 'disabled' : '';
@@ -432,6 +482,7 @@ async function loadUsers(page = usersPage) {
     <button class="btn btn-outline btn-sm" ${prevDisabled} onclick="loadUsers(${Number(p.page || 1) - 1})">上一頁</button>
     <button class="btn btn-outline btn-sm" ${nextDisabled} onclick="loadUsers(${Number(p.page || 1) + 1})">下一頁</button>
   `;
+  updateSelectedPushUsers();
 }
 
 function renderPushConfig(config) {
@@ -466,7 +517,7 @@ async function loadPushAdmin() {
   document.getElementById('push-devices-table').innerHTML = rows.length ? rows.map(row => `
     <tr>
       <td>
-        <span class="clickable" onclick="document.getElementById('push-test-user-id').value='${Number(row.user_id || 0)}'">${escapeHTML(row.name || '未命名')}</span>
+        <span class="clickable" data-name="${escapeHTML(row.name || '未命名')}" onclick="setSelectedPushUser(${Number(row.user_id || 0)}, this.dataset.name, true)">${escapeHTML(row.name || '未命名')}</span>
         <div style="font-size:12px;color:var(--text-light);">ID ${Number(row.user_id || 0)} ${row.email ? '· ' + escapeHTML(row.email) : ''}</div>
       </td>
       <td>${escapeHTML(row.platform || 'unknown')}</td>
@@ -478,22 +529,25 @@ async function loadPushAdmin() {
 }
 
 async function sendAdminPushTest() {
-  const userId = parseInt(document.getElementById('push-test-user-id').value, 10);
+  const typedUserId = parseInt(document.getElementById('push-test-user-id').value, 10);
+  const userIds = [...selectedPushUsers.keys()];
+  if (typedUserId && !userIds.includes(typedUserId)) userIds.push(typedUserId);
   const title = document.getElementById('push-test-title').value.trim();
   const body = document.getElementById('push-test-body').value.trim();
-  if (!userId) return showToast('請輸入測試用戶 ID');
+  if (!userIds.length) return showToast('請先勾選用戶，或輸入測試用戶 ID');
+  if (!confirm('確定要發送推播/站內通知給 ' + userIds.length + ' 位用戶？')) return;
   const { status, data } = await api('/api/admin/push/test', {
     method: 'POST',
-    body: JSON.stringify({ user_id: userId, title, body })
+    body: JSON.stringify({ user_ids: userIds, title, body })
   });
   if (status === 200) {
     const sent = data.result?.sent || 0;
     const skipped = data.result?.skipped || 0;
-    const detail = skipped === 'no_tokens'
-      ? '沒有原生 App token'
-      : `原生推播送出 ${sent}，略過 ${skipped}`;
+    const noTokenUsers = data.result?.no_token_users || 0;
+    const detail = `原生推播送出 ${sent}，無 token 用戶 ${noTokenUsers}，略過 ${skipped}`;
     showToast((data.message || '測試完成') + `（${detail}）`, 5000);
     loadPushAdmin();
+    loadUsers(usersPage);
   } else {
     showToast(data.error || '測試推播失敗');
   }

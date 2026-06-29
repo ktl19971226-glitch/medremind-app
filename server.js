@@ -1941,26 +1941,55 @@ async function init() {
     });
 
     app.post('/api/admin/push/test', auth, adminAuth, async (req, res) => {
-        const userId = parseInt(req.body.user_id, 10);
-        if (!userId) return res.status(400).json({ error: '請指定用戶 ID' });
-        const user = dbGet('SELECT id,name FROM users WHERE id=?', [userId]);
-        if (!user) return res.status(404).json({ error: '用戶不存在' });
+        const requestedIds = Array.isArray(req.body.user_ids)
+            ? req.body.user_ids
+            : (req.body.user_id ? [req.body.user_id] : []);
+        const userIds = [...new Set(requestedIds.map(id => parseInt(id, 10)).filter(Boolean))].slice(0, 200);
+        if (userIds.length === 0) return res.status(400).json({ error: '請至少選擇一位用戶' });
         const title = String(req.body.title || '藥護家後台測試通知').trim().slice(0, 120);
         const body = String(req.body.body || '這是一則由管理後台發出的原生推播測試。').trim().slice(0, 240);
-        createUserNotification(userId, {
-            title,
-            body,
-            data: { action_url: '#notifications' }
-        }, 'admin_push_test');
-        const result = await sendPushToUser(userId, {
-            title,
-            body,
-            data: { type: 'admin_push_test', action_url: '/#home' }
-        });
+        const placeholders = userIds.map(() => '?').join(',');
+        const users = dbAll(`SELECT id,name FROM users WHERE id IN (${placeholders})`, userIds);
+        if (users.length === 0) return res.status(404).json({ error: '找不到可發送的用戶' });
+        const results = [];
+        let nativeSent = 0;
+        let nativeSkipped = 0;
+        let noTokenUsers = 0;
+        for (const user of users) {
+            createUserNotification(user.id, {
+                title,
+                body,
+                data: { action_url: '#notifications' }
+            }, 'admin_push_test');
+            const result = await sendPushToUser(user.id, {
+                title,
+                body,
+                data: { type: 'admin_push_test', action_url: '/#home' }
+            });
+            nativeSent += Number(result.sent || 0);
+            if (result.skipped === 'no_tokens') noTokenUsers += 1;
+            else nativeSkipped += Number(result.skipped || 0);
+            results.push({ user_id: user.id, name: user.name, result });
+        }
         saveDB();
+        const missingCount = userIds.length - users.length;
+        const summary = [
+            `已建立站內通知 ${users.length} 位`,
+            nativeSent > 0 ? `原生推播送出 ${nativeSent} 台裝置` : '',
+            noTokenUsers > 0 ? `${noTokenUsers} 位尚未註冊原生推播 token` : '',
+            nativeSkipped > 0 ? `略過 ${nativeSkipped} 台裝置` : '',
+            missingCount > 0 ? `${missingCount} 位用戶不存在` : ''
+        ].filter(Boolean).join('；');
         res.json({
-            message: `已建立站內通知給 ${user.name}；${describePushResult(result)}`,
-            result,
+            message: summary,
+            result: {
+                sent: nativeSent,
+                skipped: nativeSkipped,
+                no_token_users: noTokenUsers,
+                user_count: users.length,
+                requested_count: userIds.length
+            },
+            results,
             config: getPushConfigStatus()
         });
     });
