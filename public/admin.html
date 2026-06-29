@@ -310,7 +310,10 @@ async function sendAdminPushTest() {
   if (status === 200) {
     const sent = data.result?.sent || 0;
     const skipped = data.result?.skipped || 0;
-    showToast((data.message || '測試完成') + `（送出 ${sent}，略過 ${skipped}）`, 3500);
+    const detail = skipped === 'no_tokens'
+      ? '沒有原生 App token'
+      : `原生推播送出 ${sent}，略過 ${skipped}`;
+    showToast((data.message || '測試完成') + `（${detail}）`, 5000);
     loadPushAdmin();
   } else {
     showToast(data.error || '測試推播失敗');

@@ -284,6 +284,23 @@ async function sendPushToUser(userId, payload = {}) {
     return { sent, skipped };
 }
 
+function createUserNotification(userId, payload = {}, type = 'admin_message') {
+    const title = String(payload.title || '藥護家通知').trim().slice(0, 120);
+    const message = String(payload.body || payload.message || '').trim().slice(0, 500);
+    const actionUrl = String(payload.data?.action_url || '#notifications').trim().slice(0, 160);
+    dbRun(
+        'INSERT INTO notifications (user_id, type, title, message, is_read, status, action_url) VALUES (?,?,?,?,0,?,?)',
+        [userId, type, title, message, 'unread', actionUrl]
+    );
+}
+
+function describePushResult(result = {}) {
+    if (result.sent > 0) return `原生推播已送出 ${result.sent} 台裝置`;
+    if (result.skipped === 'no_tokens') return '此用戶尚未從原生 App 註冊推播 token';
+    if (Number(result.skipped || 0) > 0) return '推播 token 存在，但 FCM/APNs 尚未設定或發送被略過';
+    return '原生推播尚未送出';
+}
+
 const FAMILY_RELATIONSHIPS = new Set(['子女', '父母', '配偶', '家人', '照護者']);
 
 function normalizeFamilyRelationship(value) {
@@ -1795,13 +1812,19 @@ async function init() {
         if (!user) return res.status(404).json({ error: '用戶不存在' });
         const title = String(req.body.title || '藥護家後台測試通知').trim().slice(0, 120);
         const body = String(req.body.body || '這是一則由管理後台發出的原生推播測試。').trim().slice(0, 240);
+        createUserNotification(userId, {
+            title,
+            body,
+            data: { action_url: '#notifications' }
+        }, 'admin_push_test');
         const result = await sendPushToUser(userId, {
             title,
             body,
             data: { type: 'admin_push_test', action_url: '/#home' }
         });
+        saveDB();
         res.json({
-            message: result.sent > 0 ? `已送出測試推播給 ${user.name}` : `尚未送出推播給 ${user.name}`,
+            message: `已建立站內通知給 ${user.name}；${describePushResult(result)}`,
             result,
             config: getPushConfigStatus()
         });
