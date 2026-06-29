@@ -31,6 +31,8 @@ const CREATE_DEMO_DATA = process.env.CREATE_DEMO_DATA === 'true' || process.env.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const ADMIN_NAME = process.env.ADMIN_NAME || '系統管理員';
+const ADMIN_APP_BOOTSTRAP_TOKEN = process.env.ADMIN_APP_BOOTSTRAP_TOKEN || '';
+const ADMIN_APP_BOOTSTRAP_TOKEN_HASH = process.env.ADMIN_APP_BOOTSTRAP_TOKEN_HASH || '';
 const APP_BASE_URL = (process.env.APP_BASE_URL || 'https://yaojidecare.app').replace(/\/+$/, '');
 const EMAIL_FROM = process.env.EMAIL_FROM || 'Yaojide <admin@yaojidecare.app>';
 const EMAIL_MODE = process.env.EMAIL_MODE || (process.env.NODE_ENV === 'production' ? 'sendmail' : 'log');
@@ -101,6 +103,20 @@ function createRawToken() {
 
 function hashToken(token) {
     return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function safeTokenEqual(provided, expected) {
+    const a = Buffer.from(String(provided || ''));
+    const b = Buffer.from(String(expected || ''));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function verifyAdminAppBootstrapToken(token) {
+    const provided = String(token || '').trim();
+    if (!provided) return false;
+    if (ADMIN_APP_BOOTSTRAP_TOKEN && safeTokenEqual(provided, ADMIN_APP_BOOTSTRAP_TOKEN)) return true;
+    if (ADMIN_APP_BOOTSTRAP_TOKEN_HASH) return safeTokenEqual(hashToken(provided), ADMIN_APP_BOOTSTRAP_TOKEN_HASH);
+    return false;
 }
 
 function hashDeviceIdentifier(identifier) {
@@ -500,6 +516,9 @@ app.use((req, res, next) => {
         return res.status(404).json({ error: 'Not found' });
     }
     next();
+});
+app.get(['/admin.html', '/admin'], (req, res) => {
+    res.status(404).send('Not found');
 });
 app.use(express.static('public', {
     setHeaders(res, filePath) {
@@ -935,6 +954,34 @@ async function init() {
         }
         const token = jwt.sign({ id:u.id, name:u.name, email:u.email, role: u.role || 'user' }, JWT_SECRET, { expiresIn: '30d' });
         res.json({ message:'登入成功', token, user:{ id:u.id, name:u.name, email:u.email, phone:u.phone, age:u.age, role: u.role || 'user' } });
+    });
+
+    app.post('/api/admin/app-session', (req, res) => {
+        const bootstrapToken = req.headers['x-admin-app-token'] || req.body?.bootstrapToken || '';
+        if (!ADMIN_APP_BOOTSTRAP_TOKEN && !ADMIN_APP_BOOTSTRAP_TOKEN_HASH) {
+            return res.status(503).json({ error: '後台 App 尚未設定啟動憑證' });
+        }
+        if (!verifyAdminAppBootstrapToken(bootstrapToken)) {
+            return res.status(403).json({ error: '後台 App 驗證失敗' });
+        }
+        const admin = (ADMIN_EMAIL && dbGet('SELECT * FROM users WHERE email=? AND role=?', [normalizeEmail(ADMIN_EMAIL), 'admin']))
+            || dbGet('SELECT * FROM users WHERE role=? ORDER BY id LIMIT 1', ['admin']);
+        if (!admin) return res.status(500).json({ error: '找不到管理員帳號' });
+        const token = jwt.sign(
+            { id: admin.id, name: admin.name, email: admin.email, role: 'admin', adminApp: true },
+            JWT_SECRET,
+            { expiresIn: '30d' }
+        );
+        res.json({
+            message: '後台 App 驗證成功',
+            token,
+            user: {
+                id: admin.id,
+                name: admin.name || ADMIN_NAME,
+                email: publicEmail(admin),
+                role: 'admin'
+            }
+        });
     });
 
     app.post('/api/resend-verification', async (req, res) => {

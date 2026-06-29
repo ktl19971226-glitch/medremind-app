@@ -1529,7 +1529,6 @@
                     <option value="vi">🇻🇳 Việt</option>
                     <option value="fil">🇵🇭 Fil</option>
                 </select>
-                <a id="admin-header-link" href="/admin.html" style="display:none;background:rgba(255,255,255,0.2);color:white;padding:6px 12px;border-radius:8px;font-size:13px;text-decoration:none;">🔧 後台</a>
                 <button class="notification-btn" onclick="showNotificationCenter()" title="通知中心">🔔<span class="notification-badge" id="notification-badge">0</span></button>
                 <span class="user-info" id="header-username"></span>
                 <button class="logout-btn" onclick="refreshDeviceSession()">重整</button>
@@ -2901,9 +2900,6 @@
             window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
             document.body.classList.remove('desktop-mode');
             document.getElementById('header-username').textContent = getDisplayUserName(currentUser);
-            // 管理員顯示後台連結
-            const adminLink = document.getElementById('admin-header-link');
-            if (adminLink) adminLink.style.display = (currentUser.role === 'admin') ? 'inline-block' : 'none';
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById('home-page').classList.add('active');
             document.getElementById('nav-home').classList.add('active');
