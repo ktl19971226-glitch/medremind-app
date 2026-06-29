@@ -35,6 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           : "${ADMIN_APP_BOOTSTRAP_TOKEN:?Missing ADMIN_APP_BOOTSTRAP_TOKEN secret}"
+          npx cap sync ios
           rm -rf ios/App/App/public
           mkdir -p ios/App/App/public
           cp -R admin-app/. ios/App/App/public/
