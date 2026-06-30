@@ -108,10 +108,23 @@ const ncdrEventNames = {
   temperature: ['高溫'],
   typhoon: ['颱風'],
   earthquake: ['地震'],
+  transit: ['臺鐵', '台鐵', '鐵路', '營運警示', '停駛'],
   'water-outage': ['停水'],
   evacuation: ['疏散', '避難', '土石流', '水庫放流'],
   accident: ['災害', '水庫放流', '道路封閉'],
   'local-bulletin': ['停水', '水庫放流', '降雨', '高溫', '地震', '颱風']
+};
+
+const ncdrDisplayNames = {
+  rain: '降雨',
+  temperature: '高溫',
+  typhoon: '颱風',
+  earthquake: '地震',
+  transit: '臺鐵營運異常',
+  'water-outage': '停水',
+  evacuation: '疏散避難',
+  accident: '事故警戒',
+  'local-bulletin': '民生公告'
 };
 
 const taoyuanDistrictIds = {
@@ -442,7 +455,7 @@ async function ncdrCapAlert(moduleId, location) {
     }
   }
 
-  return { status: 'no-event', source: 'NCDR 民生示警', body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${moduleId} 民生示警。` };
+  return { status: 'no-event', source: 'NCDR 民生示警', body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${ncdrDisplayNames[moduleId] || moduleId} 民生示警。` };
 }
 
 async function freewayLiveEvent(rule, location) {
@@ -687,7 +700,10 @@ async function taipeiMetroStatus(location) {
 
 async function transitInfo(location) {
   const city = canonicalCity(location.city);
+  const railIncident = await ncdrCapAlert('transit', location);
+  if (railIncident.status === 'live') return railIncident;
   if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
+  if (railIncident.status !== 'not-configured') return railIncident;
   return genericConfiguredSource({ moduleId: 'transit' }, location);
 }
 
@@ -1003,7 +1019,7 @@ export function getSourceCoverage() {
       },
       'ncdr-cap-alerts': {
         coverage: '全台灣民生示警 CAP',
-        modules: ['rain', 'temperature', 'earthquake', 'typhoon', 'evacuation', 'local-bulletin', 'accident'],
+        modules: ['rain', 'temperature', 'earthquake', 'typhoon', 'transit', 'evacuation', 'local-bulletin', 'accident'],
         source: 'https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx'
       },
       'freeway-live-events': {
