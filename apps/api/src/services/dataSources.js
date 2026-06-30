@@ -94,12 +94,16 @@ const parkingDefaults = {
 const fireDefaults = {
   臺北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
   台北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
+  基隆市: 'https://www.klfd.klcg.gov.tw/tw/klfd1/4243.html',
+  新竹市: 'https://119.hccg.gov.tw/chhcfd/app/data/list?id=86',
+  新竹縣: 'https://fire.hsinchu.gov.tw/cht/index.php?code=list&ids=262',
   新北市: 'https://e.ntpc.gov.tw/v3/api/map/dynamic/layer/rescue',
   桃園市: 'https://www.tyfd.gov.tw/cht/index.php?act=caselist',
   苗栗縣: 'https://119mlfire.mlfd.gov.tw/DTS/caselist/html',
   彰化縣: 'https://www.chfd.gov.tw/RealInfo/index.aspx?Parser=99,3,29',
   南投縣: 'https://www.ntfd.gov.tw/index.php?act=caselist',
   嘉義縣: 'https://cycfb.cyhg.gov.tw/DisasterPrevent.aspx?n=5F10482409025004&sms=ED4E0CDDC2EA92E6',
+  嘉義市: 'https://cyfd.chiayi.gov.tw/Common/Getfdcaselist.ashx?mode=Page',
   屏東縣: 'https://pteoc.pthg.gov.tw/News119'
 };
 
@@ -887,6 +891,76 @@ async function newTaipeiFire(location) {
   };
 }
 
+async function keelungFire(location) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<li>\s*<span class="num">.*?<\/span>\s*<span class="list__title"><a href="([^"]+)" title="([^"]+)"[\s\S]*?<\/a><\/span>\s*<time>(.*?)<\/time>\s*<\/li>/g)]
+    .map(match => ({
+      link: match[1],
+      title: cleanHtmlText(match[2]),
+      time: cleanHtmlText(match[3]),
+      type: '火災資訊',
+      subtype: '',
+      place: cleanHtmlText(match[2]),
+      status: '官方公告'
+    }))
+    .filter(record => /火|火警|火災/.test(record.title));
+  if (!rows.length) return { status: 'no-event', source: '基隆市消防局火災資訊', body: '基隆市目前沒有公開火災資訊。' };
+  const matched = rows.find(record => emergencyMatches(record, location)) || rows[0];
+  return {
+    status: 'live',
+    source: '基隆市消防局火災資訊',
+    body: `${matched.title}，公告日期 ${matched.time || '未提供'}。`,
+    shouldNotify: false
+  };
+}
+
+async function hsinchuCountyFire(location) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<a href="([^"]+)" class="d-flex" title="([^"]+)"[\s\S]*?<span class="mon">[\s\S]*?<\/span>(.*?)<\/span>[\s\S]*?<span class="sr-only">發佈單位<\/span>(.*?)<\/div>/g)]
+    .map(match => ({
+      link: match[1],
+      title: cleanHtmlText(match[2]),
+      time: cleanHtmlText(match[3]),
+      station: cleanHtmlText(match[4]),
+      type: cleanHtmlText(match[2]).split('－')[0],
+      place: `${location.city}${cleanHtmlText(match[2])}`,
+      status: '官方即時災情'
+    }))
+    .filter(record => /火|瓦斯|災害|搶救/.test(`${record.type}${record.title}`));
+  if (!rows.length) return { status: 'no-event', source: '新竹縣政府消防局即時災情', body: '新竹縣目前沒有公開中的消防即時災情。' };
+  const matched = rows.find(record => /火|災害|搶救/.test(`${record.type}${record.title}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source: '新竹縣政府消防局即時災情', body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source: '新竹縣政府消防局即時災情',
+    body: `${matched.title}，發布 ${matched.time || '時間未提供'}，單位 ${matched.station || '未提供'}。`,
+    shouldNotify: false
+  };
+}
+
+async function hsinchuCityFire(location) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<a[^>]+href="([^"]+)"[^>]+title="([^"]+)"[\s\S]*?<p class="color02">[\s\S]*?發布日期：([^<]+)<\/p>[\s\S]*?<p class="color01">[\s\S]*?發布單位：([^<]+)<\/p>[\s\S]*?<p class="subject">([^<]+)<\/p>/g)]
+    .map(match => ({
+      link: `https://119.hccg.gov.tw${match[1].replace(/&amp;/g, '&')}`,
+      title: cleanHtmlText(match[2] || match[5]),
+      time: cleanHtmlText(match[3]),
+      station: cleanHtmlText(match[4]),
+      type: '救災救護',
+      place: cleanHtmlText(match[2] || match[5]),
+      status: '官方救災救護資訊'
+    }))
+    .filter(record => /火|火警|災害|搶救/.test(`${record.title}${record.place}`));
+  if (!rows.length) return { status: 'no-event', source: '新竹市消防局救災救護', body: '新竹市目前沒有公開救災救護火警資訊。' };
+  const matched = rows.find(record => emergencyMatches(record, location)) || rows[0];
+  return {
+    status: 'live',
+    source: '新竹市消防局救災救護',
+    body: `${matched.title}，發布 ${matched.time || '時間未提供'}，單位 ${matched.station || '未提供'}。`,
+    shouldNotify: false
+  };
+}
+
 function cleanHtmlText(html = '') {
   return html
     .replace(/<[^>]*>/g, '')
@@ -1011,6 +1085,31 @@ async function chiayiCountyFire(location) {
   };
 }
 
+async function chiayiCityFire(location) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<tr>\s*<td>\s*<p>(.*?)<\/p>\s*<\/td>\s*<td>\s*<p>(.*?)<\/p>\s*<\/td>\s*<td[^>]*>\s*<p>(.*?)<\/p>\s*<\/td>\s*<td>\s*<p>(.*?)<\/p>\s*<\/td>\s*<td>\s*<p>(.*?)<\/p>\s*<\/td>\s*<\/tr>/g)]
+    .map(match => {
+      const [type, subtype = ''] = cleanHtmlText(match[2]).split('-');
+      return {
+        time: cleanHtmlText(match[1]),
+        type,
+        subtype,
+        place: cleanHtmlText(match[3]),
+        station: cleanHtmlText(match[4]),
+        status: cleanHtmlText(match[5])
+      };
+    });
+  if (!rows.length) return { status: 'no-event', source: '嘉義市消防局火警案件即時災情', body: '嘉義市目前沒有公開中的火警案件即時災情。' };
+  const matched = rows.find(record => /火|災害|搶救/.test(`${record.type}${record.subtype}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source: '嘉義市消防局火警案件即時災情', body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source: '嘉義市消防局火警案件即時災情',
+    body: `${matched.place || location.city}，${matched.type || '消防案件'}${matched.subtype ? `/${matched.subtype}` : ''}，派遣 ${matched.station || '未提供'}，狀態 ${matched.status || '未提供'}，受理 ${matched.time || '時間未提供'}。`,
+    shouldNotify: !/完成|返隊|結案/.test(matched.status || '')
+  };
+}
+
 async function pingtungFire(location) {
   const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
   const rows = [...html.matchAll(/<tr>\s*<td>([\s\S]*?)<\/td>\s*<td class="text-start">([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<\/tr>/g)]
@@ -1036,12 +1135,16 @@ async function pingtungFire(location) {
 async function fireEmergency(location) {
   const city = canonicalCity(location.city);
   if (city === '臺北市') return taipeiFire({ ...location, city });
+  if (city === '基隆市') return keelungFire({ ...location, city });
+  if (city === '新竹市') return hsinchuCityFire({ ...location, city });
+  if (city === '新竹縣') return hsinchuCountyFire({ ...location, city });
   if (city === '新北市') return newTaipeiFire({ ...location, city });
   if (city === '桃園市') return taoyuanFire({ ...location, city });
   if (city === '苗栗縣') return miaoliFire({ ...location, city });
   if (city === '彰化縣') return changhuaFire({ ...location, city });
   if (city === '南投縣') return nantouFire({ ...location, city });
   if (city === '嘉義縣') return chiayiCountyFire({ ...location, city });
+  if (city === '嘉義市') return chiayiCityFire({ ...location, city });
   if (city === '屏東縣') return pingtungFire({ ...location, city });
   return genericConfiguredSource({ moduleId: 'fire' }, location);
 }
