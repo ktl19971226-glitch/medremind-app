@@ -72,6 +72,12 @@ const parkingDefaults = {
   }
 };
 
+const fireDefaults = {
+  臺北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
+  台北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
+  新北市: 'https://e.ntpc.gov.tw/v3/api/map/dynamic/layer/rescue'
+};
+
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
   台北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -604,6 +610,58 @@ async function parkingInfo(location) {
   return genericConfiguredSource({ moduleId: 'parking' }, location);
 }
 
+function emergencyMatches(record, location) {
+  const text = JSON.stringify(record);
+  return (!location.city || text.includes(location.city) || text.includes(canonicalCity(location.city)) || text.includes(displayCity(canonicalCity(location.city)))) &&
+    (!location.district || text.includes(location.district));
+}
+
+async function taipeiFire(location) {
+  const data = await fetchJson(fireDefaults[canonicalCity(location.city)], {
+    timeoutMs: 7000,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: 'https://service119.tfd.gov.tw/service119/accCase'
+    },
+    body: new URLSearchParams({ page: '1', rows: '30' })
+  });
+  const records = data?.rows || [];
+  if (!records.length) return { status: 'no-event', source: '臺北市政府消防局 119 即時案件', body: '臺北市目前沒有公開中的 119 即時案件。' };
+  const matched = records.find(record => /火|災害|搶救/.test(`${record.csKindName || ''}${record.csCodeName || ''}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source: '臺北市政府消防局 119 即時案件', body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source: '臺北市政府消防局 119 即時案件',
+    body: `${matched.csPlaceFuzzy || matched.csPlace || location.city}，${matched.csKindName || '消防案件'}${matched.csCodeName ? `/${matched.csCodeName}` : ''}，狀態 ${matched.caseStatus || '已受理'}，受理 ${matched.inTime || '時間未提供'}。`,
+    shouldNotify: true
+  };
+}
+
+async function newTaipeiFire(location) {
+  const data = await fetchJson(fireDefaults[location.city], { timeoutMs: 7000 });
+  const featureCollection = typeof data?.data === 'string' ? JSON.parse(data.data) : data?.data;
+  const features = featureCollection?.features || [];
+  if (!features.length) return { status: 'no-event', source: '新北市消防救援動態 GeoJSON', body: '新北市目前沒有公開中的消防救援案件。' };
+  const records = features.map(feature => feature.properties || {});
+  const matched = records.find(record => /火|災害|搶救/.test(`${record.fireType || ''}${record.title || ''}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source: '新北市消防救援動態 GeoJSON', body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source: '新北市消防救援動態 GeoJSON',
+    body: `${matched.endPointInfo || location.city}，${matched.fireType || '消防救援'}，案件 ${matched.featureId || '編號未提供'}。`,
+    shouldNotify: true
+  };
+}
+
+async function fireEmergency(location) {
+  const city = canonicalCity(location.city);
+  if (city === '臺北市') return taipeiFire({ ...location, city });
+  if (city === '新北市') return newTaipeiFire({ ...location, city });
+  return genericConfiguredSource({ moduleId: 'fire' }, location);
+}
+
 function cookieHeaderFrom(response) {
   const setCookie = response.headers.get('set-cookie') || '';
   return setCookie
@@ -880,6 +938,7 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (['commute', 'road-incident', 'roadwork'].includes(rule.moduleId)) return freewayLiveEvent(rule, location);
   if (rule.moduleId === 'parking') return parkingInfo(location);
+  if (rule.moduleId === 'fire') return fireEmergency(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
   if (['evacuation', 'local-bulletin', 'accident'].includes(rule.moduleId)) {
@@ -925,6 +984,10 @@ export function getSourceCoverage() {
       parking: {
         coverage: Object.keys(parkingDefaults),
         sources: parkingDefaults
+      },
+      fire: {
+        coverage: Object.keys(fireDefaults),
+        sources: fireDefaults
       }
     },
     keyRequired: {
