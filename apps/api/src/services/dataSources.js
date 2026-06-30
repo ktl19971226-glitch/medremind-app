@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const moenvGarbageRoutesFile = path.resolve(__dirname, '../../data/moenv-garbage-routes.json');
+const freewayLiveEventsFile = path.resolve(__dirname, '../../data/freeway-live-events.xml');
 
 const cityAliases = {
   台北市: '臺北市',
@@ -297,6 +298,20 @@ async function fetchData(url, { timeoutMs = 4500, headers = {} } = {}) {
   }
 }
 
+async function fetchText(url, { timeoutMs = 4500, headers = {} } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers });
+    if (!response.ok) return '';
+    return response.text();
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function xmlValue(xml, tag) {
   return xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1]
     ?.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
@@ -308,6 +323,24 @@ function xmlValues(xml, tag) {
   return [...xml.matchAll(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'g'))]
     .map(match => match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim())
     .filter(Boolean);
+}
+
+function xmlBlocks(xml, tag) {
+  return [...xml.matchAll(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'g'))].map(match => match[1]);
+}
+
+function distanceKm(aLat, aLng, bLat, bLng) {
+  const toRad = degree => degree * Math.PI / 180;
+  const earthRadius = 6371;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function pointFromWkt(wkt = '') {
+  const match = wkt.match(/POINT\(([-\d.]+)\s+([-\d.]+)\)/);
+  return match ? { lng: Number(match[1]), lat: Number(match[2]) } : null;
 }
 
 async function fetchNcdrFeed() {
@@ -377,6 +410,57 @@ async function ncdrCapAlert(moduleId, location) {
   }
 
   return { status: 'no-event', source: 'NCDR 民生示警', body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${moduleId} 民生示警。` };
+}
+
+async function freewayLiveEvent(rule, location) {
+  let text = await fetchText('https://tisvcloud.freeway.gov.tw/history/motc20/LiveEvents.xml', { timeoutMs: 7000 });
+  if (!text) {
+    try {
+      text = fs.readFileSync(freewayLiveEventsFile, 'utf8');
+    } catch {
+      text = '';
+    }
+  }
+  if (!text) return { status: 'no-event', source: '高速公路局 TISVCloud', body: '國道路況事件資料源暫時無法連線。' };
+  const wantedTypes = rule.moduleId === 'roadwork'
+    ? new Set(['2'])
+    : rule.moduleId === 'road-incident'
+      ? new Set(['1', '3', '4', '5', '6', '8'])
+      : new Set(['1', '2', '3', '4', '5', '6', '8']);
+  const events = xmlBlocks(text, 'LiveEvent')
+    .map(block => ({
+      title: xmlValue(block, 'EventTitle'),
+      description: xmlValue(block, 'Description'),
+      type: xmlValue(block, 'EventType'),
+      road: xmlValue(block, 'Road'),
+      direction: xmlValue(block, 'Direction'),
+      start: xmlValue(block, 'StartKM'),
+      end: xmlValue(block, 'EndKM'),
+      sectionStart: xmlValue(block, 'SectionStart'),
+      sectionEnd: xmlValue(block, 'SectionEnd'),
+      impact: xmlValue(block, 'Description'),
+      source: xmlValue(block, 'Source'),
+      updateTime: xmlValue(block, 'LastUpdateTime') || xmlValue(block, 'PublishTime'),
+      point: pointFromWkt(xmlValue(block, 'Positions'))
+    }))
+    .filter(event => wantedTypes.has(event.type));
+
+  if (events.length === 0) {
+    return { status: 'no-event', source: '高速公路局 TISVCloud LiveEvents', body: '目前沒有符合條件的國道路況事件。' };
+  }
+
+  const withDistance = Number(location.lat) && Number(location.lng)
+    ? events.map(event => ({ ...event, distance: event.point ? distanceKm(Number(location.lat), Number(location.lng), event.point.lat, event.point.lng) : Infinity }))
+      .sort((a, b) => a.distance - b.distance)
+    : events;
+  const event = withDistance[0];
+  const distanceText = Number.isFinite(event.distance) ? `，距離約 ${Math.round(event.distance)} 公里` : '';
+  return {
+    status: 'live',
+    source: '高速公路局 TISVCloud LiveEvents',
+    body: `${event.description || event.title}${distanceText}${event.updateTime ? `（更新 ${event.updateTime}）` : ''}`,
+    shouldNotify: rule.moduleId === 'road-incident' && ['1', '4', '6', '8'].includes(event.type)
+  };
 }
 
 function cookieHeaderFrom(response) {
@@ -653,6 +737,7 @@ export async function resolveLiveAlert(rule, location) {
     return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
   }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
+  if (['commute', 'road-incident', 'roadwork'].includes(rule.moduleId)) return freewayLiveEvent(rule, location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
   if (['evacuation', 'local-bulletin', 'accident'].includes(rule.moduleId)) {
@@ -689,6 +774,11 @@ export function getSourceCoverage() {
         coverage: '全台灣民生示警 CAP',
         modules: ['rain', 'temperature', 'earthquake', 'typhoon', 'evacuation', 'local-bulletin', 'accident'],
         source: 'https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx'
+      },
+      'freeway-live-events': {
+        coverage: '全台灣國道即時事件',
+        modules: ['commute', 'road-incident', 'roadwork'],
+        source: 'https://tisvcloud.freeway.gov.tw/history/motc20/LiveEvents.xml'
       }
     },
     keyRequired: {
