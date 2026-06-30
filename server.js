@@ -1612,6 +1612,12 @@ async function init() {
         res.json({ message:'已標記為已讀' });
     });
 
+    app.put('/api/notifications/read-all', auth, (req, res) => {
+        dbRun("UPDATE notifications SET is_read=1, status='read', snooze_until=NULL WHERE user_id=? AND COALESCE(status,'unread') IN ('unread','snoozed')", [req.user.id]);
+        saveDB();
+        res.json({ message: '已全部標記為已讀' });
+    });
+
     app.put('/api/notifications/:id/status', auth, (req, res) => {
         const status = ['unread', 'read', 'done', 'snoozed'].includes(req.body.status) ? req.body.status : 'read';
         const snoozeMinutes = parseInt(req.body.snooze_minutes) || 0;

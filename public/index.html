@@ -968,6 +968,22 @@
             font-size: 14px;
         }
 
+        .family-missed-window {
+            max-height: 260px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-right: 2px;
+        }
+
+        .family-missed-item {
+            padding: 8px 10px;
+            background: #fff3e0;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
         .family-med-name {
             font-weight: 700;
             color: var(--text);
@@ -3793,15 +3809,11 @@
                         ? `${Number(med.today_taken || 0)}/${Number(med.today_total || 0)}`
                         : '無提醒';
                     const doneClass = med.today_done ? ' done' : '';
-                    const stockText = med.remaining !== null && med.remaining !== undefined
-                        ? ` · 剩 ${escapeHTML(med.remaining)}${med.days_left !== null && med.days_left !== undefined ? `（約 ${escapeHTML(med.days_left)} 天）` : ''}`
-                        : '';
                     return `
                         <div class="family-med-item">
                             <div>
                                 <div class="family-med-name">💊 ${escapeHTML(med.drug_name || '未命名用藥')}</div>
-                                <div class="family-med-meta">${escapeHTML(med.dosage || '未填劑量')} · ${escapeHTML(timeText)}${stockText}</div>
-                                ${med.usage_notes ? `<div class="family-med-meta">📝 ${escapeHTML(med.usage_notes)}</div>` : ''}
+                                <div class="family-med-meta">${escapeHTML(timeText)}</div>
                             </div>
                             <div class="family-med-status${doneClass}">${escapeHTML(statusText)}</div>
                         </div>`;
@@ -4542,11 +4554,11 @@
                 return;
             }
             const items = data.missed.map(m =>
-                `<div style="padding:8px;background:#fff3e0;border-radius:8px;margin-bottom:4px;font-size:14px;">
-                    ⚠️ <b>${m.name}</b> 尚未打卡 <b>${m.drug_name}</b> (${m.time})
+                `<div class="family-missed-item">
+                    ⚠️ <b>${escapeHTML(m.name || '家人')}</b> 尚未打卡 <b>${escapeHTML(m.drug_name || '未命名用藥')}</b> (${escapeHTML(m.time || '--:--')})
                 </div>`
             ).join('');
-            container.innerHTML = `<div class="card" style="background:#fef9e7;"><h4 style="color:#E74C3C;margin-bottom:8px;">⚠️ 未吃藥提醒</h4>${items}</div>`;
+            container.innerHTML = `<div class="card" style="background:#fef9e7;"><h4 style="color:#E74C3C;margin-bottom:8px;">⚠️ 未吃藥提醒</h4><div class="family-missed-window">${items}</div></div>`;
         }
 
         // ========== 藥物交互作用檢查 ==========
@@ -5236,9 +5248,13 @@
                         '<button class="btn btn-outline btn-sm" style="font-size:12px;padding:6px 8px;" onclick="setNotificationStatus(' + n.id + ',&quot;read&quot;)">已讀</button>' +
                         '</div></div>';
                 }).join('') : '<div style="color:var(--text-light);text-align:center;padding:24px;">目前沒有通知</div>';
+                const hasUnread = rows.some(n => n.status === 'unread' || !n.status || n.status === 'snoozed');
                 document.getElementById('modal-container').innerHTML =
                     '<div class="modal-overlay" id="noti-modal"><div class="modal" style="max-height:85vh;"><h3>🔔 通知中心</h3>' +
-                    '<div style="font-size:13px;color:var(--text-light);margin:4px 0 12px;">漏吃、補藥、家人加入、健康與 AI 風險提醒會集中在這裡。</div>' +
+                    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:4px 0 12px;">' +
+                    '<div style="font-size:13px;color:var(--text-light);line-height:1.45;">漏吃、補藥、家人加入、健康與 AI 風險提醒會集中在這裡。</div>' +
+                    (hasUnread ? '<button class="btn btn-outline btn-sm" style="font-size:12px;padding:6px 10px;white-space:nowrap;" onclick="markAllNotificationsRead()">全部已讀</button>' : '') +
+                    '</div>' +
                     '<div style="max-height:58vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">' + itemHtml + '</div>' +
                     '<button onclick="this.closest(&quot;.modal-overlay&quot;).remove()" class="btn btn-outline" style="width:100%;margin-top:10px;">關閉</button></div></div>';
                 document.getElementById('noti-modal')?.addEventListener('click', e => { if (e.target.id === 'noti-modal') e.target.remove(); });
@@ -5252,6 +5268,13 @@
                 body: JSON.stringify({ status, snooze_minutes: snoozeMinutes || 0 })
             });
             showToast(status === 'done' ? '已標記處理' : status === 'snoozed' ? '已稍後提醒' : '已更新');
+            showNotificationCenter();
+            updateNotificationBadge();
+        }
+
+        async function markAllNotificationsRead() {
+            await api('/api/notifications/read-all', { method: 'PUT' });
+            showToast('已全部標記已讀');
             showNotificationCenter();
             updateNotificationBadge();
         }
