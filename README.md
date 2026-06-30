@@ -43,6 +43,13 @@ API 預設 port：`8061`。
 - `LOCAL_ALERT_SOURCE_<MODULE>_URL`：各模組外部資料源 URL，例如 `LOCAL_ALERT_SOURCE_GARBAGE_TRUCK_URL`、`LOCAL_ALERT_SOURCE_WATER_OUTAGE_URL`、`LOCAL_ALERT_SOURCE_BILL_URL`
 - `RAIN_NOTIFY_THRESHOLD` / `AQI_NOTIFY_THRESHOLD`：降雨與 AQI 推播門檻
 
+內建免金鑰資料源：
+
+- 台灣自來水停水資訊 JSON：`water-outage`
+- EMIC 台灣電力公司災情通報表 JSON：`power-outage`
+- 新北市垃圾清運車輛所在位置 JSON：`garbage-truck`（新北市）
+- 臺中市定時定點垃圾收運地點 JSON：`garbage-truck`（臺中市）
+
 ## iOS 原生 App
 
 手機端已產生 iOS 原生工程：`apps/mobile/ios`。

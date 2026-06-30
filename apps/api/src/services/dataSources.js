@@ -38,6 +38,17 @@ const tdxDefaults = {
   roadwork: 'https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Construction/Freeway'
 };
 
+const publicDefaults = {
+  'water-outage': 'https://web.water.gov.tw/wateroffapi/openData/export/json',
+  'power-outage': 'https://portal2.emic.gov.tw/Pub/ERA2/OpenData/ERA2_E2.json'
+};
+
+const garbageTruckDefaults = {
+  新北市: 'https://data.ntpc.gov.tw/api/datasets/28ab4122-60e1-4065-98e5-abccb69aaca6/json?size=1000',
+  臺中市: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=68d1a87f-7baa-4b50-8408-c36a3a7eda68',
+  台中市: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=68d1a87f-7baa-4b50-8408-c36a3a7eda68'
+};
+
 function canonicalCity(city = '') {
   return cityAliases[city] || city;
 }
@@ -56,6 +67,11 @@ function sourceUrlFor(moduleId) {
   const name = moduleEnvNames[moduleId];
   if (!name) return '';
   return process.env[`LOCAL_ALERT_SOURCE_${name}_URL`] || process.env[`${name}_SOURCE_URL`] || '';
+}
+
+function defaultSourceUrlFor(moduleId, location) {
+  if (moduleId === 'garbage-truck') return garbageTruckDefaults[canonicalCity(location.city)] || garbageTruckDefaults[location.city] || '';
+  return publicDefaults[moduleId] || '';
 }
 
 async function fetchJson(url, { timeoutMs = 4500, headers = {}, method = 'GET', body } = {}) {
@@ -189,15 +205,15 @@ async function moenvAqi(location) {
 
 function extractRecords(data) {
   if (Array.isArray(data)) return data;
-  return data?.records || data?.data || data?.items || data?.result?.records || [];
+  return data?.records || data?.data || data?.items || data?.detail || data?.result?.records || [];
 }
 
 function textFromRecord(record) {
   if (typeof record === 'string') return record;
-  const title = record.title || record.Title || record.name || record.Name || record.subject || record.Subject || record.event || record.Event;
-  const area = record.area || record.Area || record.city || record.City || record.county || record.County || record.district || record.District;
-  const time = record.time || record.Time || record.date || record.Date || record.startTime || record.StartTime;
-  const message = record.message || record.Message || record.description || record.Description || record.content || record.Content || record.memo || record.Memo;
+  const title = record.title || record.Title || record.name || record.Name || record.subject || record.Subject || record.event || record.Event || record['案件類型'] || record.task_type;
+  const area = record.area || record.Area || record.city || record.City || record.county || record.County || record.district || record.District || record['影響縣市'] || record.city_name || record.town_name || record.cityname || record.area;
+  const time = record.time || record.Time || record.date || record.Date || record.startTime || record.StartTime || record['案件日期時間'] || record.rpt_time || record.fix_datetime_est || record.g_d1_time_s;
+  const message = record.message || record.Message || record.description || record.Description || record.content || record.Content || record.memo || record.Memo || record['停水地區'] || record['停水原因'] || record.electro_dmg_area || record.business_lost_est || record.location || record.caption;
   return [area, title, time, message].filter(Boolean).join('，');
 }
 
@@ -208,19 +224,30 @@ function matchesLocation(record, location) {
     .some(term => haystack.includes(term));
 }
 
+function isEmptyEventRecord(record) {
+  return record?.no_data_mark ||
+    record?.electro_dmg_now === '0' ||
+    record?.electro_dmg_area === '無' ||
+    record?.['停水地區'] === '無';
+}
+
 async function genericConfiguredSource(rule, location) {
   const directUrl = sourceUrlFor(rule.moduleId);
+  const publicUrl = defaultSourceUrlFor(rule.moduleId, location);
   const tdxUrl = tdxDefaults[rule.moduleId];
-  if (!directUrl && !tdxUrl) {
+  if (!directUrl && !publicUrl && !tdxUrl) {
     return { status: 'not-configured', source: '資料源未設定' };
   }
 
-  const source = directUrl ? '外部資料源' : 'TDX';
-  const data = directUrl ? await fetchJson(directUrl) : await fetchTdx(tdxUrl);
+  const source = directUrl ? '外部資料源' : publicUrl ? '政府公開資料' : 'TDX';
+  const data = directUrl || publicUrl ? await fetchJson(directUrl || publicUrl) : await fetchTdx(tdxUrl);
   if (data?.status === 'not-configured') return data;
   const records = extractRecords(data);
-  const matched = records.find(record => matchesLocation(record, location)) || records[0];
+  const matched = records.find(record => matchesLocation(record, location)) || records.find(record => !isEmptyEventRecord(record)) || records[0];
   if (!matched) {
+    return { status: 'no-event', source, body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${rule.moduleId} 即時事件。` };
+  }
+  if (isEmptyEventRecord(matched)) {
     return { status: 'no-event', source, body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${rule.moduleId} 即時事件。` };
   }
   return {
