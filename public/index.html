@@ -2296,6 +2296,7 @@
         let revenueCatConfigured = false;
         let revenueCatConfigurePromise = null;
         let revenueCatPackages = {};
+        let revenueCatStoreProducts = {};
         let aiScanRewardedAdCreated = false;
         let aiScanRewardedAdLoading = null;
         let aiScanRewardedListenerReady = false;
@@ -5293,10 +5294,9 @@
 
             revenueCatConfigurePromise = (async () => {
                 await Purchases.setLogLevel?.({ level: 'INFO' }).catch(() => {});
-                await Purchases.configure({
-                    apiKey,
-                    appUserID: currentUser?.account_code || String(currentUser?.id || '')
-                });
+                const appUserID = currentUser?.account_code || (currentUser?.id ? String(currentUser.id) : '');
+                const config = appUserID ? { apiKey, appUserID } : { apiKey };
+                await Purchases.configure(config);
                 revenueCatConfigured = true;
                 return Purchases;
             })();
@@ -5304,7 +5304,7 @@
         }
 
         function packageLabel(pkg, fallback) {
-            const product = pkg?.product || pkg?.storeProduct || {};
+            const product = pkg?.product || pkg?.storeProduct || pkg || {};
             const price = product.priceString || product.localizedPriceString || fallback;
             return price || fallback;
         }
@@ -5320,16 +5320,62 @@
             return revenueCatPackages;
         }
 
+        function productIdForSubscriptionPeriod(period) {
+            return period === 'yearly' ? PRO_YEARLY_PRODUCT_ID : PRO_MONTHLY_PRODUCT_ID;
+        }
+
+        async function loadRevenueCatStoreProducts(status) {
+            const Purchases = await configureRevenueCat(status);
+            const ids = [PRO_MONTHLY_PRODUCT_ID, PRO_YEARLY_PRODUCT_ID];
+            const response = await Purchases.getProducts({ productIdentifiers: ids });
+            const products = response?.products || [];
+            revenueCatStoreProducts = {
+                monthly: products.find(product => product?.identifier === PRO_MONTHLY_PRODUCT_ID) || null,
+                yearly: products.find(product => product?.identifier === PRO_YEARLY_PRODUCT_ID) || null
+            };
+            return revenueCatStoreProducts;
+        }
+
+        async function loadRevenueCatPurchasables(status) {
+            let packages = {};
+            let products = {};
+            try {
+                packages = await loadRevenueCatPackages(status);
+            } catch (e) {
+                console.log('RevenueCat offerings unavailable, using StoreKit products:', e.message);
+            }
+            try {
+                products = await loadRevenueCatStoreProducts(status);
+            } catch (e) {
+                console.log('RevenueCat StoreKit products unavailable:', e.message);
+            }
+            return { packages, products };
+        }
+
         async function purchasePro(period) {
             try {
                 const status = subscriptionStatus || (await api('/api/subscription/status')).data;
                 subscriptionStatus = status;
-                const packages = Object.keys(revenueCatPackages).length ? revenueCatPackages : await loadRevenueCatPackages(status);
-                const selected = period === 'yearly' ? packages.yearly : packages.monthly;
-                if (!selected) throw new Error('RevenueCat 尚未回傳此訂閱方案');
-
+                const Purchases = await configureRevenueCat(status);
+                if (Purchases.canMakePayments) {
+                    const paymentStatus = await Purchases.canMakePayments().catch(() => ({ canMakePayments: true }));
+                    if (paymentStatus && paymentStatus.canMakePayments === false) {
+                        throw new Error('此 Apple ID 目前無法進行 App 內購買，請確認螢幕使用時間或付款設定。');
+                    }
+                }
+                if (!Object.keys(revenueCatPackages).length && !Object.keys(revenueCatStoreProducts).length) {
+                    await loadRevenueCatPurchasables(status);
+                }
+                const selected = period === 'yearly' ? revenueCatPackages.yearly : revenueCatPackages.monthly;
                 showToast('開啟商店付款中...');
-                const result = await getPurchasesPlugin().purchasePackage({ aPackage: selected });
+                let result = null;
+                if (selected) {
+                    result = await Purchases.purchasePackage({ aPackage: selected });
+                } else {
+                    const storeProduct = period === 'yearly' ? revenueCatStoreProducts.yearly : revenueCatStoreProducts.monthly;
+                    if (!storeProduct) throw new Error(`App Store 尚未回傳訂閱商品 ${productIdForSubscriptionPeriod(period)}`);
+                    result = await Purchases.purchaseStoreProduct({ product: storeProduct });
+                }
                 await syncRevenueCatCustomerInfo(result?.customerInfo);
                 showToast(hasProEntitlement(result?.customerInfo) ? '藥護家 Pro 已啟用' : '購買完成，訂閱狀態同步中');
                 showSubscriptionInfo();
@@ -5360,8 +5406,8 @@
         function showSubscriptionInfo() {
             api('/api/subscription/status').then(({ data }) => {
                 subscriptionStatus = data;
-                const monthlyPrice = packageLabel(revenueCatPackages.monthly, data.products?.monthly?.price || 'NT$75/月');
-                const yearlyPrice = packageLabel(revenueCatPackages.yearly, data.products?.yearly?.price || 'NT$750/年');
+                const monthlyPrice = packageLabel(revenueCatPackages.monthly || revenueCatStoreProducts.monthly, data.products?.monthly?.price || 'NT$75/月');
+                const yearlyPrice = packageLabel(revenueCatPackages.yearly || revenueCatStoreProducts.yearly, data.products?.yearly?.price || 'NT$750/年');
                 const payButtons = data.active
                     ? '<button onclick="restoreProPurchases()" class="btn btn-outline" style="width:100%;margin-top:10px;">恢復購買 / 重新同步</button>'
                     : '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">' +
@@ -5385,8 +5431,8 @@
                     payButtons +
                     '<button onclick="document.getElementById(\'sub-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:12px;">關閉</button></div></div>';
                 document.getElementById('sub-modal')?.addEventListener('click', e => { if (e.target.id === 'sub-modal') e.target.remove(); });
-                if (isNative && data.revenueCat?.configured && !Object.keys(revenueCatPackages).length) {
-                    loadRevenueCatPackages(data).then(() => {
+                if (isNative && data.revenueCat?.configured && !Object.keys(revenueCatPackages).length && !Object.keys(revenueCatStoreProducts).length) {
+                    loadRevenueCatPurchasables(data).then(() => {
                         if (document.getElementById('sub-modal')) showSubscriptionInfo();
                     }).catch(e => console.log('RevenueCat offerings skipped:', e.message));
                 }
