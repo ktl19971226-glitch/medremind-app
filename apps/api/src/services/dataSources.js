@@ -66,6 +66,19 @@ const garbageTruckDefaults = {
 const cityWideGarbageDefaults = new Set(['新竹市']);
 
 let moenvGarbageRoutesCache = null;
+let ncdrFeedCache = null;
+let ncdrFeedLoadedAt = 0;
+
+const ncdrEventNames = {
+  rain: ['降雨'],
+  temperature: ['高溫'],
+  typhoon: ['颱風'],
+  earthquake: ['地震'],
+  'water-outage': ['停水'],
+  evacuation: ['疏散', '避難', '土石流', '水庫放流'],
+  accident: ['災害', '水庫放流', '道路封閉'],
+  'local-bulletin': ['停水', '水庫放流', '降雨', '高溫', '地震', '颱風']
+};
 
 const taoyuanDistrictIds = {
   蘆竹區: 'lagi2-001',
@@ -282,6 +295,88 @@ async function fetchData(url, { timeoutMs = 4500, headers = {} } = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function xmlValue(xml, tag) {
+  return xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1]
+    ?.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    ?.replace(/<[^>]+>/g, '')
+    ?.trim() || '';
+}
+
+function xmlValues(xml, tag) {
+  return [...xml.matchAll(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'g'))]
+    .map(match => match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim())
+    .filter(Boolean);
+}
+
+async function fetchNcdrFeed() {
+  const now = Date.now();
+  if (ncdrFeedCache && now - ncdrFeedLoadedAt < 180000) return ncdrFeedCache;
+  const data = await fetchJson('https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx', { timeoutMs: 7000 });
+  if (data?.entry) {
+    ncdrFeedCache = Array.isArray(data.entry) ? data.entry : [data.entry];
+    ncdrFeedLoadedAt = now;
+  }
+  return ncdrFeedCache || [];
+}
+
+function ncdrMatchesLocation(areas, location) {
+  if (!areas.length) return true;
+  const city = canonicalCity(location.city);
+  const cityText = displayCity(city);
+  const district = location.district || '';
+  return areas.some(area => {
+    const canonicalArea = canonicalCity(area);
+    return canonicalArea.includes(city) || area.includes(cityText) || (district && area.includes(district));
+  });
+}
+
+function isActiveCap(xml) {
+  const msgType = xmlValue(xml, 'msgType');
+  const expires = xmlValue(xml, 'expires');
+  if (msgType === 'Cancel') return false;
+  if (expires && new Date(expires).getTime() < Date.now()) return false;
+  return true;
+}
+
+async function ncdrCapAlert(moduleId, location) {
+  const names = ncdrEventNames[moduleId] || [];
+  if (names.length === 0) return { status: 'not-configured', source: '資料源未設定' };
+  const feed = await fetchNcdrFeed();
+  const candidates = feed
+    .filter(entry => names.some(name => `${entry.title || ''}${entry.id || ''}`.includes(name)))
+    .slice(0, 40);
+
+  for (const entry of candidates) {
+    const href = entry.link?.['@href'] || entry.link?.href || entry.link;
+    if (!href) continue;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(href, { signal: controller.signal });
+      if (!response.ok) continue;
+      const xml = await response.text();
+      if (!isActiveCap(xml)) continue;
+      const areas = xmlValues(xml, 'areaDesc');
+      if (!ncdrMatchesLocation(areas, location)) continue;
+      const headline = xmlValue(xml, 'headline') || entry.title || '民生示警';
+      const description = xmlValue(xml, 'description');
+      const sender = xmlValue(xml, 'senderName') || entry.author?.name || 'NCDR';
+      return {
+        status: 'live',
+        source: `NCDR 民生示警/${sender}`,
+        body: `${headline}${description ? `：${description}` : ''}`,
+        shouldNotify: ['rain', 'typhoon', 'earthquake', 'evacuation'].includes(moduleId)
+      };
+    } catch {
+      // Keep scanning other CAP entries.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return { status: 'no-event', source: 'NCDR 民生示警', body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${moduleId} 民生示警。` };
 }
 
 function cookieHeaderFrom(response) {
@@ -545,12 +640,25 @@ async function genericConfiguredSource(rule, location) {
 }
 
 export async function resolveLiveAlert(rule, location) {
-  if (rule.moduleId === 'rain' || rule.moduleId === 'temperature') return cwaForecast(rule, location);
-  if (rule.moduleId === 'earthquake') return cwaEarthquake(location);
-  if (rule.moduleId === 'typhoon') return cwaTyphoon(location);
+  if (rule.moduleId === 'rain' || rule.moduleId === 'temperature') {
+    const result = await cwaForecast(rule, location);
+    return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
+  }
+  if (rule.moduleId === 'earthquake') {
+    const result = await cwaEarthquake(location);
+    return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
+  }
+  if (rule.moduleId === 'typhoon') {
+    const result = await cwaTyphoon(location);
+    return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
+  }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
+  if (['evacuation', 'local-bulletin', 'accident'].includes(rule.moduleId)) {
+    const result = await ncdrCapAlert(rule.moduleId, location);
+    if (result.status !== 'not-configured') return result;
+  }
   return genericConfiguredSource(rule, location);
 }
 
@@ -576,6 +684,11 @@ export function getSourceCoverage() {
       'hinet-garbage-realtime': {
         coverage: Object.keys(hinetRegionIds),
         source: 'https://www.bstruck.hinet.net/Page/CarSearch.aspx'
+      },
+      'ncdr-cap-alerts': {
+        coverage: '全台灣民生示警 CAP',
+        modules: ['rain', 'temperature', 'earthquake', 'typhoon', 'evacuation', 'local-bulletin', 'accident'],
+        source: 'https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx'
       }
     },
     keyRequired: {
