@@ -1538,19 +1538,58 @@ async function init() {
         const fm = dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [req.user.id, req.params.fid]);
         if (!fm) return res.status(403).json({ error:'無權限查看' });
         const today = new Date().toISOString().split('T')[0];
-        const meds = dbAll('SELECT * FROM medications WHERE user_id=?', [req.params.fid]);
+        const meds = dbAll(`
+            SELECT id, drug_name, dosage, usage_notes, remind_time, duration_days, end_date,
+                   total_quantity, remaining, daily_amount, refill_threshold, is_active, created_at
+            FROM medications
+            WHERE user_id=? AND COALESCE(is_active,1)=1
+            ORDER BY created_at DESC
+        `, [req.params.fid]);
         let total=0, taken=0;
-        meds.forEach(m => {
+        const medications = meds.map(m => {
             let times = [];
             try { times = JSON.parse(m.remind_time); if (!Array.isArray(times)) times = []; } catch(e) { times = []; }
+            let todayTotal = 0;
+            let todayTaken = 0;
             times.forEach(t => {
                 total++;
+                todayTotal++;
                 const l = dbGet('SELECT taken_status FROM medication_logs WHERE medication_id=? AND remind_time=? AND log_date=?', [m.id, t, today]);
-                if (l&&l.taken_status) taken++;
+                if (l&&l.taken_status) {
+                    taken++;
+                    todayTaken++;
+                }
             });
+            const remaining = m.remaining === null || m.remaining === undefined ? null : Number(m.remaining);
+            const dailyAmount = Number(m.daily_amount || 1) || 1;
+            const daysLeft = remaining === null ? null : Math.floor(remaining / dailyAmount);
+            return {
+                id: m.id,
+                drug_name: m.drug_name,
+                dosage: m.dosage,
+                usage_notes: m.usage_notes,
+                remind_time: times,
+                duration_days: m.duration_days,
+                end_date: m.end_date,
+                total_quantity: m.total_quantity,
+                remaining: m.remaining,
+                daily_amount: m.daily_amount,
+                refill_threshold: m.refill_threshold,
+                days_left: daysLeft,
+                today_total: todayTotal,
+                today_taken: todayTaken,
+                today_done: todayTotal > 0 && todayTaken >= todayTotal
+            };
         });
         const famMem = dbGet('SELECT id,name FROM users WHERE id=?', [req.params.fid]);
-        res.json({ family_member:famMem, today, adherence_rate:total>0?Math.round(taken/total*100):100, total_reminders:total, taken_count:taken });
+        res.json({
+            family_member:famMem,
+            today,
+            adherence_rate:total>0?Math.round(taken/total*100):100,
+            total_reminders:total,
+            taken_count:taken,
+            medications
+        });
     });
     
     // ====== 通知 API ======

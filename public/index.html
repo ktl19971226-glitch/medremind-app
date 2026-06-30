@@ -880,15 +880,18 @@
 
         /* 家庭成員卡片 */
         .family-card {
-            display: flex;
-            align-items: center;
-            gap: 16px;
             padding: 16px;
             background: var(--card-bg);
             border-radius: var(--radius);
             margin-bottom: 12px;
             box-shadow: var(--shadow);
             cursor: pointer;
+        }
+
+        .family-card-main {
+            display: flex;
+            align-items: center;
+            gap: 16px;
         }
 
         .family-card .avatar {
@@ -946,6 +949,53 @@
         .family-card .adherence.good { color: var(--green); }
         .family-card .adherence.warning { color: var(--orange); }
         .family-card .adherence.bad { color: var(--red); }
+
+        .family-med-list {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            display: grid;
+            gap: 8px;
+        }
+
+        .family-med-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            font-size: 14px;
+        }
+
+        .family-med-name {
+            font-weight: 700;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+
+        .family-med-meta {
+            margin-top: 3px;
+            color: var(--text-light);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .family-med-status {
+            align-self: start;
+            white-space: nowrap;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 4px 8px;
+            background: #fff3cd;
+            color: #8a5d00;
+        }
+
+        .family-med-status.done {
+            background: #e8f5e9;
+            color: var(--green);
+        }
 
         /* 健康數據樣式 */
         .health-grid {
@@ -3734,17 +3784,47 @@
                 const relation = escapeHTML(m.relationship || '家人');
                 const ageText = m.age ? escapeHTML(String(m.age)) + '歲' : '年齡未填';
                 const relatedUserId = Number(m.related_user_id) || 0;
+                const medications = Array.isArray(medData.medications) ? medData.medications : [];
+                const medicationList = medications.length ? medications.slice(0, 5).map(med => {
+                    const remindTimes = parseMedicationReminderTimes(med);
+                    const timeText = remindTimes.length ? remindTimes.join('、') : '未設定提醒';
+                    const statusText = med.today_total > 0
+                        ? `${Number(med.today_taken || 0)}/${Number(med.today_total || 0)}`
+                        : '無提醒';
+                    const doneClass = med.today_done ? ' done' : '';
+                    const stockText = med.remaining !== null && med.remaining !== undefined
+                        ? ` · 剩 ${escapeHTML(med.remaining)}${med.days_left !== null && med.days_left !== undefined ? `（約 ${escapeHTML(med.days_left)} 天）` : ''}`
+                        : '';
+                    return `
+                        <div class="family-med-item">
+                            <div>
+                                <div class="family-med-name">💊 ${escapeHTML(med.drug_name || '未命名用藥')}</div>
+                                <div class="family-med-meta">${escapeHTML(med.dosage || '未填劑量')} · ${escapeHTML(timeText)}${stockText}</div>
+                                ${med.usage_notes ? `<div class="family-med-meta">📝 ${escapeHTML(med.usage_notes)}</div>` : ''}
+                            </div>
+                            <div class="family-med-status${doneClass}">${escapeHTML(statusText)}</div>
+                        </div>`;
+                }).join('') : '<div class="family-med-meta">尚無用藥資料</div>';
+                const moreMedicationText = medications.length > 5
+                    ? `<div class="family-med-meta">另有 ${medications.length - 5} 筆用藥未顯示</div>`
+                    : '';
 
                 return `
                     <div class="family-card">
-                        <div class="avatar">${avatar}</div>
-                        <div class="member-info">
-                            <div class="member-name">${displayName}</div>
-                            <div class="member-relation">${relation} · ${ageText}</div>
+                        <div class="family-card-main">
+                            <div class="avatar">${avatar}</div>
+                            <div class="member-info">
+                                <div class="member-name">${displayName}</div>
+                                <div class="member-relation">${relation} · ${ageText}</div>
+                            </div>
+                            <div class="member-actions">
+                                <div class="adherence ${rateClass}">${rate}%</div>
+                                <button class="family-delete-btn" onclick="event.stopPropagation(); removeFamilyMember(${relatedUserId})">移除</button>
+                            </div>
                         </div>
-                        <div class="member-actions">
-                            <div class="adherence ${rateClass}">${rate}%</div>
-                            <button class="family-delete-btn" onclick="event.stopPropagation(); removeFamilyMember(${relatedUserId})">移除</button>
+                        <div class="family-med-list">
+                            ${medicationList}
+                            ${moreMedicationText}
                         </div>
                     </div>`;
             }));
