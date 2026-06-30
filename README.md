@@ -61,6 +61,8 @@ API 預設 port：`8061`。
 - NCDR 民生示警 CAP JSON：`rain`、`temperature`、`earthquake`、`typhoon`、`transit`、`evacuation`、`local-bulletin`、`accident`（全台灣；CWA key 未設定時作為官方示警來源，並接臺鐵營運異常/停駛警戒）
 - 環境部空氣品質指標 AQI JSON：`air-quality`（全台灣；正式 key 優先，未設定時走政府資料開放平臺公開 JSON 檢視來源）
 - 高速公路局 TISVCloud LiveEvents XML：`commute`、`road-incident`、`roadwork`（全台灣國道即時事件；有定位時優先回附近事件）
+- 基隆市停車場剩餘車位 HTML：`parking`（基隆市）
+- 新竹市剩餘停車位資訊 JSON：`parking`（新竹市）
 - 臺北市停車管理工程處停車場剩餘車位 JSON：`parking`（臺北市）
 - 新北市公有路外停車場即時賸餘車位數 JSON：`parking`（新北市）
 - 桃園市路外停車資訊 JSON：`parking`（桃園市）

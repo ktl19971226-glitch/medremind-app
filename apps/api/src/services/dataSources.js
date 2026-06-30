@@ -58,6 +58,12 @@ const publicDefaults = {
 };
 
 const parkingDefaults = {
+  基隆市: {
+    availability: 'https://e-traffic.klcg.gov.tw/KeelungTraffic/pages/park.jsp/'
+  },
+  新竹市: {
+    availability: 'https://opendata.hccg.gov.tw/OpenDataFileHit.ashx?ID=8C730C34537B3B30&u=77DFE16E459DFCE34D11875AA33778DC718F99245062BA928D228BF51D8CC6D584EFAF5624D84DF6907C00E07EEC7BD43F5EF012E8D2D67A89054F094451DB04'
+  },
   臺北市: {
     availability: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.json',
     details: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_alldesc.json'
@@ -733,6 +739,50 @@ async function newTaipeiParking(location) {
   };
 }
 
+async function keelungParking(location) {
+  const html = await fetchText(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<tr>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<\/tr>/g)]
+    .map(match => ({
+      city: '基隆市',
+      name: cleanHtmlText(match[1]),
+      availablecar: cleanHtmlText(match[2]),
+      updatedAt: cleanHtmlText(match[3])
+    }))
+    .filter(record => record.name && record.name !== '停車場名稱');
+  if (!rows.length) return { status: 'no-event', source: '基隆停車場剩餘車位', body: '基隆市停車場資料源暫時無法連線。' };
+  const picked = pickParkingRecords(rows, location);
+  if (!picked.length) return { status: 'no-event', source: '基隆停車場剩餘車位', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '基隆停車場剩餘車位',
+    body: picked.map(record => `${record.name}：${parkingAvailabilityText(record.availablecar)}${record.updatedAt ? `，更新 ${record.updatedAt}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
+async function hsinchuCityParking(location) {
+  const data = await fetchJson(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
+  if (!Array.isArray(data) || !data.length) return { status: 'no-event', source: '新竹市剩餘停車位資訊', body: '新竹市停車場資料源暫時無法連線。' };
+  const records = data.map(record => ({
+    ...record,
+    area: record.ADDRESS,
+    name: record.PARKINGNAME,
+    address: record.ADDRESS,
+    availablecar: record.FREEQUANTITY,
+    totalcar: record.TOTALQUANTITY,
+    lat: record.LATITUDE,
+    lng: record.LONGITUDE
+  }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source: '新竹市剩餘停車位資訊', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '新竹市剩餘停車位資訊',
+    body: picked.map(record => `${record.PARKINGNAME || record.PARKNO}：${parkingAvailabilityText(record.FREEQUANTITY)}，總汽車位 ${record.TOTALQUANTITY ?? '未提供'} 格${record.UPDATETIME ? `，更新 ${record.UPDATETIME}` : ''}${record.ADDRESS ? `，${record.ADDRESS}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function taoyuanParking(location) {
   const url = parkingDefaults[location.city]?.availability;
   const data = await fetchData(url, { timeoutMs: 7000 });
@@ -883,6 +933,8 @@ async function yilanParking(location) {
 
 async function parkingInfo(location) {
   const city = canonicalCity(location.city);
+  if (city === '基隆市') return keelungParking({ ...location, city });
+  if (city === '新竹市') return hsinchuCityParking({ ...location, city });
   if (city === '臺北市') return taipeiParking({ ...location, city });
   if (city === '新北市') return newTaipeiParking({ ...location, city });
   if (city === '桃園市') return taoyuanParking({ ...location, city });
