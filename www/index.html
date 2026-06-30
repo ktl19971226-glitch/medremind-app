@@ -631,7 +631,13 @@
       const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
       const statusLabel = (status) => ({ CONFIRMED: "已確認", CANCELLED: "已取消", COMPLETED: "已完成", NO_SHOW: "爽約" }[status] || status);
       const pillClass = (status) => String(status || "").toLowerCase();
-      const attr = (value) => String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+      const html = (value) => String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      const attr = (value) => html(value)
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
       const isSameDay = (left, right) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
       const digits = (value) => String(value || "").replace(/[^\d+]/g, "");
       const textMatch = (value, query) => String(value || "").toLowerCase().includes(query);
@@ -654,8 +660,10 @@
       const isUnpaid = (item) => {
         const finalAmount = Number(item.finalAmount || 0);
         const paidAmount = Number(item.paidAmount || 0);
-        return !["PAID", "WAIVED"].includes(item.paymentStatus) && finalAmount > paidAmount;
+        return !["CANCELLED", "NO_SHOW"].includes(item.status) && !["PAID", "WAIVED"].includes(item.paymentStatus) && finalAmount > paidAmount;
       };
+      const shouldCountRevenue = (item) => !["CANCELLED", "NO_SHOW"].includes(item.status);
+      const isOpenBooking = (item) => !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status);
 
       function setTab(tab, options = {}) {
         state.tab = tab;
@@ -712,7 +720,7 @@
             if (state.bookingFilter === "upcoming" && startsAt < now) return false;
             if (state.bookingFilter === "active" && ["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status)) return false;
             if (state.bookingFilter === "unpaid" && !isUnpaid(item)) return false;
-            if (state.bookingFilter === "unassigned" && item.staff?.id) return false;
+            if (state.bookingFilter === "unassigned" && (item.staff?.id || !isOpenBooking(item))) return false;
             if (!query) return true;
             return [
               item.customerName,
@@ -987,7 +995,7 @@
                   <label>密碼</label>
                   <input name="password" type="password" autocomplete="current-password" required />
                 </div>
-                ${state.error ? `<p class="error">${state.error}</p>` : ""}
+                ${state.error ? `<p class="error">${html(state.error)}</p>` : ""}
                 <button class="primary" type="submit">${state.loading ? "登入中" : "登入"}</button>
               </form>
             </section>
@@ -1002,18 +1010,25 @@
         const todayBookings = data.bookings.filter((item) => isSameDay(new Date(item.startsAt), now));
         const upcoming = [...data.bookings].filter((item) => new Date(item.startsAt) >= now).sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt)).slice(0, 5);
         const todayRevenue = todayBookings.reduce((sum, item) => sum + Number(item.finalAmount || 0), 0);
-        const monthBookings = data.bookings.filter((item) => monthKey(new Date(item.startsAt)) === currentMonth);
+        const monthBookings = data.bookings.filter((item) => monthKey(new Date(item.startsAt)) === currentMonth && shouldCountRevenue(item));
         const monthRevenue = monthBookings.reduce((sum, item) => sum + Number(item.finalAmount || 0), 0);
         const unpaidBookings = data.bookings.filter(isUnpaid);
         const unpaidAmount = unpaidBookings.reduce((sum, item) => sum + Math.max(Number(item.finalAmount || 0) - Number(item.paidAmount || 0), 0), 0);
-        const unassignedBookings = data.bookings.filter((item) => !item.staff?.id && !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status));
-        const todayTodo = todayBookings.filter((item) => !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status));
+        const unassignedBookings = data.bookings.filter((item) => !item.staff?.id && isOpenBooking(item));
+        const todayTodo = todayBookings.filter(isOpenBooking);
+        const operations = data.operations || {};
+        const dashboard = operations.dashboard || {};
+        const displayedMonthRevenue = dashboard.monthRevenue ?? monthRevenue;
+        const displayedUnpaidAmount = dashboard.unpaidAmount ?? unpaidAmount;
+        const displayedUnpaidCount = dashboard.unpaidCount ?? unpaidBookings.length;
+        const displayedUnassignedCount = dashboard.unassignedCount ?? unassignedBookings.length;
+        const displayedTodayTodoCount = dashboard.todayTodoCount ?? todayTodo.length;
         return `
           <section class="grid">
-            <div class="stat"><b>${money(monthRevenue)}</b><span>本月營收</span></div>
-            <div class="stat"><b>${money(unpaidAmount)}</b><span>待收款</span></div>
-            <div class="stat"><b>${unassignedBookings.length}</b><span>待補排班</span></div>
-            <div class="stat"><b>${todayTodo.length}</b><span>今日待辦</span></div>
+            <div class="stat"><b>${money(displayedMonthRevenue)}</b><span>本月營收</span></div>
+            <div class="stat"><b>${money(displayedUnpaidAmount)}</b><span>待收款</span></div>
+            <div class="stat"><b>${displayedUnassignedCount}</b><span>待補排班</span></div>
+            <div class="stat"><b>${displayedTodayTodoCount}</b><span>今日待辦</span></div>
           </section>
           <section class="section">
             <div class="section-head">
@@ -1036,9 +1051,9 @@
               </div>
             </div>
             <div class="list">
-              ${todayTodo.length ? `<article class="card"><div class="row"><div class="title">今日還有 ${todayTodo.length} 筆待處理<small>${todayTodo.slice(0, 3).map((item) => item.customerName).join("、")}</small></div><span class="pill confirmed">今天</span></div></article>` : `<article class="card"><div class="title">今日預約已處理完<small>目前沒有未完成的今日預約</small></div></article>`}
-              ${unpaidBookings.length ? `<article class="card"><div class="row"><div class="title">待收款 ${unpaidBookings.length} 筆<small>尚待收 ${money(unpaidAmount)}</small></div><span class="pill no_show">收款</span></div></article>` : `<article class="card"><div class="title">沒有待收款<small>目前付款狀態看起來乾淨</small></div></article>`}
-              ${unassignedBookings.length ? `<article class="card"><div class="row"><div class="title">未指派員工 ${unassignedBookings.length} 筆<small>${unassignedBookings.slice(0, 3).map((item) => item.customerName).join("、")}</small></div><span class="pill cancelled">排班</span></div></article>` : `<article class="card"><div class="title">排班已補齊<small>目前沒有未指派的有效預約</small></div></article>`}
+              ${displayedTodayTodoCount ? `<article class="card"><div class="row"><div class="title">今日還有 ${displayedTodayTodoCount} 筆待處理<small>${html(todayTodo.slice(0, 3).map((item) => item.customerName).join("、"))}</small></div><span class="pill confirmed">今天</span></div></article>` : `<article class="card"><div class="title">今日預約已處理完<small>目前沒有未完成的今日預約</small></div></article>`}
+              ${displayedUnpaidCount ? `<article class="card"><div class="row"><div class="title">待收款 ${displayedUnpaidCount} 筆<small>尚待收 ${money(displayedUnpaidAmount)}</small></div><span class="pill no_show">收款</span></div></article>` : `<article class="card"><div class="title">沒有待收款<small>目前付款狀態看起來乾淨</small></div></article>`}
+              ${displayedUnassignedCount ? `<article class="card"><div class="row"><div class="title">未指派員工 ${displayedUnassignedCount} 筆<small>${html(unassignedBookings.slice(0, 3).map((item) => item.customerName).join("、"))}</small></div><span class="pill cancelled">排班</span></div></article>` : `<article class="card"><div class="title">排班已補齊<small>目前沒有未指派的有效預約</small></div></article>`}
             </div>
           </section>
           <section class="section">
@@ -1059,13 +1074,13 @@
           <article class="card">
             <div class="row">
               <div class="title">
-                ${item.customerName}
-                <small>${fmtDate(item.startsAt)} · ${item.service?.name || ""} · ${item.staff?.name || "未指派"} · ${item.studio?.name || ""}</small>
+                ${html(item.customerName)}
+                <small>${fmtDate(item.startsAt)} · ${html(item.service?.name || "")} · ${html(item.staff?.name || "未指派")} · ${html(item.studio?.name || "")}</small>
               </div>
               <span class="pill ${pillClass(item.status)}">${statusLabel(item.status)}</span>
             </div>
-            <p class="meta">${item.phone || ""}${item.finalAmount ? ` · ${money(item.finalAmount)}` : ""}${item.note ? ` · ${item.note}` : ""}</p>
-            ${phone ? `<a class="link-action" href="tel:${phone}">撥打 ${item.customerName}</a>` : ""}
+            <p class="meta">${html(item.phone || "")}${item.finalAmount ? ` · ${money(item.finalAmount)}` : ""}${item.note ? ` · ${html(item.note)}` : ""}</p>
+            ${phone ? `<a class="link-action" href="tel:${attr(phone)}">撥打 ${html(item.customerName)}</a>` : ""}
             <div class="actions">
               <button class="secondary" onclick="editBooking('${item.id}')">編輯</button>
               <button class="secondary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>
@@ -1079,14 +1094,14 @@
       function serviceOptions(selectedId) {
         return state.data.services
           .filter((service) => service.active)
-          .map((service) => `<option value="${service.id}" ${service.id === selectedId ? "selected" : ""}>${service.name} · ${money(service.price)}</option>`)
+          .map((service) => `<option value="${attr(service.id)}" ${service.id === selectedId ? "selected" : ""}>${html(service.name)} · ${money(service.price)}</option>`)
           .join("");
       }
 
       function staffOptions(selectedId) {
         return `<option value="">未指派</option>${(state.data.staff || [])
           .filter((staff) => staff.active)
-          .map((staff) => `<option value="${staff.id}" ${staff.id === selectedId ? "selected" : ""}>${staff.name}${staff.role ? ` · ${staff.role}` : ""}</option>`)
+          .map((staff) => `<option value="${attr(staff.id)}" ${staff.id === selectedId ? "selected" : ""}>${html(staff.name)}${staff.role ? ` · ${html(staff.role)}` : ""}</option>`)
           .join("")}`;
       }
 
@@ -1105,8 +1120,8 @@
               <h2 class="section-title">${isEdit ? "編輯預約" : "新增預約"}</h2>
               <button class="secondary" type="button" onclick="closeBookingForm()">收起</button>
             </div>
-            <input type="hidden" name="id" value="${item?.id || ""}" />
-            <input type="hidden" name="studioId" value="${firstStudio.id}" />
+            <input type="hidden" name="id" value="${attr(item?.id || "")}" />
+            <input type="hidden" name="studioId" value="${attr(firstStudio.id)}" />
             <div class="field">
               <label>服務</label>
               <select name="serviceId">${serviceOptions(item?.service?.id || firstService.id)}</select>
@@ -1137,7 +1152,7 @@
             </div>
             <div class="field">
               <label>金額</label>
-              <input name="finalAmount" type="number" min="0" value="${item?.finalAmount ?? firstService.price}" />
+              <input name="finalAmount" type="number" min="0" value="${attr(item?.finalAmount ?? firstService.price)}" />
             </div>
             <div class="field">
               <label>備註</label>
@@ -1183,13 +1198,19 @@
         const currentMonth = monthKey(new Date());
         const serviceStats = new Map();
 
-        for (const booking of state.data.bookings.filter((item) => monthKey(new Date(item.startsAt)) === currentMonth)) {
+        for (const stat of state.data.operations?.serviceStats || []) {
+          serviceStats.set(stat.serviceId, { count: stat.count, revenue: stat.revenue });
+        }
+
+        if (!serviceStats.size) {
+          for (const booking of state.data.bookings.filter((item) => monthKey(new Date(item.startsAt)) === currentMonth && shouldCountRevenue(item))) {
           const id = booking.service?.id;
           if (!id) continue;
           const stat = serviceStats.get(id) || { count: 0, revenue: 0 };
           stat.count += 1;
           stat.revenue += Number(booking.finalAmount || 0);
           serviceStats.set(id, stat);
+          }
         }
 
         return `
@@ -1203,12 +1224,12 @@
                 <article class="card">
                   <div class="row">
                     <div class="title">
-                      ${service.name}
-                      <small>${service.category} · ${service.durationMin} 分鐘</small>
+                      ${html(service.name)}
+                      <small>${html(service.category)} · ${service.durationMin} 分鐘</small>
                     </div>
                     <span class="pill">${service.active ? "上架" : "停用"}</span>
                   </div>
-                  <p class="meta">${money(service.price)} · 本月 ${serviceStats.get(service.id)?.count || 0} 筆 · ${money(serviceStats.get(service.id)?.revenue || 0)}${service.description ? ` · ${service.description}` : ""}</p>
+                  <p class="meta">${money(service.price)} · 本月 ${serviceStats.get(service.id)?.count || 0} 筆 · ${money(serviceStats.get(service.id)?.revenue || 0)}${service.description ? ` · ${html(service.description)}` : ""}</p>
                 </article>
               `).join("") || `<div class="empty">沒有服務</div>`}
             </div>
@@ -1233,13 +1254,13 @@
                 <article class="card">
                   <div class="row">
                     <div class="title">
-                      ${customer.name}
-                      <small>${customer.phone}${customer.memberLevel ? ` · ${customer.memberLevel}` : ""}</small>
+                      ${html(customer.name)}
+                      <small>${html(customer.phone)}${customer.memberLevel ? ` · ${html(customer.memberLevel)}` : ""}</small>
                     </div>
                     <span class="pill">${customer.totalBookings} 次</span>
                   </div>
-                  <p class="meta">${customer.tags || "未標籤"}${customer.isVip ? " · VIP" : ""}${customer.isBlocked ? " · 封鎖" : ""}</p>
-                  ${digits(customer.phone) ? `<a class="link-action" href="tel:${digits(customer.phone)}">撥打 ${customer.name}</a>` : ""}
+                  <p class="meta">${html(customer.tags || "未標籤")}${customer.isVip ? " · VIP" : ""}${customer.isBlocked ? " · 封鎖" : ""}</p>
+                  ${digits(customer.phone) ? `<a class="link-action" href="tel:${attr(digits(customer.phone))}">撥打 ${html(customer.name)}</a>` : ""}
                 </article>
               `).join("") || `<div class="empty">沒有客戶</div>`}
             </div>
@@ -1250,7 +1271,7 @@
       function payrollView() {
         const now = new Date();
         const currentMonth = monthKey(now);
-        const monthBookings = state.data.bookings.filter((booking) => monthKey(new Date(booking.startsAt)) === currentMonth);
+        const monthBookings = state.data.bookings.filter((booking) => monthKey(new Date(booking.startsAt)) === currentMonth && shouldCountRevenue(booking));
         const rows = new Map();
 
         for (const staff of state.data.staff || []) {
@@ -1281,13 +1302,24 @@
           row.revenue += Number(booking.finalAmount || 0);
         }
 
-        const data = [...rows.values()].filter((row) => row.bookings > 0 || row.id !== "unassigned");
-        const totalRevenue = data.reduce((sum, row) => sum + row.revenue, 0);
+        const backendPayroll = state.data.operations?.payroll;
+        const data = backendPayroll?.rows?.length
+          ? backendPayroll.rows.map((row) => ({
+            id: row.staffId || "unassigned",
+            name: row.name,
+            role: row.role || "",
+            bookings: row.bookings,
+            completed: row.completed,
+            revenue: row.revenue
+          }))
+          : [...rows.values()].filter((row) => row.bookings > 0 || row.id !== "unassigned");
+        const totalRevenue = backendPayroll?.totalRevenue ?? data.reduce((sum, row) => sum + row.revenue, 0);
+        const totalBookings = backendPayroll?.totalBookings ?? monthBookings.length;
         const estimatedPay = Math.round(totalRevenue * state.payrollRate / 100);
 
         return `
           <section class="grid">
-            <div class="stat"><b>${monthBookings.length}</b><span>本月預約</span></div>
+            <div class="stat"><b>${totalBookings}</b><span>本月預約</span></div>
             <div class="stat"><b>${money(totalRevenue)}</b><span>本月營收</span></div>
             <div class="stat"><b>${state.payrollRate}%</b><span>抽成估算</span></div>
             <div class="stat"><b>${money(estimatedPay)}</b><span>預估薪資</span></div>
@@ -1307,7 +1339,7 @@
               ${data.map((row) => `
                 <article class="card">
                   <div class="row">
-                    <div class="title">${row.name}<small>${row.role || "員工"} · ${row.bookings} 筆 · 完成 ${row.completed} 筆</small></div>
+                    <div class="title">${html(row.name)}<small>${html(row.role || "員工")} · ${row.bookings} 筆 · 完成 ${row.completed} 筆</small></div>
                     <span class="pill">${money(Math.round(row.revenue * state.payrollRate / 100))}</span>
                   </div>
                   <p class="meta">營收 ${money(row.revenue)}${row.id === "unassigned" ? " · 請回預約頁補負責員工" : ""}</p>
@@ -1327,13 +1359,13 @@
             <div class="section-head">
               <div>
                 <h2 class="section-title">LINE 權限</h2>
-                <p class="section-note">${studio.name}</p>
+                <p class="section-note">${html(studio.name)}</p>
               </div>
-              <button class="secondary" onclick="checkLine('${studio.id}')">檢查</button>
+              <button class="secondary" onclick="checkLine('${attr(studio.id)}')">檢查</button>
             </div>
-            ${state.lineStatus ? `<div class="card"><b>${state.lineStatus.displayName || "LINE 狀態"}</b><p class="meta">${state.lineStatus.webhookUrl || ""}</p></div>` : ""}
+            ${state.lineStatus ? `<div class="card"><b>${html(state.lineStatus.displayName || "LINE 狀態")}</b><p class="meta">${html(state.lineStatus.webhookUrl || "")}</p></div>` : ""}
             <form class="card" onsubmit="saveLine(event)">
-              <input type="hidden" name="studioId" value="${studio.id}" />
+              <input type="hidden" name="studioId" value="${attr(studio.id)}" />
               <div class="field">
                 <label>Channel access token</label>
                 <textarea name="token" placeholder="${studio.hasLineChannelAccessToken ? "已儲存，留空不變" : ""}"></textarea>
@@ -1344,7 +1376,7 @@
               </div>
               <div class="field">
                 <label>Webhook URL</label>
-                <input name="webhookUrl" value="${studio.lineWebhookUrl || `https://xiaoyue.yaojidecare.app/api/line/webhook/${studio.slug}`}" />
+                <input name="webhookUrl" value="${attr(studio.lineWebhookUrl || `https://xiaoyue.yaojidecare.app/api/line/webhook/${studio.slug}`)}" />
               </div>
               <div class="field">
                 <label>Admin User ID</label>
@@ -1363,7 +1395,7 @@
       function shell() {
         const data = state.data;
         const content = state.error
-            ? `<div class="error">${state.error}</div>`
+            ? `<div class="error">${html(state.error)}</div>`
             : !data
               ? `<div class="empty">載入中</div>`
               : ({
@@ -1382,7 +1414,7 @@
                 <div class="mark">約</div>
                 <div>
                   <h1>小約</h1>
-                  <p>${data?.owner?.name || "店家工作台"}</p>
+                  <p>${html(data?.owner?.name || "店家工作台")}</p>
                 </div>
               </div>
               <button class="icon-btn" onclick="logout()" aria-label="登出">${icon("M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9")}</button>
