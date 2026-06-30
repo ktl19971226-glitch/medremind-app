@@ -83,6 +83,23 @@ const taoyuanDistrictIds = {
   復興區: 'lagi2-013'
 };
 
+const hinetRegionIds = {
+  南投縣草屯鎮: '15',
+  南投縣集集鎮: '21',
+  彰化縣二水鄉: '27',
+  彰化縣伸港鄉: '29',
+  彰化縣彰化市: '12',
+  彰化縣溪州鄉: '23',
+  彰化縣田中鎮: '25',
+  彰化縣田尾鄉: '31',
+  彰化縣秀水鄉: '16',
+  彰化縣芬園鄉: '20',
+  澎湖縣白沙鄉: '33',
+  澎湖縣馬公市: '28',
+  臺東縣臺東市: '22',
+  台東縣台東市: '22'
+};
+
 function canonicalCity(city = '') {
   return cityAliases[city] || city;
 }
@@ -136,6 +153,71 @@ function moenvRouteFallback(location) {
     body: `${display}${matched.district || district}官方清運路線：${matched.routeName}（${matched.routeId}，${matched.method || '清運方式未標示'}）。`,
     shouldNotify: false
   };
+}
+
+function fieldValue(html, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.match(new RegExp(`name="${escaped}"[^>]*value="([^"]*)"`))?.[1] || '';
+}
+
+function hinetRegionIdFor(location) {
+  const city = canonicalCity(location.city);
+  const district = location.district || '';
+  return hinetRegionIds[`${city}${district}`] || hinetRegionIds[`${displayCity(city)}${district}`] || '';
+}
+
+function hinetCookieHeader(response) {
+  return (response.headers.get('set-cookie') || '')
+    .split(/,(?=[^ ;]+=)/)
+    .map(cookie => cookie.split(';')[0].trim())
+    .filter(Boolean)
+    .join('; ');
+}
+
+async function hinetGarbage(location) {
+  const regionId = hinetRegionIdFor(location);
+  if (!regionId) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const page = await fetch('https://www.bstruck.hinet.net/Page/CarSearch.aspx', { signal: controller.signal });
+    if (!page.ok) return null;
+    const cookie = hinetCookieHeader(page);
+    const html = await page.text();
+    const form = new URLSearchParams({
+      __VIEWSTATE: fieldValue(html, '__VIEWSTATE'),
+      __VIEWSTATEGENERATOR: fieldValue(html, '__VIEWSTATEGENERATOR'),
+      __EVENTVALIDATION: fieldValue(html, '__EVENTVALIDATION'),
+      'ctl00$ContentPlaceHolder1$ddlRegion': regionId,
+      'ctl00$ContentPlaceHolder1$tbRoadName': '',
+      'ctl00$ContentPlaceHolder1$ImageButton1.x': '18',
+      'ctl00$ContentPlaceHolder1$ImageButton1.y': '11'
+    });
+    const response = await fetch('https://www.bstruck.hinet.net/Page/CarSearch.aspx', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Cookie: cookie
+      },
+      body: form
+    });
+    if (!response.ok) return null;
+    const resultHtml = await response.text();
+    if (resultHtml.includes('目前無執勤中的車輛')) return moenvRouteFallback(location);
+
+    return {
+      status: 'live',
+      source: '清運e點通即時查詢',
+      body: `${location.city}${location.district}清運e點通目前有執勤中車輛資料，請留意附近清運車動態。`,
+      shouldNotify: false
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchJson(url, { timeoutMs = 4500, headers = {}, method = 'GET', body } = {}) {
@@ -468,6 +550,7 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'typhoon') return cwaTyphoon(location);
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
+  if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
   return genericConfiguredSource(rule, location);
 }
 
@@ -489,6 +572,10 @@ export function getSourceCoverage() {
       'garbage-route-schedule': {
         coverage: '全台灣 22 縣市清運路線 fallback',
         source: 'https://hwms.moenv.gov.tw/dispPageBox/route/routeCP.aspx?ddsPageID=ROUTE'
+      },
+      'hinet-garbage-realtime': {
+        coverage: Object.keys(hinetRegionIds),
+        source: 'https://www.bstruck.hinet.net/Page/CarSearch.aspx'
       }
     },
     keyRequired: {

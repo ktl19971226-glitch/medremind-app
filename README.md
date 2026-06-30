@@ -56,6 +56,7 @@ API 預設 port：`8061`。
 - 宜蘭縣垃圾清運路線 JSON：`garbage-truck`（宜蘭縣）
 - 高雄市垃圾車及資源回收車動態資訊 JSON：`garbage-truck`（高雄市）
 - 環境部全國垃圾車清運路線查詢網：`garbage-truck` fallback（22 縣市官方清運路線；無即時 GPS 的縣市不推播）
+- 清運e點通 ASP.NET 即時查詢：`garbage-truck`（南投、彰化、臺東、澎湖部分鄉鎮；無執勤車輛時回環境部路線 fallback）
 
 ## iOS 原生 App
 
