@@ -95,7 +95,9 @@ const fireDefaults = {
   臺北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
   台北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
   新北市: 'https://e.ntpc.gov.tw/v3/api/map/dynamic/layer/rescue',
-  桃園市: 'https://www.tyfd.gov.tw/cht/index.php?act=caselist'
+  桃園市: 'https://www.tyfd.gov.tw/cht/index.php?act=caselist',
+  苗栗縣: 'https://119mlfire.mlfd.gov.tw/DTS/caselist/html',
+  彰化縣: 'https://www.chfd.gov.tw/RealInfo/index.aspx?Parser=99,3,29'
 };
 
 const transitDefaults = {
@@ -913,11 +915,57 @@ async function taoyuanFire(location) {
   };
 }
 
+async function miaoliFire(location) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<tr>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<\/tr>/g)]
+    .map(match => ({
+      time: cleanHtmlText(match[2]),
+      type: cleanHtmlText(match[3]),
+      subtype: '',
+      place: cleanHtmlText(match[4]),
+      station: cleanHtmlText(match[5]),
+      status: cleanHtmlText(match[6])
+    }));
+  if (!rows.length) return { status: 'no-event', source: '苗栗縣政府消防局 119 即時案件', body: '苗栗縣目前沒有公開中的消防即時案件。' };
+  const matched = rows.find(record => /火|災害|搶救/.test(`${record.type}${record.subtype}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source: '苗栗縣政府消防局 119 即時案件', body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source: '苗栗縣政府消防局 119 即時案件',
+    body: `${matched.place || location.city}，${matched.type || '消防案件'}，派遣 ${matched.station || '未提供'}，狀態 ${matched.status || '未提供'}，受理 ${matched.time || '時間未提供'}。`,
+    shouldNotify: !/返隊|完成|結案/.test(matched.status || '')
+  };
+}
+
+async function changhuaFire(location) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/data-th="受理時間：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="案類：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="案別：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="發生地點：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="派遣分隊：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="執行狀況：".*?<\/span>(.*?)<\/span>/g)]
+    .map(match => ({
+      time: cleanHtmlText(match[1]),
+      type: cleanHtmlText(match[2]),
+      subtype: cleanHtmlText(match[3]),
+      place: cleanHtmlText(match[4]),
+      station: cleanHtmlText(match[5]),
+      status: cleanHtmlText(match[6])
+    }));
+  if (!rows.length) return { status: 'no-event', source: '彰化縣消防局即時災情', body: '彰化縣目前沒有公開中的消防即時災情。' };
+  const matched = rows.find(record => /火|災害|搶救/.test(`${record.type}${record.subtype}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source: '彰化縣消防局即時災情', body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source: '彰化縣消防局即時災情',
+    body: `彰化縣${matched.place || location.district || ''}，${matched.type || '消防案件'}${matched.subtype ? `/${matched.subtype}` : ''}，派遣 ${matched.station || '未提供'}，狀態 ${matched.status || '未提供'}，受理 ${matched.time || '時間未提供'}。`,
+    shouldNotify: !/到達醫院|送往醫院|返隊|完成|結案/.test(matched.status || '')
+  };
+}
+
 async function fireEmergency(location) {
   const city = canonicalCity(location.city);
   if (city === '臺北市') return taipeiFire({ ...location, city });
   if (city === '新北市') return newTaipeiFire({ ...location, city });
   if (city === '桃園市') return taoyuanFire({ ...location, city });
+  if (city === '苗栗縣') return miaoliFire({ ...location, city });
+  if (city === '彰化縣') return changhuaFire({ ...location, city });
   return genericConfiguredSource({ moduleId: 'fire' }, location);
 }
 
