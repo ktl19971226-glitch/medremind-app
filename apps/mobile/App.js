@@ -30,6 +30,8 @@ import {
 
 const API_BASE = Constants.expoConfig?.extra?.apiBase || process.env.EXPO_PUBLIC_API_BASE || 'https://local-alert.yaojidecare.app';
 const DEVICE_ID_KEY = 'local-alert-device-id';
+const DEVICE_SECRET_KEY = 'local-alert-device-secret';
+const ADMIN_TOKEN = Constants.expoConfig?.extra?.adminToken || process.env.EXPO_PUBLIC_ADMIN_TOKEN || '';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -87,23 +89,30 @@ function makeDeviceId() {
   return `ios-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-async function loadDeviceId() {
+async function saveDeviceSecret(secret) {
+  if (!secret) return;
+  await SecureStore.setItemAsync(DEVICE_SECRET_KEY, secret);
+}
+
+async function loadDeviceAuth() {
   try {
     const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY);
-    if (existing) return existing;
+    const secret = await SecureStore.getItemAsync(DEVICE_SECRET_KEY);
+    if (existing) return { deviceId: existing, deviceSecret: secret || '' };
     const next = makeDeviceId();
     await SecureStore.setItemAsync(DEVICE_ID_KEY, next);
-    return next;
+    return { deviceId: next, deviceSecret: '' };
   } catch {
-    return makeDeviceId();
+    return { deviceId: makeDeviceId(), deviceSecret: '' };
   }
 }
 
-async function api(path, deviceId, options = {}) {
+async function api(path, auth, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
-      'X-Device-Id': deviceId,
+      'X-Device-Id': auth.deviceId,
+      ...(auth.deviceSecret ? { 'X-Device-Secret': auth.deviceSecret } : {}),
       ...(options.headers || {})
     },
     ...options
@@ -137,6 +146,7 @@ async function registerForPushNotificationsAsync() {
 
 export default function App() {
   const [deviceId, setDeviceId] = useState(null);
+  const [deviceSecret, setDeviceSecret] = useState('');
   const [catalog, setCatalog] = useState([]);
   const [state, setState] = useState(null);
   const [admin, setAdmin] = useState(null);
@@ -151,17 +161,31 @@ export default function App() {
   const rules = useMemo(() => state?.rules?.filter(rule => rule.categoryId === selectedCategory) || [], [state, selectedCategory]);
   const unreadCount = state?.unreadCount || 0;
   const onboardingDone = Boolean(state?.user?.onboardingCompleted);
+  const auth = useMemo(() => ({ deviceId, deviceSecret }), [deviceId, deviceSecret]);
 
-  async function refresh(id = deviceId) {
-    if (!id) return;
-    const [catalogData, stateData, adminData] = await Promise.all([
-      api('/api/catalog', id),
-      api('/api/state', id),
-      api('/api/admin/summary', id)
+  async function rememberDeviceSecret(secret) {
+    if (!secret) return;
+    setDeviceSecret(secret);
+    await saveDeviceSecret(secret);
+  }
+
+  async function refresh(nextAuth = auth) {
+    if (!nextAuth.deviceId) return;
+    const [catalogData, stateData] = await Promise.all([
+      api('/api/catalog', nextAuth),
+      api('/api/state', nextAuth)
     ]);
+    if (stateData.deviceSecret) await rememberDeviceSecret(stateData.deviceSecret);
     setCatalog(catalogData.categories);
     setState(stateData);
-    setAdmin(adminData);
+    if (ADMIN_TOKEN) {
+      try {
+        const adminData = await api('/api/admin/summary', nextAuth, { headers: { 'X-Admin-Token': ADMIN_TOKEN } });
+        setAdmin(adminData);
+      } catch {
+        setAdmin(null);
+      }
+    }
     const firstLocation = stateData.locations?.[0];
     if (firstLocation) {
       setLocationDraft({
@@ -173,10 +197,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    loadDeviceId()
-      .then(id => {
-        setDeviceId(id);
-        return refresh(id);
+    loadDeviceAuth()
+      .then(nextAuth => {
+        setDeviceId(nextAuth.deviceId);
+        setDeviceSecret(nextAuth.deviceSecret);
+        return refresh(nextAuth);
       })
       .catch(error => Alert.alert('載入失敗', error.message));
   }, []);
@@ -184,12 +209,13 @@ export default function App() {
   async function completeOnboarding() {
     setLoading(true);
     try {
-      const result = await api('/api/bootstrap', deviceId, {
+      const result = await api('/api/bootstrap', auth, {
         method: 'POST',
         body: JSON.stringify(locationDraft)
       });
+      await rememberDeviceSecret(result.deviceSecret);
       setState(result.state);
-      await enablePush(false);
+      await enablePush(false, { deviceId, deviceSecret: result.deviceSecret });
       Alert.alert('設定完成', '已建立你的個人提醒設定。');
     } catch (error) {
       Alert.alert('設定失敗', error.message);
@@ -199,36 +225,52 @@ export default function App() {
   }
 
   async function toggleRule(rule) {
-    const result = await api(`/api/rules/${encodeURIComponent(rule.id)}`, deviceId, {
-      method: 'PATCH',
-      body: JSON.stringify({ enabled: !rule.enabled })
-    });
-    setState(current => ({ ...current, rules: result.rules }));
+    try {
+      const result = await api(`/api/rules/${encodeURIComponent(rule.id)}`, auth, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !rule.enabled })
+      });
+      setState(current => ({ ...current, rules: result.rules }));
+    } catch (error) {
+      Alert.alert('規則更新失敗', error.message);
+    }
   }
 
   async function cycleSeverity(rule) {
-    const nextSeverity = rule.severity === 'critical' ? 'normal' : 'critical';
-    const result = await api(`/api/rules/${encodeURIComponent(rule.id)}`, deviceId, {
-      method: 'PATCH',
-      body: JSON.stringify({ severity: nextSeverity })
-    });
-    setState(current => ({ ...current, rules: result.rules }));
+    try {
+      const nextSeverity = rule.severity === 'critical' ? 'normal' : 'critical';
+      const result = await api(`/api/rules/${encodeURIComponent(rule.id)}`, auth, {
+        method: 'PATCH',
+        body: JSON.stringify({ severity: nextSeverity })
+      });
+      setState(current => ({ ...current, rules: result.rules }));
+    } catch (error) {
+      Alert.alert('警示等級更新失敗', error.message);
+    }
   }
 
   async function saveLocation() {
-    const path = editingLocationId ? `/api/locations/${encodeURIComponent(editingLocationId)}` : '/api/locations';
-    const result = await api(path, deviceId, {
-      method: editingLocationId ? 'PATCH' : 'POST',
-      body: JSON.stringify(locationDraft)
-    });
-    setState(current => ({ ...current, locations: result.locations }));
-    setEditingLocationId(null);
-    Alert.alert(editingLocationId ? '已更新地點' : '已新增地點', `${locationDraft.city}${locationDraft.district}`);
+    try {
+      const path = editingLocationId ? `/api/locations/${encodeURIComponent(editingLocationId)}` : '/api/locations';
+      const result = await api(path, auth, {
+        method: editingLocationId ? 'PATCH' : 'POST',
+        body: JSON.stringify(locationDraft)
+      });
+      setState(current => ({ ...current, locations: result.locations }));
+      setEditingLocationId(null);
+      Alert.alert(editingLocationId ? '已更新地點' : '已新增地點', `${locationDraft.city}${locationDraft.district}`);
+    } catch (error) {
+      Alert.alert('地點儲存失敗', error.message);
+    }
   }
 
   async function deleteLocation(location) {
-    const result = await api(`/api/locations/${encodeURIComponent(location.id)}`, deviceId, { method: 'DELETE' });
-    setState(current => ({ ...current, locations: result.locations }));
+    try {
+      const result = await api(`/api/locations/${encodeURIComponent(location.id)}`, auth, { method: 'DELETE' });
+      setState(current => ({ ...current, locations: result.locations }));
+    } catch (error) {
+      Alert.alert('地點刪除失敗', error.message);
+    }
   }
 
   async function useCurrentLocation() {
@@ -254,7 +296,7 @@ export default function App() {
     }
   }
 
-  async function enablePush(showAlert = true) {
+  async function enablePush(showAlert = true, nextAuth = auth) {
     try {
       const token = await registerForPushNotificationsAsync();
       if (!token) {
@@ -262,7 +304,7 @@ export default function App() {
         if (showAlert) Alert.alert('推播未啟用', '請在手機上授權通知。');
         return;
       }
-      await api('/api/devices/register', deviceId, {
+      await api('/api/devices/register', nextAuth, {
         method: 'POST',
         body: JSON.stringify({ pushToken: token, platform: Platform.OS })
       });
@@ -276,7 +318,7 @@ export default function App() {
   async function runCheck() {
     setLoading(true);
     try {
-      const result = await api('/api/check-now', deviceId, { method: 'POST', body: JSON.stringify({}) });
+      const result = await api('/api/check-now', auth, { method: 'POST', body: JSON.stringify({}) });
       setState(result.state);
       await refresh();
       Alert.alert('檢查完成', `產生 ${result.generated} 則提醒，推播 ${result.pushed} 台裝置。`);
@@ -288,22 +330,38 @@ export default function App() {
   }
 
   async function sendTestPush() {
-    const result = await api('/api/test-push', deviceId, { method: 'POST', body: JSON.stringify({}) });
-    Alert.alert('測試推播', `已送出 ${result.pushed} 則。`);
+    try {
+      const result = await api('/api/test-push', auth, { method: 'POST', body: JSON.stringify({}) });
+      Alert.alert('測試推播', `已送出 ${result.pushed} 則。`);
+    } catch (error) {
+      Alert.alert('測試推播失敗', error.message);
+    }
   }
 
   async function updateAlert(alert, patch) {
-    const result = await api(`/api/alerts/${encodeURIComponent(alert.id)}`, deviceId, {
-      method: 'PATCH',
-      body: JSON.stringify(patch)
-    });
-    setState(current => ({ ...current, alerts: result.alerts, unreadCount: result.alerts.filter(item => !item.read).length }));
-    setSelectedAlert(current => current?.id === alert.id ? { ...current, ...patch } : current);
+    try {
+      const result = await api(`/api/alerts/${encodeURIComponent(alert.id)}`, auth, {
+        method: 'PATCH',
+        body: JSON.stringify(patch)
+      });
+      setState(current => ({
+        ...current,
+        alerts: result.alerts,
+        unreadCount: result.alerts.filter(item => !item.read && !item.archived).length
+      }));
+      setSelectedAlert(current => current?.id === alert.id ? { ...current, ...patch } : current);
+    } catch (error) {
+      Alert.alert('提醒更新失敗', error.message);
+    }
   }
 
   async function markAllRead() {
-    const result = await api('/api/alerts/read-all', deviceId, { method: 'POST', body: JSON.stringify({}) });
-    setState(current => ({ ...current, alerts: result.alerts, unreadCount: 0 }));
+    try {
+      const result = await api('/api/alerts/read-all', auth, { method: 'POST', body: JSON.stringify({}) });
+      setState(current => ({ ...current, alerts: result.alerts, unreadCount: 0 }));
+    } catch (error) {
+      Alert.alert('全部已讀失敗', error.message);
+    }
   }
 
   if (!state) {

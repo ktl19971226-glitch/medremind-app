@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { defaultRules } from '../modules/catalog.js';
 
@@ -27,6 +28,10 @@ const initialState = {
 
 function cloneDefaultRules(deviceId) {
   return defaultRules.map(rule => ({ ...rule, ownerDeviceId: deviceId }));
+}
+
+export function createDeviceSecret() {
+  return crypto.randomBytes(24).toString('base64url');
 }
 
 function migrateState(state) {
@@ -76,13 +81,20 @@ export function ensureDeviceState(state, deviceId, profile = {}) {
       city: profile.city || '台北市',
       district: profile.district || '信義區',
       onboardingCompleted: Boolean(profile.onboardingCompleted),
+      deviceSecret: profile.deviceSecret || createDeviceSecret(),
       createdAt: now,
       updatedAt: now
     });
   } else {
     state.users = state.users.map(user =>
       user.deviceId === id
-        ? { ...user, ...profile, updatedAt: now, onboardingCompleted: profile.onboardingCompleted ?? user.onboardingCompleted }
+        ? {
+            ...user,
+            ...profile,
+            deviceSecret: user.deviceSecret || profile.deviceSecret || createDeviceSecret(),
+            updatedAt: now,
+            onboardingCompleted: profile.onboardingCompleted ?? user.onboardingCompleted
+          }
         : user
     );
   }
@@ -113,7 +125,15 @@ export function selectDeviceState(state, deviceId) {
   const id = deviceId || 'demo';
   const user = state.users.find(item => item.deviceId === id) || null;
   return {
-    user,
+    user: user ? {
+      deviceId: user.deviceId,
+      label: user.label,
+      city: user.city,
+      district: user.district,
+      onboardingCompleted: user.onboardingCompleted,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    } : null,
     devices: state.devices.filter(device => device.deviceId === id),
     locations: state.locations.filter(location => location.ownerDeviceId === id),
     rules: state.rules.filter(rule => rule.ownerDeviceId === id),

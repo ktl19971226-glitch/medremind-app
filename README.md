@@ -30,7 +30,15 @@ API 預設 port：`8061`。
 - 提醒中心：未讀數、提醒詳情、全部已讀、單筆已讀、封存。
 - 推播規則：支援一般/重大提醒，排程提醒會尊重 quiet hours，重大警示不靜音。
 - 資料源框架：可用 `CWA_API_KEY` / `MOENV_API_KEY` 接天氣、地震、空氣品質；未設定時會回退系統範例。
-- 管理摘要：`/api/admin/summary` 可查看裝置、使用者、地點、提醒與啟用規則數。
+- 安全控管：初次設定後會核發 device secret，後續寫入 API 需同時帶 `X-Device-Id` 與 `X-Device-Secret`。
+- 管理摘要：設定 `ADMIN_TOKEN` 後，`/api/admin/summary` 需帶 `X-Admin-Token` 才能查看裝置、使用者、地點、提醒與啟用規則數。
+
+## 後端環境變數
+
+- `PORT`：API port，預設 `8061`
+- `ADMIN_TOKEN`：啟用管理摘要 API 的存取 token；未設定時管理摘要關閉
+- `ALERTS_PER_DEVICE`：每台裝置最多保留提醒數，預設 `300`
+- `CWA_API_KEY` / `MOENV_API_KEY`：正式資料源金鑰；未設定時回退系統範例
 
 ## iOS 原生 App
 
@@ -42,7 +50,7 @@ API 預設 port：`8061`。
 - Bundle ID：`app.yaojidecare.localalert`
 - API：`https://local-alert.yaojidecare.app`
 - iOS 版本：`1.0.0`
-- Build Number：`2`
+- Build Number：`3`
 
 常用指令：
 

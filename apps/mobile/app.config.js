@@ -21,7 +21,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'app.yaojidecare.localalert',
-      buildNumber: '2',
+      buildNumber: '3',
       icon: './assets/icon.png',
       config: {
         usesNonExemptEncryption: false
