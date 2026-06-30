@@ -5272,6 +5272,15 @@
             return Boolean(customerInfo?.entitlements?.active?.[PRO_ENTITLEMENT_ID]);
         }
 
+        function callRevenueCatMethod(fn, args = []) {
+            if (typeof fn !== 'function') return Promise.resolve(null);
+            try {
+                return Promise.resolve(fn(...args));
+            } catch (e) {
+                return Promise.reject(e);
+            }
+        }
+
         async function syncRevenueCatCustomerInfo(customerInfo) {
             if (!customerInfo) return null;
             const { data } = await api('/api/subscription/revenuecat-sync', {
@@ -5293,10 +5302,10 @@
             if (!apiKey) throw new Error('尚未設定 RevenueCat iOS/Android API key');
 
             revenueCatConfigurePromise = (async () => {
-                await Purchases.setLogLevel?.({ level: 'INFO' }).catch(() => {});
+                await callRevenueCatMethod(Purchases.setLogLevel?.bind(Purchases), [{ level: 'INFO' }]).catch(() => {});
                 const appUserID = currentUser?.account_code || (currentUser?.id ? String(currentUser.id) : '');
                 const config = appUserID ? { apiKey, appUserID } : { apiKey };
-                await Purchases.configure(config);
+                await callRevenueCatMethod(Purchases.configure?.bind(Purchases), [config]);
                 revenueCatConfigured = true;
                 return Purchases;
             })();
@@ -5358,7 +5367,8 @@
                 subscriptionStatus = status;
                 const Purchases = await configureRevenueCat(status);
                 if (Purchases.canMakePayments) {
-                    const paymentStatus = await Purchases.canMakePayments().catch(() => ({ canMakePayments: true }));
+                    const paymentStatus = await callRevenueCatMethod(Purchases.canMakePayments.bind(Purchases))
+                        .catch(() => ({ canMakePayments: true }));
                     if (paymentStatus && paymentStatus.canMakePayments === false) {
                         throw new Error('此 Apple ID 目前無法進行 App 內購買，請確認螢幕使用時間或付款設定。');
                     }
