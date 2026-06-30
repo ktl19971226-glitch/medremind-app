@@ -90,7 +90,8 @@ const parkingDefaults = {
 const fireDefaults = {
   臺北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
   台北市: 'https://service119.tfd.gov.tw/service119/citizenCase/caseList',
-  新北市: 'https://e.ntpc.gov.tw/v3/api/map/dynamic/layer/rescue'
+  新北市: 'https://e.ntpc.gov.tw/v3/api/map/dynamic/layer/rescue',
+  桃園市: 'https://www.tyfd.gov.tw/cht/index.php?act=caselist'
 };
 
 const transitDefaults = {
@@ -838,10 +839,42 @@ async function newTaipeiFire(location) {
   };
 }
 
+function cleanHtmlText(html = '') {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function taoyuanFire(location) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<date>(.*?)<\/date>[\s\S]*?<span class="title">案類<\/span>(.*?)<\/div>[\s\S]*?<span class="title">案別<\/span>(.*?)<\/div>[\s\S]*?<span class="title">發生地點<\/span>(.*?)<\/div>[\s\S]*?<span class="title">派遣分隊<\/span>(.*?)<\/div>[\s\S]*?<div class="td state">([\s\S]*?)<\/div>/g)]
+    .map(match => ({
+      time: cleanHtmlText(match[1]),
+      type: cleanHtmlText(match[2]),
+      subtype: cleanHtmlText(match[3]),
+      place: cleanHtmlText(match[4]),
+      station: cleanHtmlText(match[5]),
+      status: cleanHtmlText(match[6])
+    }));
+  if (!rows.length) return { status: 'no-event', source: '桃園市政府消防局即時災情', body: '桃園市目前沒有公開中的消防即時災情。' };
+  const matched = rows.find(record => /火|災害|搶救/.test(`${record.type}${record.subtype}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source: '桃園市政府消防局即時災情', body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source: '桃園市政府消防局即時災情',
+    body: `${matched.place || location.city}，${matched.type || '消防案件'}${matched.subtype ? `/${matched.subtype}` : ''}，派遣 ${matched.station || '未提供'}，狀態 ${matched.status || '未提供'}，發生 ${matched.time || '時間未提供'}。`,
+    shouldNotify: matched.status !== '已完成'
+  };
+}
+
 async function fireEmergency(location) {
   const city = canonicalCity(location.city);
   if (city === '臺北市') return taipeiFire({ ...location, city });
   if (city === '新北市') return newTaipeiFire({ ...location, city });
+  if (city === '桃園市') return taoyuanFire({ ...location, city });
   return genericConfiguredSource({ moduleId: 'fire' }, location);
 }
 
