@@ -44,10 +44,34 @@ const publicDefaults = {
 };
 
 const garbageTruckDefaults = {
+  臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
+  台北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
   新北市: 'https://data.ntpc.gov.tw/api/datasets/28ab4122-60e1-4065-98e5-abccb69aaca6/json?size=1000',
   臺中市: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=68d1a87f-7baa-4b50-8408-c36a3a7eda68',
   台中市: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=68d1a87f-7baa-4b50-8408-c36a3a7eda68',
+  臺南市: 'https://soa.tainan.gov.tw/Api/Service/Get/2c8a70d5-06f2-4353-9e92-c40d33bcd969',
+  台南市: 'https://soa.tainan.gov.tw/Api/Service/Get/2c8a70d5-06f2-4353-9e92-c40d33bcd969',
+  宜蘭縣: 'https://opendata.ilepb.gov.tw/ILEPB04004?media=file',
+  新竹市: 'https://7966.hccg.gov.tw/WEB/_IMP/API/CleanWeb/getCarLocation?rId=all',
   高雄市: 'https://api.kcg.gov.tw/api/service/Get/aaf4ce4b-4ca8-43de-bfaf-6dc97e89cac0'
+};
+
+const cityWideGarbageDefaults = new Set(['新竹市']);
+
+const taoyuanDistrictIds = {
+  蘆竹區: 'lagi2-001',
+  八德區: 'lagi2-002',
+  桃園區: 'lagi2-003',
+  中壢區: 'lagi2-004',
+  平鎮區: 'lagi2-005',
+  楊梅區: 'lagi2-006',
+  大溪區: 'lagi2-007',
+  大園區: 'lagi2-008',
+  觀音區: 'lagi2-009',
+  新屋區: 'lagi2-010',
+  龜山區: 'lagi2-011',
+  龍潭區: 'lagi2-012',
+  復興區: 'lagi2-013'
 };
 
 function canonicalCity(city = '') {
@@ -87,6 +111,133 @@ async function fetchJson(url, { timeoutMs = 4500, headers = {}, method = 'GET', 
   } finally {
     clearTimeout(timer);
   }
+}
+
+function parseCsv(text) {
+  const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const parseLine = line => {
+    const cells = [];
+    let current = '';
+    let quoted = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (char === '"' && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = !quoted;
+      } else if (char === ',' && !quoted) {
+        cells.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    cells.push(current);
+    return cells;
+  };
+  const headers = parseLine(lines[0]);
+  return lines.slice(1).map(line => {
+    const values = parseLine(line);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
+  });
+}
+
+async function fetchData(url, { timeoutMs = 4500, headers = {} } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers });
+    if (!response.ok) return null;
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return parseCsv(text);
+    }
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function cookieHeaderFrom(response) {
+  const setCookie = response.headers.get('set-cookie') || '';
+  return setCookie
+    .split(/,(?=[^ ;]+=)/)
+    .map(cookie => cookie.split(';')[0].trim())
+    .filter(Boolean)
+    .join('; ');
+}
+
+async function postTaoyuanForm(cookie, body, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch('https://route.tyoem.gov.tw/web/dataManagerAgentWeb.jsp', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        Referer: 'https://route.tyoem.gov.tw/',
+        Cookie: cookie
+      },
+      body
+    });
+    if (!response.ok) return null;
+    return response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function taoyuanGarbage(location) {
+  const districtId = taoyuanDistrictIds[location.district];
+  if (!districtId) return { status: 'no-event', source: '桃園市垃圾清運路線即時查詢系統', body: `${location.district || '桃園市'}目前沒有可查詢的垃圾車行政區。` };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4500);
+  let home;
+  try {
+    home = await fetch('https://route.tyoem.gov.tw/', { signal: controller.signal });
+  } catch {
+    return { status: 'no-event', source: '桃園市垃圾清運路線即時查詢系統', body: '桃園市垃圾車資料源目前無法連線。' };
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!home.ok) return { status: 'no-event', source: '桃園市垃圾清運路線即時查詢系統', body: '桃園市垃圾車資料源目前無法連線。' };
+  const cookie = cookieHeaderFrom(home);
+  const html = await home.text();
+  const randomForm = html.match(/id="random_form"[^>]+value="([^"]+)"/)?.[1];
+  if (!randomForm || !cookie) return { status: 'no-event', source: '桃園市垃圾清運路線即時查詢系統', body: '桃園市垃圾車資料源目前無法建立查詢工作階段。' };
+
+  const routes = await postTaoyuanForm(cookie, new URLSearchParams({
+    dcfid: 'lagifQueryRouteByTown',
+    gid: districtId,
+    random_form: randomForm
+  }));
+  const routeItems = routes?.result || [];
+  for (const route of routeItems.slice(0, 8)) {
+    const realtime = await postTaoyuanForm(cookie, new URLSearchParams({
+      dcfid: 'lagifQueryRealtimeByRoute',
+      routing_id: route.routing_id,
+      random_form: randomForm
+    }));
+    const vehicle = realtime?.result?.find(item => item.addr?.includes(location.district)) || realtime?.result?.[0];
+    if (vehicle) {
+      return {
+        status: 'live',
+        source: '桃園市垃圾清運路線即時查詢系統',
+        body: [location.district, route.routing_name, vehicle.clean_status, vehicle.car_id, vehicle.addr].filter(Boolean).join('，'),
+        shouldNotify: true
+      };
+    }
+  }
+  return { status: 'no-event', source: '桃園市垃圾清運路線即時查詢系統', body: `${location.city}${location.district}目前沒有垃圾車即時車輛資料。` };
 }
 
 async function fetchTdx(url) {
@@ -206,21 +357,26 @@ async function moenvAqi(location) {
 
 function extractRecords(data) {
   if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data?.car)) return data.data.car;
+  if (Array.isArray(data?.data)) return data.data;
   return data?.records || data?.data || data?.items || data?.detail || data?.result?.records || [];
 }
 
 function textFromRecord(record) {
   if (typeof record === 'string') return record;
-  const title = record.title || record.Title || record.name || record.Name || record.subject || record.Subject || record.event || record.Event || record['案件類型'] || record.task_type;
-  const area = record.area || record.Area || record.city || record.City || record.county || record.County || record.district || record.District || record['影響縣市'] || record.city_name || record.town_name || record.cityname || record.area;
-  const time = record.time || record.Time || record.date || record.Date || record.startTime || record.StartTime || record['案件日期時間'] || record.rpt_time || record.fix_datetime_est || record.g_d1_time_s;
-  const message = record.message || record.Message || record.description || record.Description || record.content || record.Content || record.memo || record.Memo || record['停水地區'] || record['停水原因'] || record.electro_dmg_area || record.business_lost_est || record.location || record.caption;
-  return [area, title, time, message].filter(Boolean).join('，');
+  const title = record.title || record.Title || record.name || record.Name || record.subject || record.Subject || record.event || record.Event || record['案件類型'] || record['路線'] || record['路線名稱'] || record.routeName || record.task_type || record.linid;
+  const area = record.area || record.Area || record.city || record.City || record.county || record.County || record.district || record.District || record['影響縣市'] || record['行政區'] || record['鄉鎮市'] || record.city_name || record.town_name || record.cityname || record.area;
+  const time = record.time || record.Time || record.date || record.Date || record.startTime || record.StartTime || record.updateTime || record['案件日期時間'] || record['抵達時間'] || record['表定時間'] || record.rpt_time || record.fix_datetime_est || record.g_d1_time_s;
+  const message = record.message || record.Message || record.description || record.Description || record.content || record.Content || record.memo || record.Memo || record['停水地區'] || record['停水原因'] || record['地點'] || record['清運點名稱'] || record.address || record.electro_dmg_area || record.business_lost_est || record.location || record.caption;
+  const vehicle = record['車號'] || record.car || record.car_id || record.carNo;
+  const endTime = record['離開時間'];
+  const displayTime = endTime && time ? `${time}-${endTime}` : time;
+  return [area, title, displayTime, vehicle, message].filter(Boolean).join('，');
 }
 
 function matchesLocation(record, location) {
   const haystack = JSON.stringify(record);
-  return [location.city, canonicalCity(location.city), location.district]
+  return [location.city, canonicalCity(location.city), displayCity(canonicalCity(location.city)), location.district]
     .filter(Boolean)
     .some(term => haystack.includes(term));
 }
@@ -241,10 +397,15 @@ async function genericConfiguredSource(rule, location) {
   }
 
   const source = directUrl ? '外部資料源' : publicUrl ? '政府公開資料' : 'TDX';
-  const data = directUrl || publicUrl ? await fetchJson(directUrl || publicUrl) : await fetchTdx(tdxUrl);
+  const data = directUrl || publicUrl ? await fetchData(directUrl || publicUrl) : await fetchTdx(tdxUrl);
   if (data?.status === 'not-configured') return data;
+  if (!data) {
+    return { status: 'no-event', source, body: `${location.city || '所在地'}${location.district || ''}資料源暫時無法連線。` };
+  }
   const records = extractRecords(data);
-  const matched = records.find(record => matchesLocation(record, location)) || records.find(record => !isEmptyEventRecord(record)) || records[0];
+  const hasLocationScope = Boolean(location.city || location.district);
+  const allowCityWideFallback = rule.moduleId === 'garbage-truck' && cityWideGarbageDefaults.has(canonicalCity(location.city));
+  const matched = records.find(record => matchesLocation(record, location)) || (hasLocationScope && !allowCityWideFallback ? null : records.find(record => !isEmptyEventRecord(record)) || records[0]);
   if (!matched) {
     return { status: 'no-event', source, body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${rule.moduleId} 即時事件。` };
   }
@@ -264,6 +425,7 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'earthquake') return cwaEarthquake(location);
   if (rule.moduleId === 'typhoon') return cwaTyphoon(location);
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
+  if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   return genericConfiguredSource(rule, location);
 }
 
@@ -279,8 +441,8 @@ export function getSourceCoverage() {
         source: publicDefaults['power-outage']
       },
       'garbage-truck': {
-        coverage: Object.keys(garbageTruckDefaults),
-        sources: garbageTruckDefaults
+        coverage: [...Object.keys(garbageTruckDefaults), '桃園市'],
+        sources: { ...garbageTruckDefaults, 桃園市: 'https://route.tyoem.gov.tw/' }
       }
     },
     keyRequired: {

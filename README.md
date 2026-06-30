@@ -47,8 +47,13 @@ API 預設 port：`8061`。
 
 - 台灣自來水停水資訊 JSON：`water-outage`
 - EMIC 台灣電力公司災情通報表 JSON：`power-outage`
+- 臺北市垃圾清運點位 CSV：`garbage-truck`（臺北市）
 - 新北市垃圾清運車輛所在位置 JSON：`garbage-truck`（新北市）
+- 桃園市垃圾清運路線即時查詢系統：`garbage-truck`（桃園市）
+- 新竹市清運車便民查詢網：`garbage-truck`（新竹市）
 - 臺中市定時定點垃圾收運地點 JSON：`garbage-truck`（臺中市）
+- 臺南市垃圾車 GPS 即時服務 JSON：`garbage-truck`（臺南市）
+- 宜蘭縣垃圾清運路線 JSON：`garbage-truck`（宜蘭縣）
 - 高雄市垃圾車及資源回收車動態資訊 JSON：`garbage-truck`（高雄市）
 
 ## iOS 原生 App
