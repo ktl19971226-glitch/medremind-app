@@ -78,6 +78,12 @@ const fireDefaults = {
   新北市: 'https://e.ntpc.gov.tw/v3/api/map/dynamic/layer/rescue'
 };
 
+const transitDefaults = {
+  臺北市: 'https://web.metro.taipei/pages2026/WebServiceStatus',
+  台北市: 'https://web.metro.taipei/pages2026/WebServiceStatus',
+  新北市: 'https://web.metro.taipei/pages2026/WebServiceStatus'
+};
+
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
   台北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -662,6 +668,29 @@ async function fireEmergency(location) {
   return genericConfiguredSource({ moduleId: 'fire' }, location);
 }
 
+async function taipeiMetroStatus(location) {
+  const text = await fetchText(transitDefaults[canonicalCity(location.city)] || transitDefaults[location.city], { timeoutMs: 7000 });
+  if (!text) return { status: 'no-event', source: '臺北捷運營運燈號', body: '臺北捷運營運燈號資料源暫時無法連線。' };
+  const statusText = text.match(/realstatus__text[^>]*>([^<]+)</)?.[1]?.trim() || '';
+  const link = text.match(/class="abnormal__link" href="([^"]+)"/)?.[1] || '';
+  if (!statusText) return { status: 'no-event', source: '臺北捷運營運燈號', body: '臺北捷運營運燈號目前沒有可解析的狀態文字。' };
+  if (statusText.includes('正常')) {
+    return { status: 'no-event', source: '臺北捷運營運燈號', body: `臺北捷運${statusText}。` };
+  }
+  return {
+    status: 'live',
+    source: '臺北捷運營運燈號',
+    body: `臺北捷運${statusText}${link ? `，詳情：${link}` : ''}`,
+    shouldNotify: true
+  };
+}
+
+async function transitInfo(location) {
+  const city = canonicalCity(location.city);
+  if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
+  return genericConfiguredSource({ moduleId: 'transit' }, location);
+}
+
 function cookieHeaderFrom(response) {
   const setCookie = response.headers.get('set-cookie') || '';
   return setCookie
@@ -937,6 +966,7 @@ export async function resolveLiveAlert(rule, location) {
   }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (['commute', 'road-incident', 'roadwork'].includes(rule.moduleId)) return freewayLiveEvent(rule, location);
+  if (rule.moduleId === 'transit') return transitInfo(location);
   if (rule.moduleId === 'parking') return parkingInfo(location);
   if (rule.moduleId === 'fire') return fireEmergency(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
@@ -988,6 +1018,10 @@ export function getSourceCoverage() {
       fire: {
         coverage: Object.keys(fireDefaults),
         sources: fireDefaults
+      },
+      transit: {
+        coverage: Object.keys(transitDefaults),
+        sources: transitDefaults
       }
     },
     keyRequired: {
