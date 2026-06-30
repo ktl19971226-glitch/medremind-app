@@ -85,6 +85,12 @@ const moduleLabels = {
   chores: '家務提醒'
 };
 
+const dataStatusLabels = {
+  live: '真實資料',
+  'no-event': '無即時事件',
+  'not-configured': '未設定資料源'
+};
+
 function makeDeviceId() {
   return `ios-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -558,7 +564,7 @@ export default function App() {
               <View style={styles.alertMain}>
                 <Text style={styles.alertTitle}>{alert.title}</Text>
                 <Text style={styles.alertBody}>{alert.body}</Text>
-                <Text style={styles.alertMeta}>{alert.locationName || '主要地點'} · {alert.source || '系統'} · {new Date(alert.createdAt).toLocaleString()}</Text>
+                <Text style={styles.alertMeta}>{alert.locationName || '主要地點'} · {alert.source || '系統'} · {dataStatusLabels[alert.dataStatus] || '資料狀態未知'} · {new Date(alert.createdAt).toLocaleString()}</Text>
               </View>
               <ChevronRight size={18} color="#94a3b8" />
             </Pressable>
@@ -575,7 +581,7 @@ export default function App() {
               </Pressable>
             </View>
             <Text style={styles.detailBody}>{selectedAlert.body}</Text>
-            <Text style={styles.alertMeta}>來源：{selectedAlert.source || '系統'} · 分類：{moduleLabels[selectedAlert.moduleId] || selectedAlert.moduleId}</Text>
+            <Text style={styles.alertMeta}>來源：{selectedAlert.source || '系統'} · 狀態：{dataStatusLabels[selectedAlert.dataStatus] || '資料狀態未知'} · 分類：{moduleLabels[selectedAlert.moduleId] || selectedAlert.moduleId}</Text>
             <View style={styles.buttonRow}>
               <Pressable style={styles.secondaryButton} onPress={() => updateAlert(selectedAlert, { read: true })}>
                 <Eye size={16} color="#0f172a" />

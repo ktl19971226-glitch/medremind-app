@@ -1,0 +1,240 @@
+const cityAliases = {
+  台北市: '臺北市',
+  台中市: '臺中市',
+  台南市: '臺南市',
+  台東縣: '臺東縣',
+  臺北市: '臺北市',
+  臺中市: '臺中市',
+  臺南市: '臺南市',
+  臺東縣: '臺東縣'
+};
+
+const moduleEnvNames = {
+  commute: 'COMMUTE',
+  transit: 'TRANSIT',
+  'road-incident': 'ROAD_INCIDENT',
+  roadwork: 'ROADWORK',
+  parking: 'PARKING',
+  'garbage-truck': 'GARBAGE_TRUCK',
+  'water-outage': 'WATER_OUTAGE',
+  'power-outage': 'POWER_OUTAGE',
+  'gas-work': 'GAS_WORK',
+  'local-bulletin': 'LOCAL_BULLETIN',
+  fire: 'FIRE',
+  accident: 'ACCIDENT',
+  'crime-watch': 'CRIME_WATCH',
+  'fraud-alert': 'FRAUD_ALERT',
+  evacuation: 'EVACUATION',
+  bill: 'BILL',
+  package: 'PACKAGE',
+  calendar: 'CALENDAR',
+  medicine: 'MEDICINE',
+  chores: 'CHORES'
+};
+
+const tdxDefaults = {
+  transit: 'https://tdx.transportdata.tw/api/basic/v3/Rail/TRA/Alert',
+  'road-incident': 'https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Incident/Freeway',
+  roadwork: 'https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Construction/Freeway'
+};
+
+function canonicalCity(city = '') {
+  return cityAliases[city] || city;
+}
+
+function displayCity(city = '') {
+  return city.replace(/^臺/, '台');
+}
+
+function sameCity(a = '', b = '') {
+  const left = canonicalCity(a);
+  const right = canonicalCity(b);
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+function sourceUrlFor(moduleId) {
+  const name = moduleEnvNames[moduleId];
+  if (!name) return '';
+  return process.env[`LOCAL_ALERT_SOURCE_${name}_URL`] || process.env[`${name}_SOURCE_URL`] || '';
+}
+
+async function fetchJson(url, { timeoutMs = 4500, headers = {}, method = 'GET', body } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers, method, body });
+    if (!response.ok) return null;
+    return response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchTdx(url) {
+  const clientId = process.env.TDX_CLIENT_ID;
+  const clientSecret = process.env.TDX_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return { status: 'not-configured', source: 'TDX' };
+
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret
+  });
+  const token = await fetchJson('https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token', {
+    timeoutMs: 4500,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  return token?.access_token
+    ? fetchJson(url, { headers: { Authorization: `Bearer ${token.access_token}` } })
+    : null;
+}
+
+async function fetchCwaDatastore(datasetId, params = {}) {
+  const key = process.env.CWA_API_KEY || process.env.CWB_API_KEY;
+  if (!key) return { status: 'not-configured', source: 'CWA' };
+  const search = new URLSearchParams({ Authorization: key, ...params });
+  return fetchJson(`https://opendata.cwa.gov.tw/api/v1/rest/datastore/${datasetId}?${search}`);
+}
+
+function weatherElements(data) {
+  return data?.records?.location?.[0]?.weatherElement || [];
+}
+
+function firstParameter(elements, name) {
+  return elements.find(entry => entry.elementName === name)?.time?.[0]?.parameter?.parameterName;
+}
+
+async function cwaForecast(rule, location) {
+  const city = canonicalCity(location.city || '臺北市');
+  const data = await fetchCwaDatastore('F-C0032-001', { locationName: city });
+  if (data?.status === 'not-configured') return data;
+  const elements = weatherElements(data);
+  const rain = firstParameter(elements, 'PoP');
+  const minT = firstParameter(elements, 'MinT');
+  const maxT = firstParameter(elements, 'MaxT');
+  const wx = firstParameter(elements, 'Wx');
+  const place = `${displayCity(city)}${location.district || ''}`;
+
+  if (rule.moduleId === 'rain' && rain) {
+    return {
+      status: 'live',
+      source: 'CWA F-C0032-001',
+      body: `${place}未來 12 小時降雨機率 ${rain}%，天氣${wx || '已更新'}。`,
+      shouldNotify: Number(rain) >= Number(process.env.RAIN_NOTIFY_THRESHOLD || 50)
+    };
+  }
+
+  if (rule.moduleId === 'temperature' && minT && maxT) {
+    return {
+      status: 'live',
+      source: 'CWA F-C0032-001',
+      body: `${place}未來 12 小時溫度約 ${minT}-${maxT} 度，天氣${wx || '已更新'}。`,
+      shouldNotify: true
+    };
+  }
+
+  return { status: 'no-event', source: 'CWA F-C0032-001', body: `${place}目前沒有可用的天氣預報資料。` };
+}
+
+async function cwaEarthquake(location) {
+  const data = await fetchCwaDatastore('E-A0015-001', { limit: '1' });
+  if (data?.status === 'not-configured') return data;
+  const earthquake = data?.records?.Earthquake?.[0];
+  const report = earthquake?.ReportContent || earthquake?.EarthquakeInfo?.Epicenter?.Location;
+  const time = earthquake?.EarthquakeInfo?.OriginTime || earthquake?.EarthquakeNo;
+  if (!report) return { status: 'no-event', source: 'CWA E-A0015-001', body: '目前沒有最新地震資料。' };
+  return {
+    status: 'live',
+    source: 'CWA E-A0015-001',
+    body: `最新地震資訊${time ? `（${time}）` : ''}：${report}`,
+    shouldNotify: true
+  };
+}
+
+async function cwaTyphoon(location) {
+  const data = await fetchCwaDatastore('W-C0034-005');
+  if (data?.status === 'not-configured') return data;
+  const records = data?.records?.tropicalCyclones?.tropicalCyclone || data?.records?.TropicalCyclone || [];
+  const items = Array.isArray(records) ? records : [records].filter(Boolean);
+  if (items.length === 0) {
+    return { status: 'no-event', source: 'CWA typhoon dataset', body: '目前沒有中央氣象署發布中的颱風資料。' };
+  }
+  const name = items[0]?.typhoonName || items[0]?.cwaTyphoonName || items[0]?.name || '颱風';
+  return {
+    status: 'live',
+    source: 'CWA typhoon dataset',
+    body: `中央氣象署目前有 ${name} 相關颱風資料，請留意最新路徑與警報。`,
+    shouldNotify: true
+  };
+}
+
+async function moenvAqi(location) {
+  const key = process.env.MOENV_API_KEY || process.env.EPA_API_KEY;
+  if (!key) return { status: 'not-configured', source: 'MOENV AQX_P_432' };
+  const data = await fetchJson(`https://data.moenv.gov.tw/api/v2/aqx_p_432?api_key=${encodeURIComponent(key)}&format=json&limit=1000&sort=ImportDate%20desc`);
+  const records = data?.records || [];
+  const matched = records.find(record => sameCity(record.county, location.city)) || records[0];
+  if (!matched?.aqi) return { status: 'no-event', source: 'MOENV AQX_P_432', body: `${location.city || '所在地'}目前沒有可用 AQI 資料。` };
+  return {
+    status: 'live',
+    source: 'MOENV AQX_P_432',
+    body: `${matched.county}${matched.sitename} AQI ${matched.aqi}，空氣品質 ${matched.status || '已更新'}，主要污染物 ${matched.pollutant || '無'}。`,
+    shouldNotify: Number(matched.aqi) >= Number(process.env.AQI_NOTIFY_THRESHOLD || 100)
+  };
+}
+
+function extractRecords(data) {
+  if (Array.isArray(data)) return data;
+  return data?.records || data?.data || data?.items || data?.result?.records || [];
+}
+
+function textFromRecord(record) {
+  if (typeof record === 'string') return record;
+  const title = record.title || record.Title || record.name || record.Name || record.subject || record.Subject || record.event || record.Event;
+  const area = record.area || record.Area || record.city || record.City || record.county || record.County || record.district || record.District;
+  const time = record.time || record.Time || record.date || record.Date || record.startTime || record.StartTime;
+  const message = record.message || record.Message || record.description || record.Description || record.content || record.Content || record.memo || record.Memo;
+  return [area, title, time, message].filter(Boolean).join('，');
+}
+
+function matchesLocation(record, location) {
+  const haystack = JSON.stringify(record);
+  return [location.city, canonicalCity(location.city), location.district]
+    .filter(Boolean)
+    .some(term => haystack.includes(term));
+}
+
+async function genericConfiguredSource(rule, location) {
+  const directUrl = sourceUrlFor(rule.moduleId);
+  const tdxUrl = tdxDefaults[rule.moduleId];
+  if (!directUrl && !tdxUrl) {
+    return { status: 'not-configured', source: '資料源未設定' };
+  }
+
+  const source = directUrl ? '外部資料源' : 'TDX';
+  const data = directUrl ? await fetchJson(directUrl) : await fetchTdx(tdxUrl);
+  if (data?.status === 'not-configured') return data;
+  const records = extractRecords(data);
+  const matched = records.find(record => matchesLocation(record, location)) || records[0];
+  if (!matched) {
+    return { status: 'no-event', source, body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${rule.moduleId} 即時事件。` };
+  }
+  return {
+    status: 'live',
+    source,
+    body: textFromRecord(matched) || `${location.city || '所在地'}${location.district || ''}有一筆 ${rule.moduleId} 即時資料。`,
+    shouldNotify: true
+  };
+}
+
+export async function resolveLiveAlert(rule, location) {
+  if (rule.moduleId === 'rain' || rule.moduleId === 'temperature') return cwaForecast(rule, location);
+  if (rule.moduleId === 'earthquake') return cwaEarthquake(location);
+  if (rule.moduleId === 'typhoon') return cwaTyphoon(location);
+  if (rule.moduleId === 'air-quality') return moenvAqi(location);
+  return genericConfiguredSource(rule, location);
+}

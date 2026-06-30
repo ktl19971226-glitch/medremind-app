@@ -29,7 +29,7 @@ API 預設 port：`8061`。
 - 地點管理：新增、編輯、刪除地點，並可使用目前定位帶入城市與行政區。
 - 提醒中心：未讀數、提醒詳情、全部已讀、單筆已讀、封存。
 - 推播規則：支援一般/重大提醒，排程提醒會尊重 quiet hours，重大警示不靜音。
-- 資料源框架：可用 `CWA_API_KEY` / `MOENV_API_KEY` 接天氣、地震、空氣品質；未設定時會回退系統範例。
+- 真實資料源：可用 `CWA_API_KEY` / `MOENV_API_KEY` 接天氣、地震、颱風、空氣品質；TDX 與各模組外部 URL 可接交通、市政、安全、個人資料。未設定時會標示「資料源未設定」，不再產生仿真的範例提醒。
 - 安全控管：初次設定後會核發 device secret，後續寫入 API 需同時帶 `X-Device-Id` 與 `X-Device-Secret`。
 - 管理摘要：設定 `ADMIN_TOKEN` 後，`/api/admin/summary` 需帶 `X-Admin-Token` 才能查看裝置、使用者、地點、提醒與啟用規則數。
 
@@ -38,7 +38,10 @@ API 預設 port：`8061`。
 - `PORT`：API port，預設 `8061`
 - `ADMIN_TOKEN`：啟用管理摘要 API 的存取 token；未設定時管理摘要關閉
 - `ALERTS_PER_DEVICE`：每台裝置最多保留提醒數，預設 `300`
-- `CWA_API_KEY` / `MOENV_API_KEY`：正式資料源金鑰；未設定時回退系統範例
+- `CWA_API_KEY` / `MOENV_API_KEY`：正式資料源金鑰；未設定時標示資料源未設定
+- `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET`：交通/運輸資料源金鑰
+- `LOCAL_ALERT_SOURCE_<MODULE>_URL`：各模組外部資料源 URL，例如 `LOCAL_ALERT_SOURCE_GARBAGE_TRUCK_URL`、`LOCAL_ALERT_SOURCE_WATER_OUTAGE_URL`、`LOCAL_ALERT_SOURCE_BILL_URL`
+- `RAIN_NOTIFY_THRESHOLD` / `AQI_NOTIFY_THRESHOLD`：降雨與 AQI 推播門檻
 
 ## iOS 原生 App
 
@@ -50,7 +53,7 @@ API 預設 port：`8061`。
 - Bundle ID：`app.yaojidecare.localalert`
 - API：`https://local-alert.yaojidecare.app`
 - iOS 版本：`1.0.0`
-- Build Number：`3`
+- Build Number：`4`
 
 常用指令：
 

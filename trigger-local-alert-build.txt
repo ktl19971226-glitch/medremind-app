@@ -1,1 +1,1 @@
-trigger local alert iOS build 3 security fixes TestFlight 2026-06-30T03:50:00Z
+trigger local alert iOS build 4 real data source status TestFlight 2026-06-30T04:31:00Z
