@@ -1,1 +1,1 @@
-2026-06-30 xiaoyue ios TestFlight build 10 safety operations trigger
+2026-06-30 xiaoyue ios TestFlight build 11 simple owner actions trigger

@@ -323,6 +323,11 @@
         color: white;
       }
 
+      .primary.inline-primary {
+        width: auto;
+        margin-top: 0;
+      }
+
       .secondary {
         background: #ffffff;
         color: var(--ink);
@@ -442,6 +447,10 @@
         margin-top: 12px;
       }
 
+      .today-actions {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
       .quick-actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -496,6 +505,10 @@
         font-size: 13px;
         font-weight: 800;
         text-decoration: none;
+      }
+
+      .compact-link {
+        margin-top: 0;
       }
 
       .form-grid {
@@ -664,6 +677,8 @@
       };
       const shouldCountRevenue = (item) => !["CANCELLED", "NO_SHOW"].includes(item.status);
       const isOpenBooking = (item) => !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(item.status);
+      const balanceDue = (item) => Math.max(Number(item.finalAmount || 0) - Number(item.paidAmount || 0), 0);
+      const canCollect = (item) => isUnpaid(item) && balanceDue(item) > 0;
 
       function setTab(tab, options = {}) {
         state.tab = tab;
@@ -875,6 +890,21 @@
         }
       }
 
+      function markPaid(id, amount) {
+        updateBooking(id, {
+          paymentStatus: "PAID",
+          paidAmount: Number(amount || 0)
+        });
+      }
+
+      function completeAndCollect(id, amount) {
+        updateBooking(id, {
+          status: "COMPLETED",
+          paymentStatus: "PAID",
+          paidAmount: Number(amount || 0)
+        });
+      }
+
       async function createBooking(event) {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -1046,6 +1076,22 @@
           <section class="section">
             <div class="section-head">
               <div>
+                <h2 class="section-title">今日服務</h2>
+                <p class="section-note">今天只處理這幾件事</p>
+              </div>
+              <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'today' })">全部</button>
+            </div>
+            <div class="list">
+              ${todayTodo.length ? todayTodo
+                .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt))
+                .slice(0, 4)
+                .map(todayWorkCard)
+                .join("") : `<div class="empty">今天沒有待服務預約</div>`}
+            </div>
+          </section>
+          <section class="section">
+            <div class="section-head">
+              <div>
                 <h2 class="section-title">營運提醒</h2>
                 <p class="section-note">老闆每天先看這裡</p>
               </div>
@@ -1068,8 +1114,45 @@
         `;
       }
 
+      function todayWorkCard(item) {
+        const phone = digits(item.phone);
+        const due = balanceDue(item);
+        const collectAction = canCollect(item)
+          ? `<button class="secondary" onclick="markPaid('${item.id}', ${Number(item.finalAmount || 0)})">收款</button>`
+          : "";
+        const doneAction = canCollect(item)
+          ? `<button class="primary inline-primary" onclick="completeAndCollect('${item.id}', ${Number(item.finalAmount || 0)})">完成收款</button>`
+          : `<button class="primary inline-primary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>`;
+
+        return `
+          <article class="card">
+            <div class="row">
+              <div class="title">
+                ${html(item.customerName)}
+                <small>${fmtDate(item.startsAt)} · ${html(item.service?.name || "")} · ${html(item.staff?.name || "未指派")}</small>
+              </div>
+              <span class="pill ${pillClass(item.status)}">${statusLabel(item.status)}</span>
+            </div>
+            <p class="meta">${due ? `待收 ${money(due)}` : "付款已處理"}${item.note ? ` · ${html(item.note)}` : ""}</p>
+            <div class="actions today-actions">
+              ${phone ? `<a class="link-action compact-link" href="tel:${attr(phone)}">撥打</a>` : ""}
+              ${collectAction}
+              ${doneAction}
+            </div>
+          </article>
+        `;
+      }
+
       function bookingCard(item) {
         const phone = digits(item.phone);
+        const due = balanceDue(item);
+        const paymentText = due ? `待收 ${money(due)}` : "付款已處理";
+        const collectAction = canCollect(item)
+          ? `<button class="secondary" onclick="markPaid('${item.id}', ${Number(item.finalAmount || 0)})">收款</button>`
+          : "";
+        const doneAction = canCollect(item)
+          ? `<button class="secondary" onclick="completeAndCollect('${item.id}', ${Number(item.finalAmount || 0)})">完成收款</button>`
+          : `<button class="secondary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>`;
         return `
           <article class="card">
             <div class="row">
@@ -1079,11 +1162,12 @@
               </div>
               <span class="pill ${pillClass(item.status)}">${statusLabel(item.status)}</span>
             </div>
-            <p class="meta">${html(item.phone || "")}${item.finalAmount ? ` · ${money(item.finalAmount)}` : ""}${item.note ? ` · ${html(item.note)}` : ""}</p>
+            <p class="meta">${html(item.phone || "")}${item.finalAmount ? ` · ${money(item.finalAmount)}` : ""} · ${paymentText}${item.note ? ` · ${html(item.note)}` : ""}</p>
             ${phone ? `<a class="link-action" href="tel:${attr(phone)}">撥打 ${html(item.customerName)}</a>` : ""}
             <div class="actions">
               <button class="secondary" onclick="editBooking('${item.id}')">編輯</button>
-              <button class="secondary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>
+              ${collectAction}
+              ${doneAction}
               <button class="secondary" onclick="updateBooking('${item.id}', { status: 'NO_SHOW' })">爽約</button>
               <button class="danger" onclick="updateBooking('${item.id}', { status: 'CANCELLED' })">取消</button>
             </div>
@@ -1458,6 +1542,8 @@
       window.logout = logout;
       window.load = load;
       window.updateBooking = updateBooking;
+      window.markPaid = markPaid;
+      window.completeAndCollect = completeAndCollect;
       window.createBooking = createBooking;
       window.saveBooking = saveBooking;
       window.checkLine = checkLine;
