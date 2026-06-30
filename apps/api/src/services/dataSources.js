@@ -93,6 +93,12 @@ const fraudDashboardDefaults = {
   advocacy: 'https://165dashboard.tw/CIB_DWS_API/api/PreventionAdvocacy/GetPreventionAdvocacyList'
 };
 
+const moenvPublicAqiKeys = [
+  '4c89a32a-a214-461b-bf29-30ff32a61a8a',
+  'e75b1660-e564-4107-aad5-a8be1f905dd9',
+  'b7df779e-71a6-4148-8379-5afbd441d803'
+];
+
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
   台北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -979,15 +985,24 @@ async function cwaTyphoon(location) {
 }
 
 async function moenvAqi(location) {
-  const key = process.env.MOENV_API_KEY || process.env.EPA_API_KEY;
-  if (!key) return { status: 'not-configured', source: 'MOENV AQX_P_432' };
-  const data = await fetchJson(`https://data.moenv.gov.tw/api/v2/aqx_p_432?api_key=${encodeURIComponent(key)}&format=json&limit=1000&sort=ImportDate%20desc`);
-  const records = data?.records || [];
+  const keys = [process.env.MOENV_API_KEY || process.env.EPA_API_KEY, ...moenvPublicAqiKeys].filter(Boolean);
+  let data = null;
+  let source = 'MOENV AQX_P_432';
+  for (const key of keys) {
+    data = await fetchJson(`https://data.moenv.gov.tw/api/v2/aqx_p_432?api_key=${encodeURIComponent(key)}&format=json&limit=1000&sort=ImportDate%20desc`, { timeoutMs: 7000 });
+    const records = Array.isArray(data) ? data : data?.records;
+    if (records?.length) {
+      if (key !== process.env.MOENV_API_KEY && key !== process.env.EPA_API_KEY) source = 'MOENV AQX_P_432 公開 JSON 檢視';
+      break;
+    }
+  }
+  const records = Array.isArray(data) ? data : data?.records || [];
+  if (!records.length) return { status: 'not-configured', source: 'MOENV AQX_P_432' };
   const matched = records.find(record => sameCity(record.county, location.city)) || records[0];
   if (!matched?.aqi) return { status: 'no-event', source: 'MOENV AQX_P_432', body: `${location.city || '所在地'}目前沒有可用 AQI 資料。` };
   return {
     status: 'live',
-    source: 'MOENV AQX_P_432',
+    source,
     body: `${matched.county}${matched.sitename} AQI ${matched.aqi}，空氣品質 ${matched.status || '已更新'}，主要污染物 ${matched.pollutant || '無'}。`,
     shouldNotify: Number(matched.aqi) >= Number(process.env.AQI_NOTIFY_THRESHOLD || 100)
   };
@@ -1148,11 +1163,16 @@ export function getSourceCoverage() {
         coverage: '全台灣防詐宣導與今日常見手法',
         modules: ['fraud-alert'],
         sources: fraudDashboardDefaults
+      },
+      'moenv-aqi': {
+        coverage: '全台灣空氣品質測站',
+        modules: ['air-quality'],
+        source: 'https://data.gov.tw/dataset/40448'
       }
     },
     keyRequired: {
       cwa: ['rain', 'temperature', 'earthquake', 'typhoon'],
-      moenv: ['air-quality'],
+      moenv: [],
       tdx: ['transit', 'road-incident', 'roadwork']
     },
     configurable: Object.keys(moduleEnvNames).filter(moduleId => !publicDefaults[moduleId] && moduleId !== 'garbage-truck')
