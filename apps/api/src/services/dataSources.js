@@ -8,6 +8,7 @@ const freewayLiveEventsFile = path.resolve(__dirname, '../../data/freeway-live-e
 const fraudDashboardFile = path.resolve(__dirname, '../../data/fraud-dashboard.json');
 const tainanParkingFile = path.resolve(__dirname, '../../data/tainan-parking.json');
 const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parking.json');
+const yilanParkingFile = path.resolve(__dirname, '../../data/yilan-parking.json');
 
 const cityAliases = {
   台北市: '臺北市',
@@ -84,6 +85,9 @@ const parkingDefaults = {
   },
   高雄市: {
     availability: 'https://kpp.tbkc.gov.tw/ParkingLocation/ParkingLotPost'
+  },
+  宜蘭縣: {
+    availability: 'https://opendataap2.e-land.gov.tw/resource/files/2023-02-12/62f4d78b604ba16b8cc1e856dd28d2c3.json'
   }
 };
 
@@ -135,6 +139,7 @@ let ncdrFeedLoadedAt = 0;
 let fraudDashboardCache = null;
 let tainanParkingCache = null;
 let kaohsiungParkingCache = null;
+let yilanParkingCache = null;
 
 const ncdrEventNames = {
   rain: ['降雨'],
@@ -256,6 +261,16 @@ function readKaohsiungParkingFallback() {
     kaohsiungParkingCache = { parkingLots: [] };
   }
   return kaohsiungParkingCache;
+}
+
+function readYilanParkingFallback() {
+  if (yilanParkingCache) return yilanParkingCache;
+  try {
+    yilanParkingCache = JSON.parse(fs.readFileSync(yilanParkingFile, 'utf8'));
+  } catch {
+    yilanParkingCache = [];
+  }
+  return yilanParkingCache;
 }
 
 function moenvRouteFallback(location) {
@@ -783,6 +798,33 @@ async function kaohsiungParking(location) {
   };
 }
 
+async function yilanParking(location) {
+  const url = parkingDefaults[location.city]?.availability;
+  let data = await fetchData(url, { timeoutMs: 7000 });
+  let source = '宜蘭縣停車場停車位即時剩餘數';
+  if (!Array.isArray(data) || !data.length) {
+    data = readYilanParkingFallback();
+    source = '宜蘭縣停車場停車位即時剩餘數快取';
+  }
+  if (!Array.isArray(data)) {
+    return { status: 'no-event', source, body: '宜蘭縣停車場資料源暫時無法連線。' };
+  }
+  const records = data.map(record => ({
+    ...record,
+    name: record.名稱,
+    availablecar: record.小車位剩餘數,
+    totalcar: record.小車位總數
+  }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source, body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source,
+    body: picked.map(record => `${record.名稱 || record.編號}：${parkingAvailabilityText(record.小車位剩餘數)}，總汽車位 ${record.小車位總數 || '未提供'} 格${record.更新時間 ? `，更新 ${record.更新時間}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function parkingInfo(location) {
   const city = canonicalCity(location.city);
   if (city === '臺北市') return taipeiParking({ ...location, city });
@@ -791,6 +833,7 @@ async function parkingInfo(location) {
   if (city === '臺中市') return taichungParking({ ...location, city });
   if (city === '臺南市') return tainanParking({ ...location, city });
   if (city === '高雄市') return kaohsiungParking({ ...location, city });
+  if (city === '宜蘭縣') return yilanParking({ ...location, city });
   return genericConfiguredSource({ moduleId: 'parking' }, location);
 }
 
