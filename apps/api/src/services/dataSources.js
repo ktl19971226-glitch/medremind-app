@@ -7,6 +7,7 @@ const moenvGarbageRoutesFile = path.resolve(__dirname, '../../data/moenv-garbage
 const freewayLiveEventsFile = path.resolve(__dirname, '../../data/freeway-live-events.xml');
 const fraudDashboardFile = path.resolve(__dirname, '../../data/fraud-dashboard.json');
 const tainanParkingFile = path.resolve(__dirname, '../../data/tainan-parking.json');
+const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parking.json');
 
 const cityAliases = {
   台北市: '臺北市',
@@ -80,6 +81,9 @@ const parkingDefaults = {
   },
   台南市: {
     availability: 'https://soa.tainan.gov.tw/Api/Service/Get/91073f40-d251-42cc-9f4c-88e8937c9911'
+  },
+  高雄市: {
+    availability: 'https://kpp.tbkc.gov.tw/ParkingLocation/ParkingLotPost'
   }
 };
 
@@ -129,6 +133,7 @@ let ncdrFeedCache = null;
 let ncdrFeedLoadedAt = 0;
 let fraudDashboardCache = null;
 let tainanParkingCache = null;
+let kaohsiungParkingCache = null;
 
 const ncdrEventNames = {
   rain: ['降雨'],
@@ -240,6 +245,16 @@ function readTainanParkingFallback() {
     tainanParkingCache = { data: [] };
   }
   return tainanParkingCache;
+}
+
+function readKaohsiungParkingFallback() {
+  if (kaohsiungParkingCache) return kaohsiungParkingCache;
+  try {
+    kaohsiungParkingCache = JSON.parse(fs.readFileSync(kaohsiungParkingFile, 'utf8'));
+  } catch {
+    kaohsiungParkingCache = { parkingLots: [] };
+  }
+  return kaohsiungParkingCache;
 }
 
 function moenvRouteFallback(location) {
@@ -727,6 +742,46 @@ async function tainanParking(location) {
   };
 }
 
+async function kaohsiungParking(location) {
+  const url = parkingDefaults[location.city]?.availability;
+  let data = await fetchJson(url, {
+    timeoutMs: 7000,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: 'https://kpp.tbkc.gov.tw/ParkingLocation/ParkingLocation'
+    },
+    body: ''
+  });
+  let source = '高雄市停車場即時資訊';
+  if (!Array.isArray(data?.parkingLots) || !data.parkingLots.length) {
+    data = readKaohsiungParkingFallback();
+    source = '高雄市停車場即時資訊快取';
+  }
+  const rawRecords = Array.isArray(data?.parkingLots) ? data.parkingLots : [];
+  if (!rawRecords.length) {
+    return { status: 'no-event', source, body: '高雄市停車場資料源暫時無法連線。' };
+  }
+  const records = rawRecords.map(record => ({
+    ...record,
+    area: record.areaname,
+    name: record.name,
+    address: record.location,
+    availablecar: record.leftspace,
+    lat: record.lat,
+    lng: record.lng
+  }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source, body: `${location.city}${location.district || ''}目前沒有可用停車場即時剩餘車位資料。` };
+  return {
+    status: 'live',
+    source,
+    body: picked.map(record => `${record.areaname || location.district || ''}${record.name || record.id}：${parkingAvailabilityText(record.leftspace)}，總汽車位 ${record.volumnAuto || record.volumn || '未提供'} 格${record.location ? `，${record.location}` : ''}${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function parkingInfo(location) {
   const city = canonicalCity(location.city);
   if (city === '臺北市') return taipeiParking({ ...location, city });
@@ -734,6 +789,7 @@ async function parkingInfo(location) {
   if (city === '桃園市') return taoyuanParking({ ...location, city });
   if (city === '臺中市') return taichungParking({ ...location, city });
   if (city === '臺南市') return tainanParking({ ...location, city });
+  if (city === '高雄市') return kaohsiungParking({ ...location, city });
   return genericConfiguredSource({ moduleId: 'parking' }, location);
 }
 
