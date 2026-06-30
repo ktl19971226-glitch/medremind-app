@@ -146,6 +146,22 @@
         <label>測試內容</label>
         <input type="text" id="push-test-body" value="這是一則由管理後台發出的原生推播測試。">
       </div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;margin-bottom:12px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>分群收件人</label>
+          <select id="push-segment">
+            <option value="">不使用分群</option>
+            <option value="all_users">全部一般用戶</option>
+            <option value="pro">Pro 用戶</option>
+            <option value="no_push">未註冊推播</option>
+            <option value="low_adherence">近 7 天遵從率低</option>
+            <option value="many_unread">未讀通知 5 則以上</option>
+            <option value="inactive_7d">近 7 天未活躍</option>
+          </select>
+        </div>
+        <button class="btn btn-outline" style="width:auto;" onclick="previewPushSegment()">預覽分群</button>
+      </div>
+      <div id="push-segment-preview" style="font-size:13px;color:var(--text-light);margin:-4px 0 10px;"></div>
       <div class="form-group">
         <label>已選收件人</label>
         <div id="push-selected-users" style="min-height:44px;padding:10px 12px;border:2px solid var(--border);border-radius:10px;background:#fbfcfd;color:var(--text-light);font-size:14px;">尚未選擇用戶</div>
@@ -188,6 +204,20 @@
       <tbody id="users-table"><tr><td colspan="10" style="text-align:center;color:var(--text-light);">載入中...</td></tr></tbody>
     </table>
     </div>
+
+    <div class="section-title">🧾 管理操作紀錄</div>
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;">
+        <div style="font-size:14px;color:var(--text-light);">最近 50 筆管理動作</div>
+        <button class="btn btn-outline btn-sm" onclick="loadAuditLogs()">重新整理</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>時間</th><th>管理員</th><th>動作</th><th>目標</th><th>摘要</th></tr></thead>
+          <tbody id="audit-logs-table"><tr><td colspan="5" style="text-align:center;color:var(--text-light);">載入中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -202,6 +232,16 @@ let booting = false;
 let usersPage = 1;
 const selectedPushUsers = new Map();
 let currentPageUserIds = [];
+const ADMIN_DEVICE_ID_KEY = 'yaojidecare_admin_device_id_v1';
+
+function getAdminDeviceId() {
+  let id = localStorage.getItem(ADMIN_DEVICE_ID_KEY);
+  if (!id) {
+    id = 'admin-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+    localStorage.setItem(ADMIN_DEVICE_ID_KEY, id);
+  }
+  return id;
+}
 
 function showToast(msg, dur = 2000) {
   const el = document.createElement('div');
@@ -269,8 +309,8 @@ async function bootAdminApp() {
   }
   const { status, data } = await api('/api/admin/app-session', {
     method: 'POST',
-    headers: { 'X-Admin-App-Token': bootstrapToken },
-    body: JSON.stringify({ app: 'yaojidecare-admin-ios' })
+    headers: { 'X-Admin-App-Token': bootstrapToken, 'X-Admin-Device-Id': getAdminDeviceId(), 'X-Admin-App-Version': '1.0' },
+    body: JSON.stringify({ app: 'yaojidecare-admin-ios', device_id: getAdminDeviceId(), app_version: '1.0' })
   });
   booting = false;
   if (status !== 200 || !data.token || !data.user) {
@@ -315,6 +355,7 @@ async function loadDashboard() {
   loadAnalytics();
   loadPushAdmin();
   loadUsers(1);
+  loadAuditLogs();
 }
 
 async function deleteUser(id, name) {
@@ -441,7 +482,7 @@ function renderUserRow(u) {
   const actionName = safeName.replace(/'/g, '&#39;');
   const canSelect = u.role !== 'admin';
   const actions = u.role !== 'admin'
-    ? `<button onclick="deleteUser(${id},'${actionName}')" class="btn btn-danger btn-sm" style="margin-right:4px;">刪除</button><button onclick="showResetPassword(${id},'${actionName}')" class="btn btn-outline btn-sm" style="margin-right:4px;">改密</button><button onclick="exportUserCSV(${id},'${actionName}')" class="btn btn-outline btn-sm">匯出</button>`
+    ? `<button onclick="showProManager(${id},'${actionName}',${Number(u.is_pro || 0)},'${escapeHTML(u.expires_at || '')}')" class="btn btn-primary btn-sm" style="margin-right:4px;">Pro</button><button onclick="deleteUser(${id},'${actionName}')" class="btn btn-danger btn-sm" style="margin-right:4px;">刪除</button><button onclick="showResetPassword(${id},'${actionName}')" class="btn btn-outline btn-sm" style="margin-right:4px;">改密</button><button onclick="exportUserCSV(${id},'${actionName}')" class="btn btn-outline btn-sm">匯出</button>`
     : '-';
   return `
     <tr>
@@ -532,13 +573,14 @@ async function sendAdminPushTest() {
   const typedUserId = parseInt(document.getElementById('push-test-user-id').value, 10);
   const userIds = [...selectedPushUsers.keys()];
   if (typedUserId && !userIds.includes(typedUserId)) userIds.push(typedUserId);
+  const segment = document.getElementById('push-segment')?.value || '';
   const title = document.getElementById('push-test-title').value.trim();
   const body = document.getElementById('push-test-body').value.trim();
-  if (!userIds.length) return showToast('請先勾選用戶，或輸入測試用戶 ID');
-  if (!confirm('確定要發送推播/站內通知給 ' + userIds.length + ' 位用戶？')) return;
+  if (!userIds.length && !segment) return showToast('請先勾選用戶、輸入用戶 ID，或選擇分群');
+  if (!confirm('確定要發送推播/站內通知？' + (segment ? '\\n分群：' + document.getElementById('push-segment').selectedOptions[0].textContent : '') + (userIds.length ? '\\n手選：' + userIds.length + ' 位' : ''))) return;
   const { status, data } = await api('/api/admin/push/test', {
     method: 'POST',
-    body: JSON.stringify({ user_ids: userIds, title, body })
+    body: JSON.stringify({ user_ids: userIds, segment, title, body })
   });
   if (status === 200) {
     const sent = data.result?.sent || 0;
@@ -548,9 +590,87 @@ async function sendAdminPushTest() {
     showToast((data.message || '測試完成') + `（${detail}）`, 5000);
     loadPushAdmin();
     loadUsers(usersPage);
+    loadAuditLogs();
   } else {
     showToast(data.error || '測試推播失敗');
   }
+}
+
+async function previewPushSegment() {
+  const segment = document.getElementById('push-segment')?.value || '';
+  const box = document.getElementById('push-segment-preview');
+  if (!segment) {
+    box.textContent = '';
+    return;
+  }
+  box.textContent = '讀取分群中...';
+  const { status, data } = await api('/api/admin/push/segment-preview?segment=' + encodeURIComponent(segment));
+  if (status !== 200) {
+    box.textContent = data.error || '分群讀取失敗';
+    return;
+  }
+  const names = (data.users || []).slice(0, 8).map(u => `${u.name || '未命名'} #${u.id}`).join('、');
+  box.textContent = `分群共 ${Number(data.count || 0)} 位` + (names ? `：${names}` : '');
+}
+
+function showProManager(uid, name, isPro, expiresAt) {
+  const checked = Number(isPro || 0) ? 'checked' : '';
+  const value = expiresAt && expiresAt !== '-' ? String(expiresAt).slice(0, 10) : '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>💳 Pro 權限管理</h2>
+      <div style="font-size:15px;margin-bottom:12px;">${escapeHTML(name)} <span style="color:var(--text-light);">#${Number(uid)}</span></div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><input type="checkbox" id="pro-enabled" ${checked}> 開通 Pro 權限</label>
+      <div class="form-group"><label>到期日（留空代表不自動過期）</label><input type="date" id="pro-expires" value="${escapeHTML(value)}"></div>
+      <div class="form-group"><label>原因 / 備註</label><input type="text" id="pro-reason" placeholder="例：客服補償、測試帳號、手動開通"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="saveProManager(${Number(uid)})">儲存</button>
+        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">取消</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+async function saveProManager(uid) {
+  const isPro = document.getElementById('pro-enabled')?.checked;
+  const expires = document.getElementById('pro-expires')?.value || '';
+  const reason = document.getElementById('pro-reason')?.value || '';
+  const { status, data } = await api('/api/admin/users/' + uid + '/subscription', {
+    method: 'PUT',
+    body: JSON.stringify({ is_pro: isPro, expires_at: expires, reason })
+  });
+  if (status === 200) {
+    showToast(data.message || '已更新 Pro 權限');
+    document.querySelector('.modal-overlay')?.remove();
+    loadUsers(usersPage);
+    loadOverview();
+    loadAuditLogs();
+  } else {
+    showToast(data.error || '更新失敗');
+  }
+}
+
+async function loadAuditLogs() {
+  const { status, data } = await api('/api/admin/audit-logs?limit=50');
+  const tbody = document.getElementById('audit-logs-table');
+  if (!tbody) return;
+  if (status !== 200) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--red);">${escapeHTML(data.error || '載入失敗')}</td></tr>`;
+    return;
+  }
+  const rows = data.logs || [];
+  tbody.innerHTML = rows.length ? rows.map(row => `
+    <tr>
+      <td>${formatDateTime(row.created_at)}</td>
+      <td>${escapeHTML(row.admin_name || ('ID ' + row.admin_user_id))}</td>
+      <td>${escapeHTML(row.action || '-')}</td>
+      <td>${escapeHTML(row.target_type || '-')}${row.target_id ? ' #' + Number(row.target_id) : ''}</td>
+      <td>${escapeHTML(row.summary || '-')}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-light);">尚無操作紀錄</td></tr>';
 }
 
 // 管理員重設密碼

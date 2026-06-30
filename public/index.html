@@ -2251,6 +2251,7 @@
         let aiScanRewardedListenerReady = false;
         let aiScanRewardEarned = false;
         let pendingAiScanAccess = false;
+        let pendingAiScanAccessType = 'free';
         let deferredInstallPrompt = null;
 
         function getTaipeiDateKey() {
@@ -2394,6 +2395,7 @@
                 nextState.rewardedUsed += 1;
                 nextState.rewardCredits += 1;
                 saveAiScanQuota(nextState);
+                pendingAiScanAccessType = 'reward';
                 showToast('已取得 1 次 AI 掃描');
                 prepareAiScanRewardedAd().catch((e) => console.log('Rewarded preload skipped:', e.message));
                 return true;
@@ -2435,9 +2437,34 @@
                     console.log('Subscription status skipped:', e.message);
                 }
             }
-            if (subscriptionStatus?.active) return true;
+            if (subscriptionStatus?.active) {
+                pendingAiScanAccessType = 'pro';
+                return true;
+            }
+            try {
+                const { status, data } = await api('/api/ai-scan/quota');
+                if (status === 200 && data.quota) {
+                    if (data.quota.active_pro) {
+                        pendingAiScanAccessType = 'pro';
+                        return true;
+                    }
+                    if (Number(data.quota.free_remaining || 0) <= 0 && Number(data.quota.reward_remaining || 0) <= 0 && getAiScanQuotaSummary().rewardCredits <= 0) {
+                        showAiScanLimitModal();
+                        return false;
+                    }
+                }
+            } catch (e) {
+                console.log('Server AI quota skipped:', e.message);
+            }
             const summary = getAiScanQuotaSummary();
-            if (summary.freeRemaining > 0 || summary.rewardCredits > 0) return true;
+            if (summary.rewardCredits > 0) {
+                pendingAiScanAccessType = 'reward';
+                return true;
+            }
+            if (summary.freeRemaining > 0) {
+                pendingAiScanAccessType = 'free';
+                return true;
+            }
             showAiScanLimitModal();
             return false;
         }
@@ -3254,6 +3281,7 @@
 
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('access_type', pendingAiScanAccessType || 'free');
             const token = getToken();
 
             // 優先使用 AI 辨識
@@ -3266,6 +3294,11 @@
                 const aiData = await aiRes.json().catch(function() {
                     return { success: false, error: 'AI 服務回應格式錯誤' };
                 });
+                if (aiRes.status === 429) {
+                    showToast(aiData.error || '今日 AI 掃描額度已用完');
+                    resultDiv.style.display = 'none';
+                    return;
+                }
 
                 if (aiData.success && aiData.ai_result) {
                     window._aiResult = aiData.ai_result;
@@ -4027,6 +4060,59 @@
             return syncMedicationLocalNotificationsFromList(data.medications || [], options);
         }
 
+        function appointmentNotificationId(id, offset = 0) {
+            return 88000000 + (Math.abs(Number(id || 0)) % 100000) * 10 + offset;
+        }
+
+        async function cancelAppointmentNotification(id) {
+            if (!LocalNotifications || !id) return;
+            try {
+                await LocalNotifications.cancel({ notifications: [{ id: appointmentNotificationId(id, 0) }, { id: appointmentNotificationId(id, 1) }] });
+            } catch (e) {
+                console.log('取消回診通知略過:', e.message);
+            }
+        }
+
+        async function scheduleAppointmentNotifications(appointments) {
+            if (!isNative || !Array.isArray(appointments)) return 0;
+            if (!LocalNotifications || !nativeNotificationReady) await initNativeNotifications();
+            if (!LocalNotifications || !nativeNotificationReady) return 0;
+            const now = new Date();
+            const notifications = [];
+            for (const a of appointments) {
+                if (!a?.id || !a.appointment_date) continue;
+                await cancelAppointmentNotification(a.id);
+                const morning = new Date(`${a.appointment_date}T09:00:00`);
+                const previous = new Date(morning.getTime() - 86400000);
+                if (previous > now) {
+                    notifications.push({
+                        id: appointmentNotificationId(a.id, 0),
+                        title: '明天回診提醒',
+                        body: `${a.title || '回診'}${a.clinic_name ? ' · ' + a.clinic_name : ''}`,
+                        schedule: { at: previous },
+                        extra: { type: 'appointment_reminder', appointmentId: String(a.id) }
+                    });
+                }
+                if (morning > now) {
+                    notifications.push({
+                        id: appointmentNotificationId(a.id, 1),
+                        title: '今天回診提醒',
+                        body: `${a.title || '回診'}${a.clinic_name ? ' · ' + a.clinic_name : ''}${a.notes ? ' · ' + a.notes : ''}`,
+                        schedule: { at: morning },
+                        extra: { type: 'appointment_reminder', appointmentId: String(a.id) }
+                    });
+                }
+            }
+            if (!notifications.length) return 0;
+            try {
+                await LocalNotifications.schedule({ notifications });
+                return notifications.length;
+            } catch (e) {
+                console.log('回診通知排程略過:', e.message);
+                return 0;
+            }
+        }
+
         // 初始化
         initNativeNotifications();
         if (getToken()) loadSettings();
@@ -4532,7 +4618,7 @@
             const notes = document.getElementById('apt-notes').value.trim();
             if (!title || !date) return showToast('請填寫標題和日期');
             const { status, data } = await api('/api/appointments', { method: 'POST', body: JSON.stringify({ title, appointment_date: date, clinic_name: clinic, notes }) });
-            if (status === 200) { document.getElementById('apt-modal').remove(); showToast('回診已設定'); loadAppointments(); }
+            if (status === 200) { document.getElementById('apt-modal').remove(); showToast('回診已設定，手機通知會同步排程'); loadAppointments(); }
             else showToast(data.error || '設定失敗');
         }
         async function loadAppointments() {
@@ -4541,6 +4627,7 @@
                 document.getElementById('appointments-list').innerHTML = '<div style="color:var(--text-light);font-size:14px;text-align:center;padding:8px;">尚無回診</div>';
                 return;
             }
+            scheduleAppointmentNotifications(data.appointments).catch(e => console.log('回診通知同步略過:', e.message));
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('appointments-list').innerHTML = data.appointments.map(a => {
                 const isDue = a.appointment_date === today;
@@ -4554,6 +4641,7 @@
         }
         async function deleteAppointment(id) {
             await api('/api/appointments/' + id, { method: 'DELETE' });
+            await cancelAppointmentNotification(id);
             loadAppointments();
         }
 
@@ -5210,6 +5298,10 @@
                     '<div class="tier-card" style="border-color:rgba(39,174,96,0.35);background:#f0fff5;"><b>Pro</b>' + (data.tiers?.premium || []).map(f => '<div>⭐ ' + escapeHTML(f) + '</div>').join('') + '</div>' +
                     '</div>' +
                     '<div style="font-size:13px;color:var(--text-light);background:#f8f9fa;padding:10px;border-radius:8px;margin-top:12px;line-height:1.6;">目前方案：' + (data.active ? '藥護家 Pro' : '免費版') + '<br>' + setupNotice + '</div>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">' +
+                    '<button onclick="showMonthlyReport()" class="btn btn-outline">30天月報</button>' +
+                    '<button onclick="showDoctorMedicationList()" class="btn btn-outline">醫師用藥清單</button>' +
+                    '</div>' +
                     payButtons +
                     '<button onclick="document.getElementById(\'sub-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:12px;">關閉</button></div></div>';
                 document.getElementById('sub-modal')?.addEventListener('click', e => { if (e.target.id === 'sub-modal') e.target.remove(); });
@@ -5218,6 +5310,53 @@
                         if (document.getElementById('sub-modal')) showSubscriptionInfo();
                     }).catch(e => console.log('RevenueCat offerings skipped:', e.message));
                 }
+            });
+        }
+
+        function showMonthlyReport() {
+            api('/api/report/monthly').then(({ data }) => {
+                const health = data.health || [];
+                const lowStock = data.lowStock || [];
+                const changes = data.changes || [];
+                const adherence = data.adherence || {};
+                document.getElementById('modal-container').innerHTML =
+                    '<div class="modal-overlay" id="report-modal"><div class="modal" style="max-height:90vh;">' +
+                    '<h3>📄 30 天健康月報</h3>' +
+                    '<div style="background:#e8f5e9;padding:12px;border-radius:8px;margin:10px 0;">' +
+                    '<div><b>期間：</b>' + escapeHTML(data.period?.start || '') + ' ~ ' + escapeHTML(data.period?.end || '') + '</div>' +
+                    '<div><b>用藥遵從率：</b>' + Number(adherence.rate || 0) + '%（' + Number(adherence.taken || 0) + '/' + Number(adherence.total || 0) + '）</div>' +
+                    '<div><b>未打卡：</b>' + Number(adherence.missed || 0) + ' 次</div></div>' +
+                    '<h4>❤️ 最近健康紀錄</h4>' +
+                    (health.length ? health.slice(0, 8).map(h => '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;">' + escapeHTML(h.record_date) + ' · 血壓 ' + escapeHTML((h.blood_pressure_sys || '-') + '/' + (h.blood_pressure_dia || '-')) + ' · 血糖 ' + escapeHTML(h.blood_sugar || '-') + ' · 體重 ' + escapeHTML(h.weight || '-') + '</div>').join('') : '<div style="color:var(--text-light);font-size:14px;">尚無健康紀錄</div>') +
+                    '<h4 style="margin-top:12px;">💊 低庫存</h4>' +
+                    (lowStock.length ? lowStock.map(m => '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;">' + escapeHTML(m.drug_name) + ' · 剩 ' + Number(m.days_left || 0) + ' 天</div>').join('') : '<div style="color:var(--text-light);font-size:14px;">目前沒有低庫存</div>') +
+                    '<h4 style="margin-top:12px;">🕘 近期異動</h4>' +
+                    (changes.length ? changes.slice(0, 6).map(c => '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;">' + escapeHTML(c.drug_name || '-') + ' · ' + escapeHTML(c.change_type || '-') + ' · ' + escapeHTML(c.created_at || '') + '</div>').join('') : '<div style="color:var(--text-light);font-size:14px;">尚無異動</div>') +
+                    '<button onclick="window.print()" class="btn btn-primary" style="width:100%;margin-top:12px;">列印 / 存成 PDF</button>' +
+                    '<button onclick="document.getElementById(\'report-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:8px;">關閉</button></div></div>';
+                document.getElementById('report-modal')?.addEventListener('click', e => { if (e.target.id === 'report-modal') e.target.remove(); });
+            });
+        }
+
+        function showDoctorMedicationList() {
+            api('/api/emergency-card').then(({ data }) => {
+                const meds = data.medications || [];
+                const latest = data.latestHealth || {};
+                document.getElementById('modal-container').innerHTML =
+                    '<div class="modal-overlay" id="doctor-list-modal"><div class="modal" style="max-height:90vh;">' +
+                    '<h3>🩺 給醫師看的用藥清單</h3>' +
+                    '<div style="background:#f8f9fa;padding:12px;border-radius:8px;margin:10px 0;font-size:14px;">' +
+                    '<div><b>姓名：</b>' + escapeHTML(data.user?.name || '') + '</div>' +
+                    '<div><b>電話：</b>' + escapeHTML(data.user?.phone || '-') + '</div>' +
+                    '<div><b>近 7 天遵從率：</b>' + Number(data.adherence?.rate ?? 100) + '%</div>' +
+                    (latest.record_date ? '<div><b>最近健康：</b>' + escapeHTML(latest.record_date) + ' 血壓 ' + escapeHTML((latest.blood_pressure_sys || '-') + '/' + (latest.blood_pressure_dia || '-')) + ' 血糖 ' + escapeHTML(latest.blood_sugar || '-') + '</div>' : '') +
+                    '</div>' +
+                    '<h4>目前用藥</h4>' +
+                    (meds.length ? meds.map(m => '<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;"><b>' + escapeHTML(m.drug_name) + '</b> · ' + escapeHTML(m.dosage || '') + '<br><span style="color:var(--text-light);">' + escapeHTML((m.remind_time || '').replace(/[\\[\\]"]/g, '')) + ' · ' + escapeHTML(m.usage_notes || '') + '</span></div>').join('') : '<div style="color:var(--text-light);font-size:14px;">尚無用藥</div>') +
+                    '<div style="font-size:12px;color:var(--text-light);margin-top:10px;">此清單由使用者自行記錄產生，請以藥袋、處方箋與醫療專業人員判斷為準。</div>' +
+                    '<button onclick="window.print()" class="btn btn-primary" style="width:100%;margin-top:12px;">列印 / 存成 PDF</button>' +
+                    '<button onclick="document.getElementById(\'doctor-list-modal\').remove()" class="btn btn-outline" style="width:100%;margin-top:8px;">關閉</button></div></div>';
+                document.getElementById('doctor-list-modal')?.addEventListener('click', e => { if (e.target.id === 'doctor-list-modal') e.target.remove(); });
             });
         }
 

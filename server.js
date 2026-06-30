@@ -45,6 +45,12 @@ const PRO_MONTHLY_PRODUCT_ID = process.env.PRO_MONTHLY_PRODUCT_ID || 'yaojidecar
 const PRO_YEARLY_PRODUCT_ID = process.env.PRO_YEARLY_PRODUCT_ID || 'yaojidecare_pro_yearly';
 const REVENUECAT_IOS_API_KEY = process.env.REVENUECAT_IOS_API_KEY || '';
 const REVENUECAT_ANDROID_API_KEY = process.env.REVENUECAT_ANDROID_API_KEY || '';
+const ADMIN_APP_SESSION_HOURS = Number(process.env.ADMIN_APP_SESSION_HOURS || 12);
+const ENABLE_DB_RESTORE = process.env.ENABLE_DB_RESTORE === 'true';
+const DB_AUTO_BACKUP_DIR = process.env.DB_AUTO_BACKUP_DIR || path.join(__dirname, 'backups', 'auto');
+const DB_AUTO_BACKUP_KEEP_DAYS = Number(process.env.DB_AUTO_BACKUP_KEEP_DAYS || 14);
+const AI_SCAN_DAILY_FREE_LIMIT = Number(process.env.AI_SCAN_DAILY_FREE_LIMIT || 1);
+const AI_SCAN_DAILY_REWARD_LIMIT = Number(process.env.AI_SCAN_DAILY_REWARD_LIMIT || 3);
 const FIREBASE_SERVICE_ACCOUNT_JSON = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
 const FIREBASE_SERVICE_ACCOUNT_BASE64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || '';
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || '';
@@ -485,6 +491,127 @@ function dbGet(sql, params = []) { const rows = dbAll(sql, params); return rows[
 function dbRun(sql, params = []) { db.run(sql, params); return dbAll('SELECT last_insert_rowid() AS id')[0]; }
 function saveDB() { fs.writeFileSync(DB_FILE, Buffer.from(db.export())); }
 
+function taipeiDateKey(date = new Date()) {
+    return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+}
+
+function sanitizeAuditValue(value, maxLength = 4000) {
+    if (value === undefined) return null;
+    const raw = typeof value === 'string' ? value : JSON.stringify(value);
+    return String(raw || '').slice(0, maxLength);
+}
+
+function logAdminAction(req, action, { targetType = null, targetId = null, summary = '', before = null, after = null } = {}) {
+    try {
+        dbRun(
+            `INSERT INTO admin_audit_logs
+             (admin_user_id, action, target_type, target_id, summary, before_value, after_value, ip_address, user_agent)
+             VALUES (?,?,?,?,?,?,?,?,?)`,
+            [
+                req?.user?.id || null,
+                String(action || 'admin_action').slice(0, 80),
+                targetType ? String(targetType).slice(0, 80) : null,
+                targetId || null,
+                String(summary || '').slice(0, 500),
+                sanitizeAuditValue(before),
+                sanitizeAuditValue(after),
+                String(req?.ip || req?.headers?.['x-forwarded-for'] || '').slice(0, 80),
+                String(req?.headers?.['user-agent'] || '').slice(0, 300)
+            ]
+        );
+    } catch (e) {
+        console.error('Admin audit log failed:', e.message);
+    }
+}
+
+function createAutomaticDBBackup(reason = 'auto') {
+    try {
+        if (!fs.existsSync(DB_FILE)) return null;
+        fs.mkdirSync(DB_AUTO_BACKUP_DIR, { recursive: true });
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        const out = path.join(DB_AUTO_BACKUP_DIR, `medremind-${reason}-${ts}.db`);
+        saveDB();
+        fs.copyFileSync(DB_FILE, out);
+        const keepMs = Math.max(1, DB_AUTO_BACKUP_KEEP_DAYS) * 86400000;
+        for (const file of fs.readdirSync(DB_AUTO_BACKUP_DIR)) {
+            if (!/^medremind-.*\.db$/.test(file)) continue;
+            const full = path.join(DB_AUTO_BACKUP_DIR, file);
+            const st = fs.statSync(full);
+            if (Date.now() - st.mtimeMs > keepMs) fs.unlinkSync(full);
+        }
+        return out;
+    } catch (e) {
+        console.error('Automatic DB backup failed:', e.message);
+        return null;
+    }
+}
+
+function buildAdminSession(admin, req) {
+    const sessionId = createRawToken();
+    const expires = new Date(Date.now() + Math.max(1, ADMIN_APP_SESSION_HOURS) * 3600000).toISOString();
+    const deviceId = String(req.headers['x-admin-device-id'] || req.body?.device_id || '').trim().slice(0, 120);
+    const appVersion = String(req.body?.app_version || req.headers['x-admin-app-version'] || '').trim().slice(0, 40);
+    dbRun(
+        `INSERT INTO admin_app_sessions (session_id, admin_user_id, device_id, app_version, expires_at)
+         VALUES (?,?,?,?,?)`,
+        [sessionId, admin.id, deviceId || null, appVersion || null, expires]
+    );
+    return { sessionId, expires };
+}
+
+function verifyAdminAppSession(payload) {
+    if (!payload?.adminApp || !payload?.session_id) return true;
+    const row = dbGet(
+        `SELECT id FROM admin_app_sessions
+         WHERE session_id=? AND admin_user_id=? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+        [payload.session_id, payload.id]
+    );
+    if (!row) return false;
+    dbRun('UPDATE admin_app_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?', [payload.session_id]);
+    return true;
+}
+
+function getAiScanUsage(userId, dateKey = taipeiDateKey()) {
+    let row = dbGet('SELECT * FROM ai_scan_usage WHERE user_id=? AND usage_date=?', [userId, dateKey]);
+    if (!row) {
+        dbRun('INSERT INTO ai_scan_usage (user_id, usage_date) VALUES (?,?)', [userId, dateKey]);
+        row = dbGet('SELECT * FROM ai_scan_usage WHERE user_id=? AND usage_date=?', [userId, dateKey]);
+    }
+    return row;
+}
+
+function aiScanQuotaSummary(userId, isPro = false) {
+    const row = getAiScanUsage(userId);
+    return {
+        date: row.usage_date,
+        active_pro: Boolean(isPro),
+        free_used: Number(row.free_used || 0),
+        free_limit: AI_SCAN_DAILY_FREE_LIMIT,
+        free_remaining: Math.max(0, AI_SCAN_DAILY_FREE_LIMIT - Number(row.free_used || 0)),
+        reward_used: Number(row.reward_used || 0),
+        reward_limit: AI_SCAN_DAILY_REWARD_LIMIT,
+        reward_remaining: Math.max(0, AI_SCAN_DAILY_REWARD_LIMIT - Number(row.reward_used || 0)),
+        pro_used: Number(row.pro_used || 0)
+    };
+}
+
+function consumeAiScanQuota(userId, isPro, accessType = 'free') {
+    const type = String(accessType || 'free').toLowerCase();
+    const row = getAiScanUsage(userId);
+    if (isPro) {
+        dbRun('UPDATE ai_scan_usage SET pro_used=COALESCE(pro_used,0)+1, updated_at=CURRENT_TIMESTAMP WHERE id=?', [row.id]);
+        return { ok: true, type: 'pro' };
+    }
+    if (type === 'reward') {
+        if (Number(row.reward_used || 0) >= AI_SCAN_DAILY_REWARD_LIMIT) return { ok: false, reason: 'reward_limit' };
+        dbRun('UPDATE ai_scan_usage SET reward_used=COALESCE(reward_used,0)+1, updated_at=CURRENT_TIMESTAMP WHERE id=?', [row.id]);
+        return { ok: true, type: 'reward' };
+    }
+    if (Number(row.free_used || 0) >= AI_SCAN_DAILY_FREE_LIMIT) return { ok: false, reason: 'free_limit' };
+    dbRun('UPDATE ai_scan_usage SET free_used=COALESCE(free_used,0)+1, updated_at=CURRENT_TIMESTAMP WHERE id=?', [row.id]);
+    return { ok: true, type: 'free' };
+}
+
 // 中間件
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
@@ -535,7 +662,11 @@ app.use(express.static('public', {
 function auth(req, res, next) {
     const token = (req.headers['authorization'] || '').split(' ')[1];
     if (!token) return res.status(401).json({ error: '請先登入' });
-    try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        if (!verifyAdminAppSession(req.user)) return res.status(403).json({ error: '後台 App session 已失效，請重新驗證' });
+        next();
+    }
     catch (e) { res.status(403).json({ error: '登入已過期' }); }
 }
 
@@ -564,6 +695,8 @@ function deleteUserData(uid) {
     dbRun('DELETE FROM family_messages WHERE sender_id=? OR target_user_id=?', [uid, uid]);
     dbRun('DELETE FROM notifications WHERE user_id=?', [uid]);
     dbRun('DELETE FROM push_tokens WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM subscriptions WHERE user_id=?', [uid]);
+    dbRun('DELETE FROM ai_scan_usage WHERE user_id=?', [uid]);
     dbRun('DELETE FROM user_settings WHERE user_id=?', [uid]);
     dbRun('DELETE FROM medication_changes WHERE user_id=?', [uid]);
     dbRun('DELETE FROM users WHERE id=?', [uid]);
@@ -613,6 +746,45 @@ async function init() {
         "ALTER TABLE subscriptions ADD COLUMN store TEXT",
         "ALTER TABLE subscriptions ADD COLUMN raw_customer_info TEXT",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)",
+        `CREATE TABLE IF NOT EXISTS admin_audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admin_user_id INTEGER,
+            action TEXT NOT NULL,
+            target_type TEXT,
+            target_id INTEGER,
+            summary TEXT,
+            before_value TEXT,
+            after_value TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        "CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin ON admin_audit_logs(admin_user_id)",
+        `CREATE TABLE IF NOT EXISTS admin_app_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT UNIQUE NOT NULL,
+            admin_user_id INTEGER NOT NULL,
+            device_id TEXT,
+            app_version TEXT,
+            expires_at DATETIME NOT NULL,
+            revoked_at DATETIME,
+            last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        "CREATE INDEX IF NOT EXISTS idx_admin_app_sessions_admin ON admin_app_sessions(admin_user_id)",
+        `CREATE TABLE IF NOT EXISTS ai_scan_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            usage_date DATE NOT NULL,
+            free_used INTEGER DEFAULT 0,
+            reward_used INTEGER DEFAULT 0,
+            pro_used INTEGER DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, usage_date)
+        )`,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_scan_usage_user_date ON ai_scan_usage(user_id, usage_date)",
         "ALTER TABLE user_settings ADD COLUMN simple_mode INTEGER DEFAULT 0",
         "ALTER TABLE user_settings ADD COLUMN pin_code TEXT",
         "ALTER TABLE user_settings ADD COLUMN pin_enabled INTEGER DEFAULT 0",
@@ -664,6 +836,8 @@ async function init() {
         SET email_verified=1, email_verified_at=COALESCE(email_verified_at, created_at)
         WHERE email_verified=0 AND email_verification_token_hash IS NULL`);
     saveDB();
+    createAutomaticDBBackup('startup');
+    setInterval(() => createAutomaticDBBackup('daily'), 24 * 3600000).unref?.();
 
     function logMedicationChange(userId, medicationId, drugName, changeType, beforeValue, afterValue) {
         dbRun(
@@ -967,14 +1141,22 @@ async function init() {
         const admin = (ADMIN_EMAIL && dbGet('SELECT * FROM users WHERE email=? AND role=?', [normalizeEmail(ADMIN_EMAIL), 'admin']))
             || dbGet('SELECT * FROM users WHERE role=? ORDER BY id LIMIT 1', ['admin']);
         if (!admin) return res.status(500).json({ error: '找不到管理員帳號' });
+        const session = buildAdminSession(admin, req);
         const token = jwt.sign(
-            { id: admin.id, name: admin.name, email: admin.email, role: 'admin', adminApp: true },
+            { id: admin.id, name: admin.name, email: admin.email, role: 'admin', adminApp: true, session_id: session.sessionId },
             JWT_SECRET,
-            { expiresIn: '30d' }
+            { expiresIn: `${Math.max(1, ADMIN_APP_SESSION_HOURS)}h` }
         );
+        logAdminAction({ ...req, user: { id: admin.id } }, 'admin_app_session.create', {
+            targetType: 'admin_app_session',
+            summary: '後台 App 建立短效 session',
+            after: { expires_at: session.expires, device_id: req.headers['x-admin-device-id'] || req.body?.device_id || null }
+        });
+        saveDB();
         res.json({
             message: '後台 App 驗證成功',
             token,
+            expires_at: session.expires,
             user: {
                 id: admin.id,
                 name: admin.name || ADMIN_NAME,
@@ -1294,6 +1476,9 @@ async function init() {
         if (!ru || !ru.id) return res.status(404).json({ error:'找不到此用戶' });
         if (ru.id===req.user.id) return res.status(400).json({ error:'不能加入自己' });
         if (dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [req.user.id, ru.id])) return res.status(400).json({ error:'此家人已在清單中' });
+        const sub = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [req.user.id]);
+        const memberCount = dbGet('SELECT COUNT(*) AS c FROM family_members WHERE user_id=?', [req.user.id])?.c || 0;
+        if (!isSubscriptionActive(sub) && memberCount >= 1) return res.status(403).json({ error: '免費版最多 1 位家人照護；升級 Pro 可加入多位家人' });
         dbRun('INSERT INTO family_members (user_id,related_user_id,relationship,permission_level) VALUES (?,?,?,?)', [req.user.id, ru.id, relationship, 'view']);
         const rr = inverseFamilyRelationship(relationship);
         if (!dbGet('SELECT id FROM family_members WHERE user_id=? AND related_user_id=?', [ru.id, req.user.id]))
@@ -1304,9 +1489,14 @@ async function init() {
 
     app.post('/api/family/invite', auth, (req, res) => {
         const relationship = normalizeFamilyRelationship(req.body.relationship);
+        const sub = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [req.user.id]);
+        const isPro = isSubscriptionActive(sub);
+        const memberCount = dbGet('SELECT COUNT(*) AS c FROM family_members WHERE user_id=?', [req.user.id])?.c || 0;
+        if (!isPro && memberCount >= 1) return res.status(403).json({ error: '免費版最多 1 位家人照護；升級 Pro 可邀請多位家人' });
         dbRun('DELETE FROM family_invites WHERE inviter_user_id=? AND used_by IS NULL AND expires_at IS NOT NULL AND expires_at < ?', [req.user.id, new Date().toISOString()]);
         const active = dbGet('SELECT COUNT(*) AS c FROM family_invites WHERE inviter_user_id=? AND used_by IS NULL AND (expires_at IS NULL OR expires_at >= ?)', [req.user.id, new Date().toISOString()]);
-        if ((active?.c || 0) >= 10) return res.status(429).json({ error: '有效邀請碼太多，請等舊邀請過期後再產生' });
+        const inviteLimit = isPro ? 10 : 1;
+        if ((active?.c || 0) >= inviteLimit) return res.status(429).json({ error: '有效邀請碼太多，請等舊邀請過期後再產生' });
         const code = createFamilyInviteCode();
         const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
         dbRun('INSERT INTO family_invites (inviter_user_id, code, relationship, expires_at) VALUES (?,?,?,?)', [req.user.id, code, relationship, expiresAt]);
@@ -1491,10 +1681,24 @@ async function init() {
     
     // ====== AI 精準辨識藥物 API（Gemini Vision）======
     const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+    app.get('/api/ai-scan/quota', auth, (req, res) => {
+        const sub = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [req.user.id]);
+        res.json({ quota: aiScanQuotaSummary(req.user.id, isSubscriptionActive(sub)) });
+    });
     
     app.post('/api/drugs/ai-scan', auth, upload.single('image'), async (req, res) => {
         if (!req.file) return res.status(400).json({ error: '請上傳照片' });
         if (!GEMINI_API_KEY) return res.status(503).json({ error: 'AI 識別服務尚未設定' });
+        const sub = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [req.user.id]);
+        const quota = consumeAiScanQuota(req.user.id, isSubscriptionActive(sub), req.body?.access_type || 'free');
+        if (!quota.ok) {
+            const summary = aiScanQuotaSummary(req.user.id, isSubscriptionActive(sub));
+            return res.status(429).json({
+                error: quota.reason === 'reward_limit' ? '今日廣告兌換 AI 掃描已用完' : '今日免費 AI 掃描已用完',
+                quota: summary
+            });
+        }
         
         try {
             const base64 = req.file.buffer.toString('base64');
@@ -1564,6 +1768,7 @@ async function init() {
             res.json({
                 success: true,
                 method: 'ai',
+                quota: aiScanQuotaSummary(req.user.id, isSubscriptionActive(sub)),
                 ai_result: {
                     drug_name: parsed.drug_name || '',
                     drug_name_en: parsed.drug_name_en || null,
@@ -1584,6 +1789,7 @@ async function init() {
                 success: false,
                 method: 'ai',
                 error: err.message,
+                quota: aiScanQuotaSummary(req.user.id, isSubscriptionActive(sub)),
                 message: 'AI 辨識失敗，請改用一般掃描'
             });
         }
@@ -1811,6 +2017,41 @@ async function init() {
         next();
     }
 
+    function adminSegmentCondition(segment) {
+        const key = String(segment || '').trim();
+        if (key === 'all_users') return { where: "COALESCE(u.role,'user')!='admin'", params: [] };
+        if (key === 'pro') return { where: "COALESCE(u.role,'user')!='admin' AND COALESCE(s.is_pro,0)=1 AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)", params: [] };
+        if (key === 'no_push') return { where: "COALESCE(u.role,'user')!='admin' AND NOT EXISTS (SELECT 1 FROM push_tokens pt WHERE pt.user_id=u.id AND pt.enabled=1)", params: [] };
+        if (key === 'low_adherence') {
+            const d7 = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+            return {
+                where: `COALESCE(u.role,'user')!='admin'
+                    AND (SELECT COUNT(*) FROM medication_logs ml WHERE ml.user_id=u.id AND ml.log_date>=?) > 0
+                    AND ((SELECT COALESCE(SUM(taken_status),0) FROM medication_logs ml WHERE ml.user_id=u.id AND ml.log_date>=?) * 100.0 /
+                         (SELECT COUNT(*) FROM medication_logs ml WHERE ml.user_id=u.id AND ml.log_date>=?)) < 75`,
+                params: [d7, d7, d7]
+            };
+        }
+        if (key === 'many_unread') return { where: "COALESCE(u.role,'user')!='admin' AND (SELECT COUNT(*) FROM notifications n WHERE n.user_id=u.id AND COALESCE(n.status,'unread')='unread') >= 5", params: [] };
+        if (key === 'inactive_7d') {
+            const d7 = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+            return { where: "COALESCE(u.role,'user')!='admin' AND NOT EXISTS (SELECT 1 FROM medication_logs ml WHERE ml.user_id=u.id AND ml.log_date>=?)", params: [d7] };
+        }
+        return { where: '', params: [] };
+    }
+
+    function loadAdminSegmentUsers(segment, limit = 200) {
+        const cond = adminSegmentCondition(segment);
+        if (!cond.where) return [];
+        return dbAll(`
+            SELECT u.id, u.name
+            FROM users u
+            LEFT JOIN subscriptions s ON s.user_id=u.id
+            WHERE ${cond.where}
+            ORDER BY u.created_at DESC
+            LIMIT ?`, [...cond.params, Math.min(500, Math.max(1, Number(limit || 200)))]);
+    }
+
     // 管理員儀表板摘要
     app.get('/api/admin/stats', auth, adminAuth, (req, res) => {
         const totalUsers = dbGet('SELECT COUNT(*) AS cnt FROM users')?.cnt || 0;
@@ -1940,11 +2181,25 @@ async function init() {
         });
     });
 
+    app.get('/api/admin/push/segment-preview', auth, adminAuth, (req, res) => {
+        const segment = String(req.query.segment || '');
+        const users = loadAdminSegmentUsers(segment, 500);
+        res.json({
+            segment,
+            count: users.length,
+            users: users.slice(0, 50)
+        });
+    });
+
     app.post('/api/admin/push/test', auth, adminAuth, async (req, res) => {
         const requestedIds = Array.isArray(req.body.user_ids)
             ? req.body.user_ids
             : (req.body.user_id ? [req.body.user_id] : []);
-        const userIds = [...new Set(requestedIds.map(id => parseInt(id, 10)).filter(Boolean))].slice(0, 200);
+        const segmentUsers = req.body.segment ? loadAdminSegmentUsers(req.body.segment, req.body.segment_limit || 200) : [];
+        const userIds = [...new Set([
+            ...requestedIds.map(id => parseInt(id, 10)).filter(Boolean),
+            ...segmentUsers.map(u => Number(u.id || 0)).filter(Boolean)
+        ])].slice(0, 500);
         if (userIds.length === 0) return res.status(400).json({ error: '請至少選擇一位用戶' });
         const title = String(req.body.title || '藥護家後台測試通知').trim().slice(0, 120);
         const body = String(req.body.body || '這是一則由管理後台發出的原生推播測試。').trim().slice(0, 240);
@@ -1987,11 +2242,18 @@ async function init() {
                 skipped: nativeSkipped,
                 no_token_users: noTokenUsers,
                 user_count: users.length,
-                requested_count: userIds.length
+                requested_count: userIds.length,
+                segment: req.body.segment || null
             },
             results,
             config: getPushConfigStatus()
         });
+        logAdminAction(req, 'push.send', {
+            targetType: 'notification',
+            summary: `${summary}；標題：${title}`,
+            after: { user_ids: userIds, segment: req.body.segment || null, title, body }
+        });
+        saveDB();
     });
 
     // 管理員查看所有用戶
@@ -2043,7 +2305,14 @@ async function init() {
     app.delete('/api/admin/users/:id', auth, adminAuth, (req, res) => {
         const uid = parseInt(req.params.id);
         if (uid === req.user.id) return res.status(400).json({ error: '不能刪除自己' });
+        const user = dbGet('SELECT id, name, email, account_code FROM users WHERE id=?', [uid]);
         deleteUserData(uid);
+        logAdminAction(req, 'user.delete', {
+            targetType: 'user',
+            targetId: uid,
+            summary: `刪除用戶 ${user?.name || user?.account_code || uid}`,
+            before: user
+        });
         saveDB();
         res.json({ message: '用戶及相關資料已刪除' });
     });
@@ -2105,6 +2374,69 @@ async function init() {
             notifications,
             adherence: { sevenDays: adherence7, thirtyDays: adherence30 }
         });
+    });
+
+    app.put('/api/admin/users/:id/subscription', auth, adminAuth, (req, res) => {
+        const uid = parseInt(req.params.id, 10);
+        const user = dbGet('SELECT id, name, email, account_code FROM users WHERE id=?', [uid]);
+        if (!user) return res.status(404).json({ error: '用戶不存在' });
+        const before = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [uid]);
+        const isPro = req.body?.is_pro === true || req.body?.is_pro === 1 || req.body?.is_pro === '1';
+        const expiresAt = req.body?.expires_at ? String(req.body.expires_at).trim() : null;
+        if (expiresAt && !/^\d{4}-\d{2}-\d{2}/.test(expiresAt)) return res.status(400).json({ error: '到期日格式不正確' });
+        const reason = String(req.body?.reason || '').trim().slice(0, 240);
+        const plan = isPro ? String(req.body?.plan || 'pro_manual').trim().slice(0, 80) : 'free';
+        const product = isPro ? String(req.body?.product_identifier || 'manual_admin_grant').trim().slice(0, 120) : null;
+        dbRun(
+            `INSERT INTO subscriptions (user_id, plan, entitlement, product_identifier, store, is_pro, expires_at, source, raw_customer_info, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+             ON CONFLICT(user_id) DO UPDATE SET
+                plan=excluded.plan,
+                entitlement=excluded.entitlement,
+                product_identifier=excluded.product_identifier,
+                store=excluded.store,
+                is_pro=excluded.is_pro,
+                expires_at=excluded.expires_at,
+                source=excluded.source,
+                raw_customer_info=excluded.raw_customer_info,
+                updated_at=CURRENT_TIMESTAMP`,
+            [
+                uid,
+                plan,
+                SUBSCRIPTION_ENTITLEMENT_ID,
+                product,
+                isPro ? 'manual' : null,
+                isPro ? 1 : 0,
+                isPro ? (expiresAt || null) : new Date().toISOString(),
+                'admin_manual',
+                JSON.stringify({ reason, admin_user_id: req.user.id, updated_at: new Date().toISOString() }).slice(0, 60000)
+            ]
+        );
+        const after = dbGet('SELECT * FROM subscriptions WHERE user_id=?', [uid]);
+        logAdminAction(req, isPro ? 'subscription.grant' : 'subscription.revoke', {
+            targetType: 'user',
+            targetId: uid,
+            summary: `${isPro ? '開通' : '取消'} ${user.name || user.account_code || uid} Pro 權限${reason ? '：' + reason : ''}`,
+            before,
+            after
+        });
+        saveDB();
+        res.json({
+            message: isPro ? 'Pro 權限已開通' : 'Pro 權限已取消',
+            subscription: after
+        });
+    });
+
+    app.get('/api/admin/audit-logs', auth, adminAuth, (req, res) => {
+        const limit = Math.min(100, Math.max(10, parseInt(req.query.limit, 10) || 50));
+        const rows = dbAll(`
+            SELECT l.id, l.admin_user_id, u.name AS admin_name, l.action, l.target_type, l.target_id,
+                   l.summary, l.ip_address, l.created_at
+            FROM admin_audit_logs l
+            LEFT JOIN users u ON u.id = l.admin_user_id
+            ORDER BY l.created_at DESC
+            LIMIT ?`, [limit]);
+        res.json({ logs: rows });
     });
 
     // ====== 使用者帳號管理 ======
@@ -2215,6 +2547,11 @@ async function init() {
         const user = dbGet('SELECT id, name FROM users WHERE id=?', [uid]);
         if (!user) return res.status(404).json({ error: '用戶不存在' });
         dbRun('UPDATE users SET password_hash=? WHERE id=?', [hashPwd(newPassword), uid]);
+        logAdminAction(req, 'user.reset_password', {
+            targetType: 'user',
+            targetId: uid,
+            summary: `重設 ${user.name || uid} 密碼`
+        });
         saveDB();
         res.json({ message: `${user.name} 的密碼已重設`, newPassword });
     });
@@ -2829,10 +3166,19 @@ async function init() {
     app.post('/api/backup/restore', auth, adminAuth, upload.single('backup'), (req, res) => {
         // 讀取上傳的 DB 檔案並合併資料
         // 注意：簡化版 - 直接替換整個 DB
+        if (!ENABLE_DB_RESTORE) {
+            logAdminAction(req, 'backup.restore_blocked', {
+                targetType: 'database',
+                summary: 'production restore 被安全設定阻擋'
+            });
+            saveDB();
+            return res.status(403).json({ error: '正式環境已關閉資料庫還原；如需還原，請先進入維護模式並設定 ENABLE_DB_RESTORE=true' });
+        }
         if (!req.file) {
             return res.status(400).json({ error: '請上傳備份檔案' });
         }
         try {
+            const preRestoreBackup = createAutomaticDBBackup('before-restore');
             const backupData = req.file.buffer;
             // 驗證是否為有效 SQLite 檔案
             const backupDB = new initSqlJs.Database(backupData);
@@ -2850,6 +3196,12 @@ async function init() {
             db = new SQL.Database(fs.readFileSync(backupPath));
             saveDB();
             fs.unlinkSync(backupPath);
+            logAdminAction(req, 'backup.restore', {
+                targetType: 'database',
+                summary: '管理員還原整份資料庫',
+                after: { pre_restore_backup: preRestoreBackup }
+            });
+            saveDB();
             res.json({ message: '備份已還原，請重新登入' });
         } catch (e) {
             console.error('Restore error:', e);

@@ -40,6 +40,50 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+-- 管理員操作紀錄
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_user_id INTEGER,
+    action TEXT NOT NULL,
+    target_type TEXT,
+    target_id INTEGER,
+    summary TEXT,
+    before_value TEXT,
+    after_value TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_user_id) REFERENCES users(id)
+);
+
+-- 後台 App 短效 session
+CREATE TABLE IF NOT EXISTS admin_app_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT UNIQUE NOT NULL,
+    admin_user_id INTEGER NOT NULL,
+    device_id TEXT,
+    app_version TEXT,
+    expires_at DATETIME NOT NULL,
+    revoked_at DATETIME,
+    last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_user_id) REFERENCES users(id)
+);
+
+-- AI 掃描每日額度
+CREATE TABLE IF NOT EXISTS ai_scan_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    usage_date DATE NOT NULL,
+    free_used INTEGER DEFAULT 0,
+    reward_used INTEGER DEFAULT 0,
+    pro_used INTEGER DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, usage_date)
+);
+
 -- 用藥記錄表
 CREATE TABLE IF NOT EXISTS medications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
