@@ -1,3 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const moenvGarbageRoutesFile = path.resolve(__dirname, '../../data/moenv-garbage-routes.json');
+
 const cityAliases = {
   台北市: '臺北市',
   台中市: '臺中市',
@@ -58,6 +65,8 @@ const garbageTruckDefaults = {
 
 const cityWideGarbageDefaults = new Set(['新竹市']);
 
+let moenvGarbageRoutesCache = null;
+
 const taoyuanDistrictIds = {
   蘆竹區: 'lagi2-001',
   八德區: 'lagi2-002',
@@ -97,6 +106,36 @@ function sourceUrlFor(moduleId) {
 function defaultSourceUrlFor(moduleId, location) {
   if (moduleId === 'garbage-truck') return garbageTruckDefaults[canonicalCity(location.city)] || garbageTruckDefaults[location.city] || '';
   return publicDefaults[moduleId] || '';
+}
+
+function readMoenvGarbageRoutes() {
+  if (moenvGarbageRoutesCache) return moenvGarbageRoutesCache;
+  try {
+    moenvGarbageRoutesCache = JSON.parse(fs.readFileSync(moenvGarbageRoutesFile, 'utf8'));
+  } catch {
+    moenvGarbageRoutesCache = { routes: [] };
+  }
+  return moenvGarbageRoutesCache;
+}
+
+function moenvRouteFallback(location) {
+  const routes = readMoenvGarbageRoutes().routes || [];
+  const city = canonicalCity(location.city);
+  const display = displayCity(city);
+  const district = location.district || '';
+  const matched = routes.find(route => sameCity(route.city, city) && (!district || route.district === district || route.district?.includes(district))) ||
+    routes.find(route => sameCity(route.city, city));
+
+  if (!matched) {
+    return { status: 'not-configured', source: '資料源未設定' };
+  }
+
+  return {
+    status: 'live',
+    source: '環境部全國垃圾車清運路線查詢網',
+    body: `${display}${matched.district || district}官方清運路線：${matched.routeName}（${matched.routeId}，${matched.method || '清運方式未標示'}）。`,
+    shouldNotify: false
+  };
 }
 
 async function fetchJson(url, { timeoutMs = 4500, headers = {}, method = 'GET', body } = {}) {
@@ -393,6 +432,7 @@ async function genericConfiguredSource(rule, location) {
   const publicUrl = defaultSourceUrlFor(rule.moduleId, location);
   const tdxUrl = tdxDefaults[rule.moduleId];
   if (!directUrl && !publicUrl && !tdxUrl) {
+    if (rule.moduleId === 'garbage-truck') return moenvRouteFallback(location);
     return { status: 'not-configured', source: '資料源未設定' };
   }
 
@@ -400,6 +440,7 @@ async function genericConfiguredSource(rule, location) {
   const data = directUrl || publicUrl ? await fetchData(directUrl || publicUrl) : await fetchTdx(tdxUrl);
   if (data?.status === 'not-configured') return data;
   if (!data) {
+    if (rule.moduleId === 'garbage-truck') return moenvRouteFallback(location);
     return { status: 'no-event', source, body: `${location.city || '所在地'}${location.district || ''}資料源暫時無法連線。` };
   }
   const records = extractRecords(data);
@@ -407,6 +448,7 @@ async function genericConfiguredSource(rule, location) {
   const allowCityWideFallback = rule.moduleId === 'garbage-truck' && cityWideGarbageDefaults.has(canonicalCity(location.city));
   const matched = records.find(record => matchesLocation(record, location)) || (hasLocationScope && !allowCityWideFallback ? null : records.find(record => !isEmptyEventRecord(record)) || records[0]);
   if (!matched) {
+    if (rule.moduleId === 'garbage-truck') return moenvRouteFallback(location);
     return { status: 'no-event', source, body: `${location.city || '所在地'}${location.district || ''}目前沒有 ${rule.moduleId} 即時事件。` };
   }
   if (isEmptyEventRecord(matched)) {
@@ -443,6 +485,10 @@ export function getSourceCoverage() {
       'garbage-truck': {
         coverage: [...Object.keys(garbageTruckDefaults), '桃園市'],
         sources: { ...garbageTruckDefaults, 桃園市: 'https://route.tyoem.gov.tw/' }
+      },
+      'garbage-route-schedule': {
+        coverage: '全台灣 22 縣市清運路線 fallback',
+        source: 'https://hwms.moenv.gov.tw/dispPageBox/route/routeCP.aspx?ddsPageID=ROUTE'
       }
     },
     keyRequired: {
