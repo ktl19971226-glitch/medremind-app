@@ -51,6 +51,27 @@ const publicDefaults = {
   'power-outage': 'https://portal2.emic.gov.tw/Pub/ERA2/OpenData/ERA2_E2.json'
 };
 
+const parkingDefaults = {
+  臺北市: {
+    availability: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.json',
+    details: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_alldesc.json'
+  },
+  台北市: {
+    availability: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.json',
+    details: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_alldesc.json'
+  },
+  新北市: {
+    availability: 'https://data.ntpc.gov.tw/api/datasets/e09b35a5-a738-48cc-b0f5-570b67ad9c78/json?size=2000',
+    details: 'https://data.ntpc.gov.tw/api/datasets/b1464ef0-9c7c-4a6f-abf7-6bdf32847e68/json?size=2000'
+  },
+  臺中市: {
+    availability: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=4f9c4d26-d826-4277-8f8a-6d2469fe9653'
+  },
+  台中市: {
+    availability: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=4f9c4d26-d826-4277-8f8a-6d2469fe9653'
+  }
+};
+
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
   台北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -463,6 +484,126 @@ async function freewayLiveEvent(rule, location) {
   };
 }
 
+function numericValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function parkingAvailabilityText(value) {
+  const available = numericValue(value);
+  if (available === null || available < 0) return '剩餘車位未提供';
+  return `剩餘汽車位 ${available} 格`;
+}
+
+function parkingRgbText(value) {
+  const color = `${value || ''}`.toUpperCase();
+  if (color === 'G') return '空位充足';
+  if (color === 'Y') return '車位偏少';
+  if (color === 'R') return '接近滿車';
+  return '剩餘狀態未提供';
+}
+
+function parkingDistance(record, location) {
+  const lat = numericValue(record.lat || record.Lat || record.latitude || record.tw97y);
+  const lng = numericValue(record.lng || record.Lng || record.longitude || record.tw97x);
+  if (!Number(location.lat) || !Number(location.lng) || lat === null || lng === null || lat > 1000 || lng > 1000) return Infinity;
+  return distanceKm(Number(location.lat), Number(location.lng), lat, lng);
+}
+
+function pickParkingRecords(records, location) {
+  const district = location.district || '';
+  const scoped = district
+    ? records.filter(record => `${record.area || record.AREA || record.name || record.NAME || record.Position || record.address || record.ADDRESS || record.KeyWord || ''}`.includes(district))
+    : records;
+  return (scoped.length ? scoped : records)
+    .filter(record => {
+      const available = numericValue(record.availablecar ?? record.AVAILABLECAR);
+      return available === null || available >= 0;
+    })
+    .map(record => ({ ...record, distance: parkingDistance(record, location) }))
+    .sort((left, right) => {
+      if (Number.isFinite(left.distance) || Number.isFinite(right.distance)) return left.distance - right.distance;
+      const leftAvailable = numericValue(left.availablecar ?? left.AVAILABLECAR) ?? -1;
+      const rightAvailable = numericValue(right.availablecar ?? right.AVAILABLECAR) ?? -1;
+      return rightAvailable - leftAvailable;
+    })
+    .slice(0, 3);
+}
+
+async function taipeiParking(location) {
+  const urls = parkingDefaults[canonicalCity(location.city)] || parkingDefaults[location.city];
+  const [availability, details] = await Promise.all([
+    fetchJson(urls.availability, { timeoutMs: 7000 }),
+    fetchJson(urls.details, { timeoutMs: 7000 })
+  ]);
+  const availableRecords = availability?.data?.park || [];
+  const detailRecords = details?.data?.park || [];
+  if (!availableRecords.length || !detailRecords.length) {
+    return { status: 'no-event', source: '臺北市停車管理工程處停車場剩餘車位', body: '臺北市停車場資料源暫時無法連線。' };
+  }
+  const detailById = new Map(detailRecords.map(record => [record.id, record]));
+  const records = availableRecords.map(record => ({ ...detailById.get(record.id), ...record }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source: '臺北市停車管理工程處停車場剩餘車位', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '臺北市停車管理工程處停車場剩餘車位',
+    body: picked.map(record => `${record.area || location.district || ''}${record.name || record.id}：${parkingAvailabilityText(record.availablecar)}${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
+async function newTaipeiParking(location) {
+  const urls = parkingDefaults[location.city];
+  const [availability, details] = await Promise.all([
+    fetchData(urls.availability, { timeoutMs: 7000 }),
+    fetchData(urls.details, { timeoutMs: 7000 })
+  ]);
+  if (!Array.isArray(availability) || !Array.isArray(details)) {
+    return { status: 'no-event', source: '新北市公有路外停車場即時賸餘車位數', body: '新北市停車場資料源暫時無法連線。' };
+  }
+  const detailById = new Map(details.map(record => [record.ID, record]));
+  const records = availability.map(record => ({ ...detailById.get(record.ID), ...record }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source: '新北市公有路外停車場即時賸餘車位數', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '新北市公有路外停車場即時賸餘車位數',
+    body: picked.map(record => `${record.AREA || location.district || ''}${record.NAME || record.ID}：${parkingAvailabilityText(record.AVAILABLECAR)}${record.ADDRESS ? `，${record.ADDRESS}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
+async function taichungParking(location) {
+  const url = parkingDefaults[canonicalCity(location.city)]?.availability || parkingDefaults[location.city]?.availability;
+  const data = await fetchData(url, { timeoutMs: 7000 });
+  if (!Array.isArray(data)) {
+    return { status: 'no-event', source: '臺中市路外剩餘車位', body: '臺中市停車場資料源暫時無法連線。' };
+  }
+  const records = data.map(record => ({
+    ...record,
+    name: record.Position,
+    lat: record.Lat,
+    lng: record.Lng
+  }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source: '臺中市路外剩餘車位', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '臺中市路外剩餘車位',
+    body: picked.map(record => `${record.Position}：${parkingRgbText(record.AvailableCarRGB)}，總汽車位 ${record.TotalCar || '未提供'} 格${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
+async function parkingInfo(location) {
+  const city = canonicalCity(location.city);
+  if (city === '臺北市') return taipeiParking({ ...location, city });
+  if (city === '新北市') return newTaipeiParking({ ...location, city });
+  if (city === '臺中市') return taichungParking({ ...location, city });
+  return genericConfiguredSource({ moduleId: 'parking' }, location);
+}
+
 function cookieHeaderFrom(response) {
   const setCookie = response.headers.get('set-cookie') || '';
   return setCookie
@@ -738,6 +879,7 @@ export async function resolveLiveAlert(rule, location) {
   }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (['commute', 'road-incident', 'roadwork'].includes(rule.moduleId)) return freewayLiveEvent(rule, location);
+  if (rule.moduleId === 'parking') return parkingInfo(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
   if (['evacuation', 'local-bulletin', 'accident'].includes(rule.moduleId)) {
@@ -779,6 +921,10 @@ export function getSourceCoverage() {
         coverage: '全台灣國道即時事件',
         modules: ['commute', 'road-incident', 'roadwork'],
         source: 'https://tisvcloud.freeway.gov.tw/history/motc20/LiveEvents.xml'
+      },
+      parking: {
+        coverage: Object.keys(parkingDefaults),
+        sources: parkingDefaults
       }
     },
     keyRequired: {
