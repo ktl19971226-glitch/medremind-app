@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const moenvGarbageRoutesFile = path.resolve(__dirname, '../../data/moenv-garbage-routes.json');
 const freewayLiveEventsFile = path.resolve(__dirname, '../../data/freeway-live-events.xml');
+const fraudDashboardFile = path.resolve(__dirname, '../../data/fraud-dashboard.json');
 
 const cityAliases = {
   台北市: '臺北市',
@@ -86,6 +87,11 @@ const transitDefaults = {
 
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
+const fraudDashboardDefaults = {
+  newsTicker: 'https://165dashboard.tw/CIB_DWS_API/api/NewsTicker/GetNewsTicker',
+  methods: 'https://165dashboard.tw/CIB_DWS_API/api/FraudMethod/GetTodayFraudMethodList',
+  advocacy: 'https://165dashboard.tw/CIB_DWS_API/api/PreventionAdvocacy/GetPreventionAdvocacyList'
+};
 
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -105,6 +111,7 @@ const cityWideGarbageDefaults = new Set(['新竹市']);
 let moenvGarbageRoutesCache = null;
 let ncdrFeedCache = null;
 let ncdrFeedLoadedAt = 0;
+let fraudDashboardCache = null;
 
 const ncdrEventNames = {
   rain: ['降雨'],
@@ -196,6 +203,16 @@ function readMoenvGarbageRoutes() {
     moenvGarbageRoutesCache = { routes: [] };
   }
   return moenvGarbageRoutesCache;
+}
+
+function readFraudDashboardFallback() {
+  if (fraudDashboardCache) return fraudDashboardCache;
+  try {
+    fraudDashboardCache = JSON.parse(fs.readFileSync(fraudDashboardFile, 'utf8'));
+  } catch {
+    fraudDashboardCache = { data: {} };
+  }
+  return fraudDashboardCache;
 }
 
 function moenvRouteFallback(location) {
@@ -684,6 +701,38 @@ async function fireEmergency(location) {
   return genericConfiguredSource({ moduleId: 'fire' }, location);
 }
 
+async function fraudAlert() {
+  let [tickerData, methodData, advocacyData] = await Promise.all([
+    fetchJson(fraudDashboardDefaults.newsTicker, { timeoutMs: 7000, headers: { Referer: 'https://165dashboard.tw/' } }),
+    fetchJson(fraudDashboardDefaults.methods, { timeoutMs: 7000, headers: { Referer: 'https://165dashboard.tw/' } }),
+    fetchJson(fraudDashboardDefaults.advocacy, { timeoutMs: 7000, headers: { Referer: 'https://165dashboard.tw/' } })
+  ]);
+  let source = '內政部警政署 165 打詐儀錶板';
+  if (!tickerData?.body && !methodData?.body && !advocacyData?.body) {
+    const fallback = readFraudDashboardFallback().data || {};
+    tickerData = fallback.newsTicker;
+    methodData = fallback.methods;
+    advocacyData = fallback.advocacy;
+    source = '內政部警政署 165 打詐儀錶板快取';
+  }
+  const ticker = tickerData?.body?.[0];
+  const method = methodData?.body?.[0];
+  const advocacy = advocacyData?.body?.[0];
+  if (!ticker && !method && !advocacy) {
+    return { status: 'no-event', source, body: '165 打詐儀錶板資料源暫時無法連線。' };
+  }
+  const parts = [];
+  if (ticker?.NewsTickerTitle) parts.push(`最新防詐提醒：${ticker.NewsTickerTitle}`);
+  if (method?.Name) parts.push(`今日常見手法：${method.Name}`);
+  if (advocacy?.Name) parts.push(`宣導資源：${advocacy.Name}`);
+  return {
+    status: 'live',
+    source,
+    body: parts.join('；') || '165 打詐儀錶板防詐資訊已更新。',
+    shouldNotify: false
+  };
+}
+
 async function taipeiMetroStatus(location) {
   const text = await fetchText(transitDefaults[canonicalCity(location.city)] || transitDefaults[location.city], { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '臺北捷運營運燈號', body: '臺北捷運營運燈號資料源暫時無法連線。' };
@@ -1030,6 +1079,7 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'transit') return transitInfo(location);
   if (rule.moduleId === 'parking') return parkingInfo(location);
   if (rule.moduleId === 'fire') return fireEmergency(location);
+  if (rule.moduleId === 'fraud-alert') return fraudAlert();
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
   if (['evacuation', 'local-bulletin', 'accident'].includes(rule.moduleId)) {
@@ -1093,6 +1143,11 @@ export function getSourceCoverage() {
         coverage: '桃園捷運營運狀態',
         modules: ['transit'],
         source: taoyuanMetroStatusUrl
+      },
+      'fraud-dashboard': {
+        coverage: '全台灣防詐宣導與今日常見手法',
+        modules: ['fraud-alert'],
+        sources: fraudDashboardDefaults
       }
     },
     keyRequired: {
