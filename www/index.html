@@ -458,6 +458,10 @@
         margin-top: 12px;
       }
 
+      .quick-sale-card {
+        margin-top: 12px;
+      }
+
       .toolbar {
         display: grid;
         gap: 10px;
@@ -630,6 +634,7 @@
         bookingSearch: "",
         customerSearch: "",
         newBookingOpen: false,
+        quickSaleOpen: false,
         editingBookingId: "",
         payrollRate: Number(localStorage.getItem("xiaoyue_payroll_rate") || 40),
         data: null,
@@ -703,11 +708,20 @@
 
       function openNewBooking() {
         state.newBookingOpen = true;
+        state.quickSaleOpen = false;
         state.editingBookingId = "";
         render();
       }
 
       function closeBookingForm() {
+        state.newBookingOpen = false;
+        state.quickSaleOpen = false;
+        state.editingBookingId = "";
+        render();
+      }
+
+      function openQuickSale() {
+        state.quickSaleOpen = true;
         state.newBookingOpen = false;
         state.editingBookingId = "";
         render();
@@ -847,21 +861,21 @@
                   <div class="mark">約</div>
                   <div>
                     <h1>小約</h1>
-                    <p>個人工作室預約管理</p>
+                    <p>小老闆營運管理</p>
                   </div>
                 </div>
-                <p class="intro-kicker">給美容、美甲、課程、諮詢與一人服務品牌</p>
-                <h2 class="intro-title">把預約、客戶與 LINE 通知收進同一個工作台</h2>
-                <p class="intro-copy">小約讓店家用手機掌握每日預約、服務項目、客戶資料與官方帳號權限，少漏單、少手抄、少來回確認。</p>
+                <p class="intro-kicker">給小店、一人店、工作室、接案服務與現場生意</p>
+                <h2 class="intro-title">把預約、收入、客戶與 LINE 通知收進同一個工作台</h2>
+                <p class="intro-copy">小約讓小老闆用手機掌握每日服務、現場收入、客戶資料與官方帳號權限，少漏單、少手抄、少來回確認。</p>
               </div>
               <div class="intro-panel">
                 <div class="intro-item">
                   <div class="intro-icon">${icon("M8 2v4M16 2v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z")}</div>
-                  <div><b>預約一眼看懂</b><span>快速確認今日安排、客人資訊、服務內容與狀態。</span></div>
+                  <div><b>今天一眼看懂</b><span>快速確認今日安排、客人資訊、服務內容與狀態。</span></div>
                 </div>
                 <div class="intro-item">
                   <div class="intro-icon">${icon("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75")}</div>
-                  <div><b>客戶資料集中</b><span>累積電話、備註、消費與標籤，回訪時不用翻訊息。</span></div>
+                  <div><b>收入客戶一起記</b><span>現場收入、電話、備註、消費與標籤集中管理。</span></div>
                 </div>
                 <div class="intro-item">
                   <div class="intro-icon">${icon("M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z")}</div>
@@ -928,6 +942,34 @@
           });
           state.newBookingOpen = false;
           state.bookingFilter = "upcoming";
+          await load();
+        } catch (error) {
+          state.error = error.message;
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function createSale(event) {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        state.loading = true;
+        state.error = "";
+        render();
+        try {
+          await api("/sales", {
+            method: "POST",
+            body: JSON.stringify({
+              studioId: String(form.get("studioId") || ""),
+              serviceId: String(form.get("serviceId") || ""),
+              staffId: String(form.get("staffId") || ""),
+              customerName: String(form.get("customerName") || ""),
+              phone: String(form.get("phone") || ""),
+              amount: String(form.get("amount") || ""),
+              note: String(form.get("note") || "")
+            })
+          });
+          state.quickSaleOpen = false;
           await load();
         } catch (error) {
           state.error = error.message;
@@ -1069,9 +1111,11 @@
               <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'upcoming' })">即將到來</button>
               <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'unpaid' })">待收款</button>
               <button class="secondary" onclick="setTab('bookings', { bookingFilter: 'unassigned' })">未指派</button>
+              <button class="secondary" onclick="openQuickSale()">記收入</button>
               <button class="secondary" onclick="setTab('customers')">找客戶</button>
               <button class="secondary" onclick="setTab('line')">LINE 權限</button>
             </div>
+            ${state.quickSaleOpen ? quickSaleFormView() : ""}
           </section>
           <section class="section">
             <div class="section-head">
@@ -1195,7 +1239,7 @@
         const firstService = state.data.services.find((service) => service.active);
 
         if (!firstStudio || !firstService) {
-          return `<div class="empty">請先建立工作室與服務項目</div>`;
+          return `<div class="empty">請先建立店家與服務項目</div>`;
         }
 
         return `
@@ -1243,6 +1287,57 @@
               <textarea name="note">${attr(item?.note || "")}</textarea>
             </div>
             <button class="primary" type="submit">${state.loading ? "儲存中" : isEdit ? "儲存預約" : "建立預約"}</button>
+          </form>
+        `;
+      }
+
+      function quickSaleFormView() {
+        const firstStudio = state.data.studios[0];
+        const firstService = state.data.services.find((service) => service.active);
+
+        if (!firstStudio || !firstService) {
+          return `<div class="empty">請先建立店家與服務項目</div>`;
+        }
+
+        return `
+          <form class="card quick-sale-card" onsubmit="createSale(event)">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">快速記收入</h2>
+                <p class="section-note">現場客、零售、臨時服務都可直接記</p>
+              </div>
+              <button class="secondary" type="button" onclick="closeBookingForm()">收起</button>
+            </div>
+            <input type="hidden" name="studioId" value="${attr(firstStudio.id)}" />
+            <div class="field">
+              <label>項目</label>
+              <select name="serviceId">${serviceOptions(firstService.id)}</select>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label>金額</label>
+                <input name="amount" type="number" min="0" value="${attr(firstService.price)}" required />
+              </div>
+              <div class="field">
+                <label>負責人</label>
+                <select name="staffId">${staffOptions("")}</select>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label>客人</label>
+                <input name="customerName" placeholder="現場客" />
+              </div>
+              <div class="field">
+                <label>電話</label>
+                <input name="phone" inputmode="tel" placeholder="可留空" />
+              </div>
+            </div>
+            <div class="field">
+              <label>備註</label>
+              <textarea name="note" placeholder="例如：現場購買、加購商品、臨時服務"></textarea>
+            </div>
+            <button class="primary" type="submit">${state.loading ? "記錄中" : "記一筆已收款收入"}</button>
           </form>
         `;
       }
@@ -1437,7 +1532,7 @@
       function lineView() {
         const studios = state.data.studios;
         const studio = studios[0];
-        if (!studio) return `<div class="empty">尚未建立工作室</div>`;
+        if (!studio) return `<div class="empty">尚未建立店家</div>`;
         return `
           <section class="section">
             <div class="section-head">
@@ -1535,6 +1630,7 @@
       window.setBookingSearch = setBookingSearch;
       window.setCustomerSearch = setCustomerSearch;
       window.openNewBooking = openNewBooking;
+      window.openQuickSale = openQuickSale;
       window.closeBookingForm = closeBookingForm;
       window.editBooking = editBooking;
       window.setPayrollRate = setPayrollRate;
@@ -1545,6 +1641,7 @@
       window.markPaid = markPaid;
       window.completeAndCollect = completeAndCollect;
       window.createBooking = createBooking;
+      window.createSale = createSale;
       window.saveBooking = saveBooking;
       window.checkLine = checkLine;
       window.saveLine = saveLine;
