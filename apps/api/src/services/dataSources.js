@@ -46,7 +46,8 @@ const publicDefaults = {
 const garbageTruckDefaults = {
   新北市: 'https://data.ntpc.gov.tw/api/datasets/28ab4122-60e1-4065-98e5-abccb69aaca6/json?size=1000',
   臺中市: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=68d1a87f-7baa-4b50-8408-c36a3a7eda68',
-  台中市: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=68d1a87f-7baa-4b50-8408-c36a3a7eda68'
+  台中市: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=68d1a87f-7baa-4b50-8408-c36a3a7eda68',
+  高雄市: 'https://api.kcg.gov.tw/api/service/Get/aaf4ce4b-4ca8-43de-bfaf-6dc97e89cac0'
 };
 
 function canonicalCity(city = '') {
@@ -264,4 +265,29 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'typhoon') return cwaTyphoon(location);
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   return genericConfiguredSource(rule, location);
+}
+
+export function getSourceCoverage() {
+  return {
+    builtIn: {
+      'water-outage': {
+        coverage: '全台灣',
+        source: publicDefaults['water-outage']
+      },
+      'power-outage': {
+        coverage: '全台灣',
+        source: publicDefaults['power-outage']
+      },
+      'garbage-truck': {
+        coverage: Object.keys(garbageTruckDefaults),
+        sources: garbageTruckDefaults
+      }
+    },
+    keyRequired: {
+      cwa: ['rain', 'temperature', 'earthquake', 'typhoon'],
+      moenv: ['air-quality'],
+      tdx: ['transit', 'road-incident', 'roadwork']
+    },
+    configurable: Object.keys(moduleEnvNames).filter(moduleId => !publicDefaults[moduleId] && moduleId !== 'garbage-truck')
+  };
 }

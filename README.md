@@ -49,6 +49,7 @@ API 預設 port：`8061`。
 - EMIC 台灣電力公司災情通報表 JSON：`power-outage`
 - 新北市垃圾清運車輛所在位置 JSON：`garbage-truck`（新北市）
 - 臺中市定時定點垃圾收運地點 JSON：`garbage-truck`（臺中市）
+- 高雄市垃圾車及資源回收車動態資訊 JSON：`garbage-truck`（高雄市）
 
 ## iOS 原生 App
 

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { categories } from './modules/catalog.js';
 import { createDeviceSecret, ensureDeviceState, readState, selectDeviceState, updateState } from './services/store.js';
 import { buildAlerts } from './services/alerts.js';
+import { getSourceCoverage } from './services/dataSources.js';
 import { sendPush } from './services/push.js';
 
 const app = express();
@@ -109,6 +110,10 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/catalog', (req, res) => {
   res.json({ categories });
+});
+
+app.get('/api/data-sources', (req, res) => {
+  res.json(getSourceCoverage());
 });
 
 app.get('/api/state', (req, res) => {
