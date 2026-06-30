@@ -66,6 +66,9 @@ const parkingDefaults = {
     availability: 'https://data.ntpc.gov.tw/api/datasets/e09b35a5-a738-48cc-b0f5-570b67ad9c78/json?size=2000',
     details: 'https://data.ntpc.gov.tw/api/datasets/b1464ef0-9c7c-4a6f-abf7-6bdf32847e68/json?size=2000'
   },
+  桃園市: {
+    availability: 'https://opendata.tycg.gov.tw/api/dataset/f4cc0b12-86ac-40f9-8745-885bddc18f79/resource/0381e141-f7ee-450e-99da-2240208d1773/download'
+  },
   臺中市: {
     availability: 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=4f9c4d26-d826-4277-8f8a-6d2469fe9653'
   },
@@ -643,6 +646,31 @@ async function newTaipeiParking(location) {
   };
 }
 
+async function taoyuanParking(location) {
+  const url = parkingDefaults[location.city]?.availability;
+  const data = await fetchData(url, { timeoutMs: 7000 });
+  if (!Array.isArray(data)) {
+    return { status: 'no-event', source: '桃園市路外停車資訊', body: '桃園市停車場資料源暫時無法連線。' };
+  }
+  const records = data.map(record => ({
+    ...record,
+    area: record.areaName,
+    name: record.parkName,
+    address: record.address,
+    availablecar: record.surplusSpace,
+    lat: record.wgsX,
+    lng: record.wgsY
+  }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source: '桃園市路外停車資訊', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '桃園市路外停車資訊',
+    body: picked.map(record => `${record.areaName || location.district || ''}${record.parkName || record.parkId}：${parkingAvailabilityText(record.surplusSpace)}，總汽車位 ${record.totalSpace || '未提供'} 格${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function taichungParking(location) {
   const url = parkingDefaults[canonicalCity(location.city)]?.availability || parkingDefaults[location.city]?.availability;
   const data = await fetchData(url, { timeoutMs: 7000 });
@@ -703,6 +731,7 @@ async function parkingInfo(location) {
   const city = canonicalCity(location.city);
   if (city === '臺北市') return taipeiParking({ ...location, city });
   if (city === '新北市') return newTaipeiParking({ ...location, city });
+  if (city === '桃園市') return taoyuanParking({ ...location, city });
   if (city === '臺中市') return taichungParking({ ...location, city });
   if (city === '臺南市') return tainanParking({ ...location, city });
   return genericConfiguredSource({ moduleId: 'parking' }, location);
