@@ -84,6 +84,8 @@ const transitDefaults = {
   新北市: 'https://web.metro.taipei/pages2026/WebServiceStatus'
 };
 
+const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
+
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
   台北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -698,12 +700,34 @@ async function taipeiMetroStatus(location) {
   };
 }
 
+async function thsrStatus() {
+  const text = await fetchText(thsrStatusUrl, { timeoutMs: 7000 });
+  if (!text) return { status: 'no-event', source: '台灣高鐵列車運行狀況', body: '台灣高鐵列車運行狀況資料源暫時無法連線。' };
+  const statusText = text.match(/<div class="text">([\s\S]*?)<\/div>/)?.[1]
+    ?.replace(/<[^>]+>/g, '')
+    ?.replace(/\s+/g, '')
+    ?.trim() || '';
+  if (!statusText) return { status: 'no-event', source: '台灣高鐵列車運行狀況', body: '台灣高鐵目前沒有可解析的運行狀態。' };
+  if (statusText.includes('正常')) {
+    return { status: 'no-event', source: '台灣高鐵列車運行狀況', body: `台灣高鐵${statusText}。` };
+  }
+  return {
+    status: 'live',
+    source: '台灣高鐵列車運行狀況',
+    body: `台灣高鐵目前狀態：${statusText}，詳情：${thsrStatusUrl}`,
+    shouldNotify: true
+  };
+}
+
 async function transitInfo(location) {
   const city = canonicalCity(location.city);
+  const highSpeedRail = await thsrStatus();
+  if (highSpeedRail.status === 'live') return highSpeedRail;
   const railIncident = await ncdrCapAlert('transit', location);
   if (railIncident.status === 'live') return railIncident;
   if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
   if (railIncident.status !== 'not-configured') return railIncident;
+  if (highSpeedRail.status !== 'not-configured') return highSpeedRail;
   return genericConfiguredSource({ moduleId: 'transit' }, location);
 }
 
@@ -1038,6 +1062,11 @@ export function getSourceCoverage() {
       transit: {
         coverage: Object.keys(transitDefaults),
         sources: transitDefaults
+      },
+      'high-speed-rail-status': {
+        coverage: '全台灣高鐵列車運行狀況',
+        modules: ['transit'],
+        source: thsrStatusUrl
       }
     },
     keyRequired: {
