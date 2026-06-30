@@ -62,7 +62,10 @@ const parkingDefaults = {
     availability: 'https://e-traffic.klcg.gov.tw/KeelungTraffic/pages/park.jsp/'
   },
   新竹市: {
-    availability: 'https://opendata.hccg.gov.tw/OpenDataFileHit.ashx?ID=8C730C34537B3B30&u=77DFE16E459DFCE34D11875AA33778DC718F99245062BA928D228BF51D8CC6D584EFAF5624D84DF6907C00E07EEC7BD43F5EF012E8D2D67A89054F094451DB04'
+    availability: 'https://opendata.hccg.gov.tw/OpenDataFileHit.ashx?ID=8C730C34537B3B30&u=77DFE16E459DFCE34D11875AA33778DC718F99245062BA928D228BF51D8CC6D584EFAF5624D84DF6907C00E07EEC7BD43F5EF012E8D2D67A89054F094451DB04',
+    info: 'https://hispark.hccg.gov.tw/',
+    label: '新竹市停車服務資訊',
+    summary: '提供新竹市停車費查詢與收費路段資訊；剩餘車位 JSON 若暫時無法連線，先以官方停車服務入口補底。'
   },
   彰化縣: {
     availability: 'https://chpark.chcg.gov.tw/ParkingLocation/SmartParkingFacilitiesPost'
@@ -102,6 +105,52 @@ const parkingDefaults = {
   },
   宜蘭縣: {
     availability: 'https://opendataap2.e-land.gov.tw/resource/files/2023-02-12/62f4d78b604ba16b8cc1e856dd28d2c3.json'
+  },
+  新竹縣: {
+    info: 'https://hcpark.hchg.gov.tw/web/Parking',
+    label: '新竹縣政府路邊停車中心',
+    summary: '提供停車場查詢、停車費查詢與收費公告；目前未公開穩定即時剩餘車位 API。'
+  },
+  苗栗縣: {
+    info: 'https://miaoliparking.jotangi.com.tw/',
+    label: '苗栗縣政府停車服務資訊',
+    summary: '提供停車費查詢、收費路段與停車服務資訊；目前未公開穩定即時剩餘車位 API。'
+  },
+  南投縣: {
+    info: 'https://parking.nantou.gov.tw/ParkingLocation',
+    label: '南投縣政府停車服務資訊',
+    summary: '提供停車地圖、停車費查詢、南投/集集/埔里/草屯等收費公告；目前未公開穩定即時剩餘車位 API。'
+  },
+  雲林縣: {
+    availability: 'https://www.opendata.vip/tdx/parking/YunlinCounty'
+  },
+  嘉義縣: {
+    info: 'https://www.greenparking.com.tw/Chiayi',
+    label: '嘉義縣路邊停車管理',
+    summary: '提供嘉義縣政府周邊路邊停車格、收費時間與費率資訊；目前未公開穩定即時剩餘車位 API。'
+  },
+  屏東縣: {
+    availability: 'https://www.opendata.vip/tdx/parking/PingtungCounty'
+  },
+  花蓮縣: {
+    availability: 'https://www.opendata.vip/tdx/parking/HualienCounty'
+  },
+  臺東縣: {
+    info: 'https://taitung.hfpark.tw/Web/Pages/Business/Parking',
+    label: '臺東縣停車資訊網停車場車位表',
+    summary: '提供臺東縣停車場車位表與停車費查詢；目前未公開穩定即時剩餘車位 API。'
+  },
+  澎湖縣: {
+    info: 'https://peh.guoyun.com.tw/ParkQuery/',
+    label: '澎湖縣停車資料即時查詢',
+    summary: '提供澎湖縣停車查詢與停車服務入口；目前未公開穩定即時剩餘車位 API。'
+  },
+  金門縣: {
+    availability: 'https://www.opendata.vip/tdx/parking/KinmenCounty'
+  },
+  連江縣: {
+    availability: 'https://parking.matsu.gov.tw/apis/parking-lots/lots',
+    spaces: 'https://parking.matsu.gov.tw/apis/parking-lots/availablespaces/0'
   }
 };
 
@@ -768,7 +817,7 @@ async function keelungParking(location) {
 
 async function hsinchuCityParking(location) {
   const data = await fetchJson(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
-  if (!Array.isArray(data) || !data.length) return { status: 'no-event', source: '新竹市剩餘停車位資訊', body: '新竹市停車場資料源暫時無法連線。' };
+  if (!Array.isArray(data) || !data.length) return officialParkingPortal(location);
   const records = data.map(record => ({
     ...record,
     area: record.ADDRESS,
@@ -1001,6 +1050,87 @@ async function yilanParking(location) {
   };
 }
 
+async function opendataVipParking(location) {
+  const url = parkingDefaults[location.city]?.availability;
+  const html = await fetchText(url, { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<tr>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>/g)]
+    .map(match => {
+      const [availablecar, totalcar] = cleanHtmlText(match[2]).split('/').map(value => value.trim());
+      return {
+        city: location.city,
+        name: cleanHtmlText(match[1]),
+        availablecar,
+        totalcar,
+        statusText: cleanHtmlText(match[4]),
+        feeText: cleanHtmlText(match[5])
+      };
+    })
+    .filter(record => record.name && numericValue(record.availablecar) !== null);
+  if (!rows.length) return { status: 'no-event', source: 'TDX 停車資訊公開查詢頁', body: `${location.city}停車資料源暫時無法連線。` };
+  const picked = pickParkingRecords(rows, location);
+  if (!picked.length) return { status: 'no-event', source: 'TDX 停車資訊公開查詢頁', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: `${location.city}停車資訊公開查詢頁（TDX 衍生）`,
+    body: picked.map(record => `${record.name}：${parkingAvailabilityText(record.availablecar)}，總汽車位 ${record.totalcar || '未提供'} 格${record.statusText ? `，${record.statusText}` : ''}${record.feeText ? `，${record.feeText}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
+async function lianjiangParking(location) {
+  const urls = parkingDefaults[location.city];
+  const [lots, spaces] = await Promise.all([
+    fetchJson(urls.availability, { timeoutMs: 7000 }),
+    fetchJson(urls.spaces, { timeoutMs: 7000 })
+  ]);
+  const lotRecords = Array.isArray(lots?.parking_lots) ? lots.parking_lots : [];
+  const spaceRecords = Array.isArray(spaces?.available_spaces) ? spaces.available_spaces : [];
+  if (!lotRecords.length) return { status: 'no-event', source: '連江縣智慧停車平台', body: '連江縣停車場資料源暫時無法連線。' };
+  const availableById = new Map(spaceRecords.map(record => [record.parking_id, record.spaces]));
+  const records = lotRecords.map(record => ({
+    ...record,
+    availablecar: availableById.get(record.parking_id),
+    totalcar: record.spaces,
+    lat: record.lat,
+    lng: record.lng
+  }));
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source: '連江縣智慧停車平台', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '連江縣智慧停車平台',
+    body: picked.map(record => `${record.name}：${parkingAvailabilityText(record.availablecar)}，總汽車位 ${record.totalcar || '未提供'} 格${record.address ? `，${record.address}` : ''}${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
+async function officialParkingPortal(location) {
+  const config = parkingDefaults[location.city];
+  if (config?.summary) {
+    return {
+      status: 'live',
+      source: config.label || `${location.city}官方停車資訊`,
+      body: `${location.city}${location.district || ''}目前接入官方停車資訊：${config.summary}`,
+      shouldNotify: false
+    };
+  }
+  const html = await fetchText(config?.info, { timeoutMs: 7000 });
+  const title = cleanHtmlText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || config?.label || `${location.city}停車資訊`);
+  const snippets = [...html.matchAll(/<(?:h1|h2|h3|p|td)[^>]*>([\s\S]*?(?:停車場|停車格|車位|收費路段|停車費)[\s\S]*?)<\/(?:h1|h2|h3|p|td)>/gi)]
+    .map(match => cleanHtmlText(match[1]))
+    .filter(text => text && text.length >= 6 && text.length <= 120)
+    .filter((text, index, array) => array.indexOf(text) === index)
+    .slice(0, 3);
+  return {
+    status: 'live',
+    source: config?.label || title,
+    body: snippets.length
+      ? `${location.city}${location.district || ''}目前接入官方停車資訊：${snippets.join('；')}。此來源未提供即時剩餘車位，依現場公告為準。`
+      : `${location.city}${location.district || ''}目前接入官方停車資訊入口：${title}。此來源未提供即時剩餘車位，依現場公告為準。`,
+    shouldNotify: false
+  };
+}
+
 async function parkingInfo(location) {
   const city = canonicalCity(location.city);
   if (city === '基隆市') return keelungParking({ ...location, city });
@@ -1014,6 +1144,9 @@ async function parkingInfo(location) {
   if (city === '臺南市') return tainanParking({ ...location, city });
   if (city === '高雄市') return kaohsiungParking({ ...location, city });
   if (city === '宜蘭縣') return yilanParking({ ...location, city });
+  if (['雲林縣', '屏東縣', '花蓮縣', '金門縣'].includes(city)) return opendataVipParking({ ...location, city });
+  if (city === '連江縣') return lianjiangParking({ ...location, city });
+  if (parkingDefaults[city]?.info) return officialParkingPortal({ ...location, city });
   return genericConfiguredSource({ moduleId: 'parking' }, location);
 }
 
