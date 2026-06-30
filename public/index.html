@@ -2294,6 +2294,7 @@
         // API 基礎網址(App 內使用正式 HTTPS 網域，避免 iOS 審查環境擋下非加密連線)
         const isNative = window.location.protocol === 'capacitor:' || window.location.protocol === 'file:';
         const API = isNative ? 'https://yaojidecare.app' : '';
+        const WEB_APP_ORIGIN = 'https://yaojidecare.app';
         const INSTALL_DISMISSED_KEY = 'medremind_install_dismissed';
         const DEVICE_ID_KEY = 'medremind_device_identifier';
         const AUTH_TOKEN_KEY = 'medremind_auth_token';
@@ -3918,7 +3919,10 @@
                 body: JSON.stringify({ relationship })
             });
             if (status !== 200) return showToast(data.error || '產生邀請碼失敗');
-            const fullUrl = location.origin + data.invite_url;
+            const inviteUrl = String(data.invite_url || '').trim();
+            const fullUrl = /^https?:\/\//i.test(inviteUrl)
+                ? inviteUrl
+                : WEB_APP_ORIGIN + (inviteUrl.startsWith('/') ? inviteUrl : '/' + inviteUrl);
             window._lastFamilyInviteUrl = fullUrl;
             const box = document.getElementById('family-invite-result');
             box.innerHTML = '<div style="background:#e8f5e9;border-radius:10px;padding:10px;">' +
@@ -3949,14 +3953,14 @@
 
         async function acceptInviteFromUrl() {
             const params = new URLSearchParams(location.search);
-            const code = params.get('invite');
+            const code = (params.get('invite') || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
             if (!code || !authToken) return;
             const { status, data } = await api('/api/family/invite/accept', {
                 method: 'POST',
                 body: JSON.stringify({ code })
             });
+            history.replaceState({}, '', location.pathname);
             if (status === 200) {
-                history.replaceState({}, '', location.pathname);
                 showToast('已加入家人照護');
                 switchPage('family');
             } else {

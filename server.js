@@ -1505,7 +1505,7 @@ async function init() {
             code,
             relationship,
             expires_at: expiresAt,
-            invite_url: `/?invite=${code}`
+            invite_url: `${APP_BASE_URL}/?invite=${encodeURIComponent(code)}`
         });
     });
 
