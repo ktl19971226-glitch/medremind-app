@@ -63,6 +63,8 @@ API 預設 port：`8061`。
 - 高速公路局 TISVCloud LiveEvents XML：`commute`、`road-incident`、`roadwork`（全台灣國道即時事件；有定位時優先回附近事件）
 - 基隆市停車場剩餘車位 HTML：`parking`（基隆市）
 - 新竹市剩餘停車位資訊 JSON：`parking`（新竹市）
+- 彰化縣路邊停車智慧車格 POST API：`parking`（彰化縣；依路段彙整即時可用車格）
+- 嘉義市智慧停車場管理雲端平臺 HTML：`parking`（嘉義市）
 - 臺北市停車管理工程處停車場剩餘車位 JSON：`parking`（臺北市）
 - 新北市公有路外停車場即時賸餘車位數 JSON：`parking`（新北市）
 - 桃園市路外停車資訊 JSON：`parking`（桃園市）

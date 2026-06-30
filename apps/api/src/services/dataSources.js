@@ -64,6 +64,12 @@ const parkingDefaults = {
   新竹市: {
     availability: 'https://opendata.hccg.gov.tw/OpenDataFileHit.ashx?ID=8C730C34537B3B30&u=77DFE16E459DFCE34D11875AA33778DC718F99245062BA928D228BF51D8CC6D584EFAF5624D84DF6907C00E07EEC7BD43F5EF012E8D2D67A89054F094451DB04'
   },
+  彰化縣: {
+    availability: 'https://chpark.chcg.gov.tw/ParkingLocation/SmartParkingFacilitiesPost'
+  },
+  嘉義市: {
+    availability: 'https://iparking.chiayi.gov.tw/car/open'
+  },
   臺北市: {
     availability: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.json',
     details: 'https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_alldesc.json'
@@ -783,6 +789,70 @@ async function hsinchuCityParking(location) {
   };
 }
 
+async function changhuaParking(location) {
+  const data = await fetchJson(parkingDefaults[location.city]?.availability, {
+    timeoutMs: 7000,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+    body: ''
+  });
+  if (!Array.isArray(data) || !data.length) return { status: 'no-event', source: '彰化縣路邊停車智慧車格', body: '彰化縣停車資料源暫時無法連線。' };
+  const grouped = new Map();
+  for (const record of data) {
+    const name = record.billSegment || '未命名路段';
+    const current = grouped.get(name) || {
+      city: '彰化縣',
+      area: name,
+      name,
+      availablecar: 0,
+      totalcar: 0,
+      updatedAt: record.created
+    };
+    current.totalcar += 1;
+    if (`${record.status}` === '0') current.availablecar += 1;
+    current.updatedAt = record.created || current.updatedAt;
+    current.lat = current.lat || record.latitude;
+    current.lng = current.lng || record.longitude;
+    grouped.set(name, current);
+  }
+  const records = [...grouped.values()];
+  const picked = pickParkingRecords(records, location);
+  if (!picked.length) return { status: 'no-event', source: '彰化縣路邊停車智慧車格', body: `${location.city}${location.district || ''}目前沒有可用智慧停車格資料。` };
+  return {
+    status: 'live',
+    source: '彰化縣路邊停車智慧車格',
+    body: picked.map(record => `${record.name}：可用車格 ${record.availablecar} 格，總車格 ${record.totalcar} 格${record.updatedAt ? `，更新 ${record.updatedAt}` : ''}${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
+async function chiayiCityParking(location) {
+  const html = await fetchText(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<tr>\s*<td class="c1">[\s\S]*?<\/td>\s*<td class="c2">([\s\S]*?)<\/td>\s*<td class="c3">([\s\S]*?)<\/td>\s*<td class="c4"[^>]*>([\s\S]*?)<\/td>\s*<td class="c5">[\s\S]*?<\/td>\s*<td class="c6">([\s\S]*?)<\/td>\s*<\/tr>/g)]
+    .map(match => {
+      const total = cleanHtmlText(match[2]).match(/\d+/)?.[0] || '';
+      const availabilityText = cleanHtmlText(match[3]);
+      const available = availabilityText.includes('滿場') ? 0 : availabilityText.match(/（(\d+)）/)?.[1];
+      return {
+        city: '嘉義市',
+        name: cleanHtmlText(match[1]),
+        availablecar: available,
+        totalcar: total,
+        updatedAt: cleanHtmlText(match[4])
+      };
+    })
+    .filter(record => record.name && record.availablecar !== undefined);
+  if (!rows.length) return { status: 'no-event', source: '嘉義市智慧停車場管理雲端平臺', body: '嘉義市停車場資料源暫時無法連線。' };
+  const picked = pickParkingRecords(rows, location);
+  if (!picked.length) return { status: 'no-event', source: '嘉義市智慧停車場管理雲端平臺', body: `${location.city}${location.district || ''}目前沒有可用停車場剩餘車位資料。` };
+  return {
+    status: 'live',
+    source: '嘉義市智慧停車場管理雲端平臺',
+    body: picked.map(record => `${record.name}：${parkingAvailabilityText(record.availablecar)}，總汽車位 ${record.totalcar || '未提供'} 格${record.updatedAt ? `，更新 ${record.updatedAt}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function taoyuanParking(location) {
   const url = parkingDefaults[location.city]?.availability;
   const data = await fetchData(url, { timeoutMs: 7000 });
@@ -935,6 +1005,8 @@ async function parkingInfo(location) {
   const city = canonicalCity(location.city);
   if (city === '基隆市') return keelungParking({ ...location, city });
   if (city === '新竹市') return hsinchuCityParking({ ...location, city });
+  if (city === '彰化縣') return changhuaParking({ ...location, city });
+  if (city === '嘉義市') return chiayiCityParking({ ...location, city });
   if (city === '臺北市') return taipeiParking({ ...location, city });
   if (city === '新北市') return newTaipeiParking({ ...location, city });
   if (city === '桃園市') return taoyuanParking({ ...location, city });
