@@ -104,7 +104,9 @@ const fireDefaults = {
   南投縣: 'https://www.ntfd.gov.tw/index.php?act=caselist',
   嘉義縣: 'https://cycfb.cyhg.gov.tw/DisasterPrevent.aspx?n=5F10482409025004&sms=ED4E0CDDC2EA92E6',
   嘉義市: 'https://cyfd.chiayi.gov.tw/Common/Getfdcaselist.ashx?mode=Page',
-  屏東縣: 'https://pteoc.pthg.gov.tw/News119'
+  高雄市: 'https://119dts.fdkc.gov.tw/DTS/caselist/html',
+  屏東縣: 'https://pteoc.pthg.gov.tw/News119',
+  澎湖縣: 'http://210.241.42.144:8080/DTS/caselist/html'
 };
 
 const transitDefaults = {
@@ -1016,6 +1018,28 @@ async function miaoliFire(location) {
   };
 }
 
+async function dtsFire(location, source) {
+  const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = [...html.matchAll(/<tr>\s*<td>(?:[\s\S]*?)<\/td>\s*(?:<!--[\s\S]*?-->\s*)?<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*(?:<td>([\s\S]*?)<\/td>\s*)?<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<td>([\s\S]*?)<\/td>\s*<\/tr>/g)]
+    .map(match => ({
+      time: cleanHtmlText(match[1]),
+      type: cleanHtmlText(match[2]),
+      subtype: cleanHtmlText(match[3] || ''),
+      place: cleanHtmlText(match[4]),
+      station: cleanHtmlText(match[5]),
+      status: cleanHtmlText(match[6])
+    }));
+  if (!rows.length) return { status: 'no-event', source, body: `${location.city}目前沒有公開中的消防即時案件。` };
+  const matched = rows.find(record => /火|災害|搶救/.test(`${record.type}${record.subtype}`) && emergencyMatches(record, location));
+  if (!matched) return { status: 'no-event', source, body: `${location.city}${location.district || ''}目前沒有公開中的火警或災害搶救案件。` };
+  return {
+    status: 'live',
+    source,
+    body: `${matched.place || location.city}，${matched.type || '消防案件'}${matched.subtype ? `/${matched.subtype}` : ''}，派遣 ${matched.station || '未提供'}，狀態 ${matched.status || '未提供'}，受理 ${matched.time || '時間未提供'}。`,
+    shouldNotify: !/返隊|完成|結案|已返隊/.test(matched.status || '')
+  };
+}
+
 async function changhuaFire(location) {
   const html = await fetchText(fireDefaults[location.city], { timeoutMs: 7000 });
   const rows = [...html.matchAll(/data-th="受理時間：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="案類：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="案別：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="發生地點：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="派遣分隊：".*?<\/span>(.*?)<\/span>[\s\S]*?data-th="執行狀況：".*?<\/span>(.*?)<\/span>/g)]
@@ -1145,7 +1169,9 @@ async function fireEmergency(location) {
   if (city === '南投縣') return nantouFire({ ...location, city });
   if (city === '嘉義縣') return chiayiCountyFire({ ...location, city });
   if (city === '嘉義市') return chiayiCityFire({ ...location, city });
+  if (city === '高雄市') return dtsFire({ ...location, city }, '高雄市政府消防局即時案件');
   if (city === '屏東縣') return pingtungFire({ ...location, city });
+  if (city === '澎湖縣') return dtsFire({ ...location, city }, '澎湖縣政府消防局即時災情訊息');
   return genericConfiguredSource({ moduleId: 'fire' }, location);
 }
 
