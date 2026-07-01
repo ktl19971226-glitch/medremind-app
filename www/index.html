@@ -911,6 +911,10 @@
         });
       }
 
+      function sendPaymentReminder(id) {
+        updateBooking(id, { sendPaymentReminder: true });
+      }
+
       function completeAndCollect(id, amount) {
         updateBooking(id, {
           status: "COMPLETED",
@@ -1164,6 +1168,9 @@
         const collectAction = canCollect(item)
           ? `<button class="secondary" onclick="markPaid('${item.id}', ${Number(item.finalAmount || 0)})">收款</button>`
           : "";
+        const reminderAction = due && item.lineUserId
+          ? `<button class="secondary" onclick="sendPaymentReminder('${item.id}')">催LINE</button>`
+          : "";
         const doneAction = canCollect(item)
           ? `<button class="primary inline-primary" onclick="completeAndCollect('${item.id}', ${Number(item.finalAmount || 0)})">完成收款</button>`
           : `<button class="primary inline-primary" onclick="updateBooking('${item.id}', { status: 'COMPLETED' })">完成</button>`;
@@ -1181,6 +1188,7 @@
             <div class="actions today-actions">
               ${phone ? `<a class="link-action compact-link" href="tel:${attr(phone)}">撥打</a>` : ""}
               ${collectAction}
+              ${reminderAction}
               ${doneAction}
             </div>
           </article>
@@ -1193,6 +1201,9 @@
         const paymentText = due ? `待收 ${money(due)}` : "付款已處理";
         const collectAction = canCollect(item)
           ? `<button class="secondary" onclick="markPaid('${item.id}', ${Number(item.finalAmount || 0)})">收款</button>`
+          : "";
+        const reminderAction = due && item.lineUserId
+          ? `<button class="secondary" onclick="sendPaymentReminder('${item.id}')">催LINE</button>`
           : "";
         const doneAction = canCollect(item)
           ? `<button class="secondary" onclick="completeAndCollect('${item.id}', ${Number(item.finalAmount || 0)})">完成收款</button>`
@@ -1211,6 +1222,7 @@
             <div class="actions">
               <button class="secondary" onclick="editBooking('${item.id}')">編輯</button>
               ${collectAction}
+              ${reminderAction}
               ${doneAction}
               <button class="secondary" onclick="updateBooking('${item.id}', { status: 'NO_SHOW' })">爽約</button>
               <button class="danger" onclick="updateBooking('${item.id}', { status: 'CANCELLED' })">取消</button>
