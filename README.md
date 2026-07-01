@@ -29,7 +29,7 @@ API 預設 port：`8061`。
 - 地點管理：新增、編輯、刪除地點，並可使用目前定位帶入城市與行政區。
 - 提醒中心：未讀數、提醒詳情、全部已讀、單筆已讀、封存。
 - 推播規則：支援一般/重大提醒，排程提醒會尊重 quiet hours，重大警示不靜音。
-- 真實資料源：可用 `CWA_API_KEY` 接天氣、地震、颱風細預報；空氣品質已內建 MOENV 公開 JSON 檢視來源，也可用 `MOENV_API_KEY` 覆蓋；TDX 與各模組外部 URL 可接交通、市政、安全、個人資料。未設定時會標示「資料源未設定」，不再產生仿真的範例提醒。
+- 真實資料源：可用 `CWA_API_KEY` 接天氣、地震、颱風細預報；空氣品質已內建 MOENV 公開 JSON 檢視來源，也可用 `MOENV_API_KEY` 覆蓋；TDX 與各模組外部 URL 可接交通、市政、安全、個人資料，且已內建地方道路事故/施工、公車/客運營運通阻解析。未設定時會標示「資料源未設定」，不再產生仿真的範例提醒。
 - 安全控管：初次設定後會核發 device secret，後續寫入 API 需同時帶 `X-Device-Id` 與 `X-Device-Secret`。
 - 管理摘要：設定 `ADMIN_TOKEN` 後，`/api/admin/summary` 需帶 `X-Admin-Token` 才能查看裝置、使用者、地點、提醒與啟用規則數。
 
@@ -61,6 +61,7 @@ API 預設 port：`8061`。
 - NCDR 民生示警 CAP JSON：`rain`、`temperature`、`earthquake`、`typhoon`、`transit`、`evacuation`、`local-bulletin`、`accident`（全台灣；CWA key 未設定時作為官方示警來源，並接臺鐵營運異常/停駛警戒）
 - 環境部空氣品質指標 AQI JSON：`air-quality`（全台灣；正式 key 優先，未設定時走政府資料開放平臺公開 JSON 檢視來源）
 - 高速公路局 TISVCloud LiveEvents XML：`commute`、`road-incident`、`roadwork`（全台灣國道即時事件；有定位時優先回附近事件）
+- TDX 城市道路交通消息：`road-incident`、`roadwork`（22 縣市地方道路事故、壅塞、施工與交管消息；需 `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET`）
 - 基隆市停車場剩餘車位 HTML：`parking`（基隆市）
 - 新竹市剩餘停車位資訊 JSON + 官方停車服務入口 fallback：`parking`（新竹市）
 - 新竹縣政府路邊停車中心：`parking`（新竹縣；官方停車資訊入口，未提供即時剩餘車位 API）
@@ -105,6 +106,7 @@ API 預設 port：`8061`。
 - 臺北捷運營運燈號網頁：`transit`（臺北市、新北市；正常營運回無即時事件，異常才推播）
 - 台灣高鐵列車運行狀況網頁：`transit`（全台灣；正常營運回無即時事件，異常才推播）
 - 桃園捷運最新營運狀態網頁：`transit`（桃園市；正常營運回無即時事件，異常才推播）
+- TDX 公車/客運營運通阻：`transit`（22 縣市市區公車 + 公路客運通阻事件；需 `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET`）
 - 內政部警政署 165 打詐儀錶板 JSON：`fraud-alert`（全台灣；防詐跑馬燈、今日常見詐騙手法、宣導資源）
 
 ## iOS 原生 App

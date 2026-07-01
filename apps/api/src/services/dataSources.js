@@ -188,6 +188,40 @@ const transitDefaults = {
 
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
+
+const tdxCityCodes = {
+  臺北市: 'Taipei',
+  台北市: 'Taipei',
+  新北市: 'NewTaipei',
+  桃園市: 'Taoyuan',
+  臺中市: 'Taichung',
+  台中市: 'Taichung',
+  臺南市: 'Tainan',
+  台南市: 'Tainan',
+  高雄市: 'Kaohsiung',
+  基隆市: 'Keelung',
+  新竹市: 'Hsinchu',
+  新竹縣: 'HsinchuCounty',
+  苗栗縣: 'MiaoliCounty',
+  彰化縣: 'ChanghuaCounty',
+  南投縣: 'NantouCounty',
+  雲林縣: 'YunlinCounty',
+  嘉義縣: 'ChiayiCounty',
+  嘉義市: 'Chiayi',
+  屏東縣: 'PingtungCounty',
+  宜蘭縣: 'YilanCounty',
+  花蓮縣: 'HualienCounty',
+  臺東縣: 'TaitungCounty',
+  台東縣: 'TaitungCounty',
+  澎湖縣: 'PenghuCounty',
+  金門縣: 'KinmenCounty',
+  連江縣: 'LienchiangCounty'
+};
+
+const tdxCitySourceNames = Object.fromEntries(
+  Object.entries(tdxCityCodes).map(([city, code]) => [canonicalCity(city), code])
+);
+
 const fraudDashboardDefaults = {
   newsTicker: 'https://165dashboard.tw/CIB_DWS_API/api/NewsTicker/GetNewsTicker',
   methods: 'https://165dashboard.tw/CIB_DWS_API/api/FraudMethod/GetTodayFraudMethodList',
@@ -222,6 +256,7 @@ let fraudDashboardCache = null;
 let tainanParkingCache = null;
 let kaohsiungParkingCache = null;
 let yilanParkingCache = null;
+let tdxTokenCache = null;
 
 const ncdrEventNames = {
   rain: ['降雨'],
@@ -286,6 +321,10 @@ function canonicalCity(city = '') {
 
 function displayCity(city = '') {
   return city.replace(/^臺/, '台');
+}
+
+function tdxCityCodeFor(location) {
+  return tdxCitySourceNames[canonicalCity(location.city)] || tdxCityCodes[location.city] || '';
 }
 
 function sameCity(a = '', b = '') {
@@ -1620,14 +1659,126 @@ async function taoyuanMetroStatus(location) {
   };
 }
 
+function tdxApiUrl(path, params = {}) {
+  const url = new URL(`https://tdx.transportdata.tw/api/basic${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
+function activeWindow(record) {
+  const now = Date.now();
+  const start = Date.parse(record.StartTime || record.startTime || record.PublishTime || record.publishTime || 0);
+  const end = Date.parse(record.EndTime || record.endTime || 0);
+  if (Number.isFinite(start) && start > now + 3600000) return false;
+  if (Number.isFinite(end) && end < now) return false;
+  return true;
+}
+
+function scopedTdxRecord(record, location) {
+  const text = JSON.stringify(record);
+  return !location.district || text.includes(location.district);
+}
+
+function trimAlertText(value = '', maxLength = 180) {
+  const text = cleanHtmlText(String(value));
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function tdxRoadCategory(rule) {
+  if (rule.moduleId === 'roadwork') return {
+    ids: new Set([4]),
+    keywords: /施工|工程|管制|封閉|改道|鋪面|維修|養護/
+  };
+  return {
+    ids: new Set([2, 3]),
+    keywords: /事故|車禍|壅塞|塞車|封閉|障礙|掉落物|故障|事件/
+  };
+}
+
+async function cityRoadNews(rule, location) {
+  const cityCode = tdxCityCodeFor(location);
+  if (!cityCode) return { status: 'not-configured', source: 'TDX 城市道路交通消息' };
+  const data = await fetchTdx(tdxApiUrl(`/v2/Road/Traffic/Live/News/City/${cityCode}`, { $top: '50', $format: 'JSON' }));
+  if (data?.status === 'not-configured') return data;
+  if (!data) return { status: 'no-event', source: 'TDX 城市道路交通消息', body: `${location.city}${location.district || ''}地方道路交通資料源暫時無法連線。` };
+
+  const category = tdxRoadCategory(rule);
+  const records = (data.Newses || data.newses || extractRecords(data))
+    .filter(record => activeWindow(record))
+    .filter(record => category.ids.has(Number(record.NewsCategory)) || category.keywords.test(`${record.Title || ''}${record.Description || ''}`))
+    .filter(record => scopedTdxRecord(record, location));
+
+  if (!records.length) {
+    return { status: 'no-event', source: 'TDX 城市道路交通消息', body: `${location.city}${location.district || ''}目前沒有地方道路${rule.moduleId === 'roadwork' ? '施工' : '事故'}通報。` };
+  }
+
+  const record = records[0];
+  const timeText = [record.StartTime, record.EndTime].filter(Boolean).join(' 至 ');
+  return {
+    status: 'live',
+    source: 'TDX 城市道路交通消息',
+    body: `${record.Title || '地方道路交通事件'}${timeText ? `（${timeText}）` : ''}：${trimAlertText(record.Description || record.NewsURL || '')}`,
+    shouldNotify: rule.moduleId === 'road-incident'
+  };
+}
+
+function busStatusText(status) {
+  if (status === 0) return '全部營運停止';
+  if (status === 1) return '全部營運正常';
+  if (status === 2) return '有異常狀況';
+  return '狀態未標示';
+}
+
+async function tdxBusAlerts(location) {
+  const cityCode = tdxCityCodeFor(location);
+  const cityPromise = cityCode
+    ? fetchTdx(tdxApiUrl(`/v2/Bus/Alert/City/${cityCode}`, { $top: '50', $format: 'JSON' }))
+    : Promise.resolve(null);
+  const [cityData, interCityData] = await Promise.all([
+    cityPromise,
+    fetchTdx(tdxApiUrl('/v2/Bus/Alert/InterCity', { $top: '50', $format: 'JSON' }))
+  ]);
+  if (cityData?.status === 'not-configured' || interCityData?.status === 'not-configured') {
+    return { status: 'not-configured', source: 'TDX 公車/客運營運通阻' };
+  }
+  if (!cityData && !interCityData) return { status: 'no-event', source: 'TDX 公車/客運營運通阻', body: '公車/客運營運通阻資料源暫時無法連線。' };
+
+  const records = [
+    ...(Array.isArray(cityData) ? cityData : extractRecords(cityData)),
+    ...(Array.isArray(interCityData) ? interCityData : extractRecords(interCityData))
+  ]
+    .filter(record => activeWindow(record))
+    .filter(record => Number(record.Status) !== 1)
+    .filter(record => scopedTdxRecord(record, location));
+
+  if (!records.length) {
+    return { status: 'no-event', source: 'TDX 公車/客運營運通阻', body: `${location.city}${location.district || ''}目前沒有公車或公路客運營運通阻事件。` };
+  }
+
+  const record = records[0];
+  const routes = record.Scope?.Routes?.map(route => route.RouteName?.Zh_tw || route.RouteName?.En || route.RouteID).filter(Boolean).slice(0, 4).join('、');
+  const timeText = [record.StartTime, record.EndTime].filter(Boolean).join(' 至 ');
+  return {
+    status: 'live',
+    source: 'TDX 公車/客運營運通阻',
+    body: `${routes ? `${routes}：` : ''}${record.Title || '公車/客運營運異常'}，${busStatusText(record.Status)}${timeText ? `（${timeText}）` : ''}。${trimAlertText(record.Description || record.AlertURL || '')}`,
+    shouldNotify: true
+  };
+}
+
 async function transitInfo(location) {
   const city = canonicalCity(location.city);
   const highSpeedRail = await thsrStatus();
   if (highSpeedRail.status === 'live') return highSpeedRail;
   const railIncident = await ncdrCapAlert('transit', location);
   if (railIncident.status === 'live') return railIncident;
+  const busAlert = await tdxBusAlerts({ ...location, city });
+  if (busAlert.status === 'live') return busAlert;
   if (city === '桃園市') return taoyuanMetroStatus({ ...location, city });
   if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
+  if (busAlert.status !== 'not-configured') return busAlert;
   if (railIncident.status !== 'not-configured') return railIncident;
   if (highSpeedRail.status !== 'not-configured') return highSpeedRail;
   return genericConfiguredSource({ moduleId: 'transit' }, location);
@@ -1715,6 +1866,10 @@ async function fetchTdx(url) {
   const clientSecret = process.env.TDX_CLIENT_SECRET;
   if (!clientId || !clientSecret) return { status: 'not-configured', source: 'TDX' };
 
+  if (tdxTokenCache?.accessToken && tdxTokenCache.expiresAt > Date.now() + 30000) {
+    return fetchJson(url, { headers: { Authorization: `Bearer ${tdxTokenCache.accessToken}` }, timeoutMs: 7000 });
+  }
+
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: clientId,
@@ -1726,9 +1881,12 @@ async function fetchTdx(url) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
   });
-  return token?.access_token
-    ? fetchJson(url, { headers: { Authorization: `Bearer ${token.access_token}` } })
-    : null;
+  if (!token?.access_token) return null;
+  tdxTokenCache = {
+    accessToken: token.access_token,
+    expiresAt: Date.now() + (Number(token.expires_in || 3600) * 1000)
+  };
+  return fetchJson(url, { headers: { Authorization: `Bearer ${token.access_token}` }, timeoutMs: 7000 });
 }
 
 async function fetchCwaDatastore(datasetId, params = {}) {
@@ -1916,7 +2074,14 @@ export async function resolveLiveAlert(rule, location) {
     return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
   }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
-  if (['commute', 'road-incident', 'roadwork'].includes(rule.moduleId)) return freewayLiveEvent(rule, location);
+  if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
+    const localRoad = await cityRoadNews(rule, location);
+    if (localRoad.status === 'live') return localRoad;
+    const freeway = await freewayLiveEvent(rule, location);
+    if (freeway.status === 'live') return freeway;
+    return localRoad.status !== 'not-configured' ? localRoad : freeway;
+  }
+  if (rule.moduleId === 'commute') return freewayLiveEvent(rule, location);
   if (rule.moduleId === 'transit') return transitInfo(location);
   if (rule.moduleId === 'parking') return parkingInfo(location);
   if (rule.moduleId === 'fire') return fireEmergency(location);
@@ -1962,6 +2127,16 @@ export function getSourceCoverage() {
         coverage: '全台灣國道即時事件',
         modules: ['commute', 'road-incident', 'roadwork'],
         source: 'https://tisvcloud.freeway.gov.tw/history/motc20/LiveEvents.xml'
+      },
+      'tdx-city-road-news': {
+        coverage: Object.keys(tdxCitySourceNames),
+        modules: ['road-incident', 'roadwork'],
+        source: 'https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/News/City/{City}'
+      },
+      'tdx-bus-alerts': {
+        coverage: [...Object.keys(tdxCitySourceNames), '公路客運'],
+        modules: ['transit'],
+        source: 'https://tdx.transportdata.tw/api/basic/v2/Bus/Alert/City/{City} + /v2/Bus/Alert/InterCity'
       },
       parking: {
         coverage: Object.keys(parkingDefaults),
