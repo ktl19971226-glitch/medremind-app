@@ -2217,6 +2217,46 @@ async function cwaEarthquake(location) {
   };
 }
 
+function earthquakeIntensityFor(earthquake, location) {
+  const counties = earthquake?.Intensity?.County || [];
+  const city = canonicalCity(location.city || '');
+  const county = counties.find(item => sameCity(item.CountyName, city)) || counties[0];
+  const district = location.district || '';
+  const towns = county?.Town || [];
+  const town = towns.find(item => item.TownName === district) ||
+    towns.find(item => district && (item.TownName?.includes(district) || district.includes(item.TownName)));
+  return {
+    countyName: county?.CountyName,
+    countyIntensity: county?.CountyMaxIntensity,
+    townName: town?.TownName,
+    townIntensity: town?.StationIntensity
+  };
+}
+
+async function cwaEarthquakePublic(location) {
+  const data = await fetchCwaPublicFile('E-A0015-005', 5 * 60 * 1000);
+  const earthquake = data?.cwaopendata?.Earthquake;
+  if (!earthquake) return { status: 'no-event', source: 'CWA E-A0015-005 公開鄉鎮震度', body: '目前沒有中央氣象署公開鄉鎮震度資料。' };
+
+  const intensity = earthquakeIntensityFor(earthquake, location);
+  const magnitude = earthquake.Magnitude?.MagnitudeValue;
+  const depth = earthquake.FocalDepth;
+  const placeText = intensity.townName
+    ? `${intensity.countyName}${intensity.townName}震度 ${intensity.townIntensity || intensity.countyIntensity || '未標示'}`
+    : intensity.countyName
+      ? `${intensity.countyName}最大震度 ${intensity.countyIntensity || '未標示'}`
+      : '各地震度請參考中央氣象署資料';
+  const originTime = earthquake.OriginTime || data?.cwaopendata?.sent;
+  const recent = Date.now() - Date.parse(originTime || 0) < 24 * 60 * 60 * 1000;
+
+  return {
+    status: 'live',
+    source: 'CWA E-A0015-005 公開鄉鎮震度',
+    body: `${earthquake.Description || '中央氣象署地震資料'}${originTime ? `（${originTime}）` : ''}，規模 ${magnitude || '未標示'}、深度 ${depth || '未標示'} 公里，${placeText}。`,
+    shouldNotify: recent
+  };
+}
+
 async function cwaTyphoon(location) {
   const data = await fetchCwaDatastore('W-C0034-005');
   if (data?.status === 'not-configured') return data;
@@ -2355,7 +2395,9 @@ export async function resolveLiveAlert(rule, location) {
   }
   if (rule.moduleId === 'earthquake') {
     const result = await cwaEarthquake(location);
-    return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
+    if (result.status !== 'not-configured') return result;
+    const publicEarthquake = await cwaEarthquakePublic(location);
+    return publicEarthquake.status === 'live' ? publicEarthquake : ncdrCapAlert(rule.moduleId, location);
   }
   if (rule.moduleId === 'typhoon') {
     const result = await cwaTyphoon(location);
@@ -2448,6 +2490,11 @@ export function getSourceCoverage() {
         modules: ['typhoon'],
         source: `${cwaTownForecastBaseUrl}/W-C0034-005?Authorization=${cwaPublicFileKey}&format=JSON`
       },
+      'cwa-earthquake-public': {
+        coverage: '全台灣鄉鎮震度',
+        modules: ['earthquake'],
+        source: `${cwaTownForecastBaseUrl}/E-A0015-005?Authorization=${cwaPublicFileKey}&format=JSON`
+      },
       'freeway-live-events': {
         coverage: '全台灣國道即時事件',
         modules: ['commute', 'road-incident', 'roadwork'],
@@ -2512,7 +2559,7 @@ export function getSourceCoverage() {
       }
     },
     keyRequired: {
-      cwa: ['earthquake'],
+      cwa: [],
       moenv: [],
       tdx: ['transit', 'road-incident', 'roadwork']
     },
