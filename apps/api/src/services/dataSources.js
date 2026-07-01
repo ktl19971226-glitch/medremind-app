@@ -12,6 +12,8 @@ const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parki
 const yilanParkingFile = path.resolve(__dirname, '../../data/yilan-parking.json');
 const tainanRoadworkFile = path.resolve(__dirname, '../../data/tainan-roadwork.xml');
 const kaohsiungRoadworkFile = path.resolve(__dirname, '../../data/kaohsiung-roadwork.xml');
+const nantouRoadworkFile = path.resolve(__dirname, '../../data/nantou-roadwork.json');
+const yunlinRoadworkFile = path.resolve(__dirname, '../../data/yunlin-roadwork.json');
 const pingtungRoadworkFile = path.resolve(__dirname, '../../data/pingtung-roadwork.xml');
 const yilanRoadworkFile = path.resolve(__dirname, '../../data/yilan-roadwork.xml');
 const nfaFireInfoUrl = 'https://www.nfa.gov.tw/cht/index.php?code=list&ids=22';
@@ -478,6 +480,14 @@ function readTextFallback(filePath) {
     return fs.readFileSync(filePath, 'utf8');
   } catch {
     return '';
+  }
+}
+
+function readJsonFallback(filePath, fallbackValue = null) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallbackValue;
   }
 }
 
@@ -2083,26 +2093,29 @@ function htmlTableValue(html = '', label) {
 async function publicPipeRoadwork(location, config) {
   const city = canonicalCity(location.city);
   if (city !== config.city) return { status: 'not-configured', source: config.source };
-  const records = [];
+  let records = [];
   for (const type of ['3', '4']) {
     const text = await fetchText(`${config.baseUrl}/Home/Get_AppNoXY?type=${type}`, { timeoutMs: 7000 });
     const items = parseMaybeJsonString(text);
     if (Array.isArray(items)) records.push(...items.map(item => ({ ...item, type })));
+  }
+  if (!records.length && config.cacheFile) {
+    records = readJsonFallback(config.cacheFile, { records: [] })?.records || [];
   }
   if (!records.length) return { status: 'no-event', source: config.source, body: `${location.city}${location.district || ''}目前沒有${config.shortName}今日施工或緊急搶修資訊。` };
 
   const district = location.district || '';
   const candidates = district ? records.slice(0, 40) : records.slice(0, 1);
   for (const record of candidates) {
-    const html = await fetchText(`${config.baseUrl}/Home/DetailsBox?id=${encodeURIComponent(record.AppNo)}`, { timeoutMs: 7000 });
-    const address = htmlTableValue(html, '地址');
-    const note = htmlTableValue(html, '備註');
+    const html = record.address ? '' : await fetchText(`${config.baseUrl}/Home/DetailsBox?id=${encodeURIComponent(record.AppNo)}`, { timeoutMs: 7000 });
+    const address = record.address || htmlTableValue(html, '地址');
+    const note = record.note || htmlTableValue(html, '備註');
     if (district && !address.includes(district) && !note.includes(district)) continue;
-    const status = htmlTableValue(html, '案件進度') || (record.type === '4' ? '緊急搶修案件' : '今日施工');
-    const owner = htmlTableValue(html, '路權單位');
-    const unit = htmlTableValue(html, '申請單位') || record.AppUnitName;
-    const start = htmlTableValue(html, '核准開挖日期起') || htmlTableValue(html, '申請開挖日期起');
-    const end = htmlTableValue(html, '核准開挖日期止') || htmlTableValue(html, '申請開挖日期止');
+    const status = record.statusText || htmlTableValue(html, '案件進度') || (record.type === '4' ? '緊急搶修案件' : '今日施工');
+    const owner = record.owner || htmlTableValue(html, '路權單位');
+    const unit = record.unit || htmlTableValue(html, '申請單位') || record.AppUnitName;
+    const start = record.start || htmlTableValue(html, '核准開挖日期起') || htmlTableValue(html, '申請開挖日期起');
+    const end = record.end || htmlTableValue(html, '核准開挖日期止') || htmlTableValue(html, '申請開挖日期止');
     return {
       status: 'live',
       source: config.source,
@@ -2119,7 +2132,8 @@ async function nantouRoadwork(location) {
     city: '南投縣',
     source: '南投縣政府管線挖掘資訊便民服務系統',
     shortName: '南投縣',
-    baseUrl: nantouRoadworkBaseUrl
+    baseUrl: nantouRoadworkBaseUrl,
+    cacheFile: nantouRoadworkFile
   });
 }
 
@@ -2128,7 +2142,8 @@ async function yunlinRoadwork(location) {
     city: '雲林縣',
     source: '雲林縣政府管線挖掘資訊便民服務系統',
     shortName: '雲林縣',
-    baseUrl: yunlinRoadworkBaseUrl
+    baseUrl: yunlinRoadworkBaseUrl,
+    cacheFile: yunlinRoadworkFile
   });
 }
 
