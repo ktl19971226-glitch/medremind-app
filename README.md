@@ -48,6 +48,8 @@ API 預設 port：`8061`。
 
 - 台灣自來水停水資訊 JSON：`water-outage`
 - EMIC 台灣電力公司災情通報表 JSON：`power-outage`
+- 經濟部能源署災害期間公用天然氣停氣資訊 CSV：`gas-work`
+- 內政部警政署婦幼安全警示地點 CSV：`crime-watch`
 - 臺北市垃圾清運點位 CSV：`garbage-truck`（臺北市）
 - 新北市垃圾清運車輛所在位置 JSON：`garbage-truck`（新北市）
 - 桃園市垃圾清運路線即時查詢系統：`garbage-truck`（桃園市）

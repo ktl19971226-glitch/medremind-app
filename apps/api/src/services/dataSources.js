@@ -54,8 +54,11 @@ const tdxDefaults = {
 
 const publicDefaults = {
   'water-outage': 'https://web.water.gov.tw/wateroffapi/openData/export/json',
-  'power-outage': 'https://portal2.emic.gov.tw/Pub/ERA2/OpenData/ERA2_E2.json'
+  'power-outage': 'https://portal2.emic.gov.tw/Pub/ERA2/OpenData/ERA2_E2.json',
+  'gas-work': 'https://www.moeaea.gov.tw/ECW/populace/opendata/wHandOpenData_File.ashx?set_id=168'
 };
+
+const npaWomenSafetyUrl = 'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/DBB18796-8A89-4917-B4AB-D0AF26FAFEDC/resource/ADD554F1-FE8C-422C-8ACE-1E560D119E2A/download';
 
 const parkingDefaults = {
   基隆市: {
@@ -1635,6 +1638,50 @@ async function fraudAlert() {
   };
 }
 
+async function crimeWatch(location) {
+  const data = await fetchData(npaWomenSafetyUrl, { timeoutMs: 7000 });
+  if (!Array.isArray(data) || data.length <= 1) {
+    return { status: 'no-event', source: '內政部警政署婦幼安全警示地點', body: '警政署婦幼安全警示地點資料源暫時無法連線。' };
+  }
+  const records = data.filter(record => record.No !== '編號');
+  const city = displayCity(canonicalCity(location.city));
+  const district = location.district || '';
+  const matched = records.find(record => {
+    const text = `${record.Address || ''}${record.DeptNm || ''}${record.BranchNm || ''}`;
+    return (!city || text.includes(city) || text.includes(canonicalCity(city))) &&
+      (!district || text.includes(district) || text.includes(district.replace(/區|鄉|鎮|市$/, '')));
+  }) || records.find(record => `${record.DeptNm || ''}${record.Address || ''}`.includes(city));
+
+  if (!matched) {
+    return { status: 'no-event', source: '內政部警政署婦幼安全警示地點', body: `${location.city}${location.district || ''}目前沒有警政署婦幼安全警示地點資料。` };
+  }
+
+  return {
+    status: 'live',
+    source: '內政部警政署婦幼安全警示地點',
+    body: `${matched.DeptNm || location.city}${matched.BranchNm ? ` ${matched.BranchNm}` : ''}轄內警示地點：${matched.Address || '地點未提供'}。聯繫窗口：${matched.Contact || '未提供'}${matched.ContactNumber ? `，${matched.ContactNumber}` : ''}。`,
+    shouldNotify: false
+  };
+}
+
+async function gasOutage(location) {
+  const data = await fetchData(publicDefaults['gas-work'], { timeoutMs: 7000 });
+  if (!Array.isArray(data)) {
+    return { status: 'no-event', source: '經濟部能源署災害期間公用天然氣停氣資訊', body: '能源署天然氣停氣資料源暫時無法連線。' };
+  }
+  const records = data.filter(record => !isEmptyEventRecord(record) && (record['行政區域'] || record['停氣區域'] || record['停氣原因']));
+  const matched = records.find(record => matchesLocation(record, location)) || records[0];
+  if (!matched) {
+    return { status: 'no-event', source: '經濟部能源署災害期間公用天然氣停氣資訊', body: `${location.city}${location.district || ''}目前沒有能源署公告的災害期間天然氣停氣資訊。` };
+  }
+  return {
+    status: 'live',
+    source: '經濟部能源署災害期間公用天然氣停氣資訊',
+    body: `${matched['行政區域'] || location.city || ''}${matched['停氣區域'] || ''}天然氣停氣：${matched['停氣原因'] || '原因未提供'}，預計修復 ${matched['預計修復時間'] || '未提供'}，事業單位 ${matched['事業單位'] || '未提供'}。`,
+    shouldNotify: true
+  };
+}
+
 async function taipeiMetroStatus(location) {
   const text = await fetchText(transitDefaults[canonicalCity(location.city)] || transitDefaults[location.city], { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '臺北捷運營運燈號', body: '臺北捷運營運燈號資料源暫時無法連線。' };
@@ -2169,6 +2216,8 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'parking') return parkingInfo(location);
   if (rule.moduleId === 'fire') return fireEmergency(location);
   if (rule.moduleId === 'fraud-alert') return fraudAlert();
+  if (rule.moduleId === 'crime-watch') return crimeWatch(location);
+  if (rule.moduleId === 'gas-work') return gasOutage(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
   if (rule.moduleId === 'local-bulletin') {
@@ -2192,6 +2241,16 @@ export function getSourceCoverage() {
       'power-outage': {
         coverage: '全台灣',
         source: publicDefaults['power-outage']
+      },
+      'gas-outage': {
+        coverage: '全台灣災害期間公用天然氣停氣資訊',
+        modules: ['gas-work'],
+        source: publicDefaults['gas-work']
+      },
+      'npa-women-safety': {
+        coverage: '全台灣婦幼安全警示地點',
+        modules: ['crime-watch'],
+        source: npaWomenSafetyUrl
       },
       'garbage-truck': {
         coverage: [...Object.keys(garbageTruckDefaults), '桃園市'],
