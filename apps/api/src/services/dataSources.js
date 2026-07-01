@@ -340,6 +340,8 @@ const moenvPublicAqiKeys = [
   'b7df779e-71a6-4148-8379-5afbd441d803'
 ];
 
+const chiayiCityGarbageUrl = 'https://cleaner.web.cycepb.gov.tw/Car.ashx';
+
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
   台北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -350,6 +352,7 @@ const garbageTruckDefaults = {
   台南市: 'https://soa.tainan.gov.tw/Api/Service/Get/2c8a70d5-06f2-4353-9e92-c40d33bcd969',
   宜蘭縣: 'https://opendata.ilepb.gov.tw/ILEPB04004?media=file',
   新竹市: 'https://7966.hccg.gov.tw/WEB/_IMP/API/CleanWeb/getCarLocation?rId=all',
+  嘉義市: chiayiCityGarbageUrl,
   高雄市: 'https://api.kcg.gov.tw/api/service/Get/aaf4ce4b-4ca8-43de-bfaf-6dc97e89cac0'
 };
 
@@ -694,6 +697,40 @@ async function eupGarbage(location) {
     status: 'live',
     source: '樂圾通公開即時清運車輛',
     body: `${location.city}${location.district || district.District || ''}樂圾通即時車輛：${vehicle.Car_Style || '清運車'} ${vehicle.Car_Number || vehicle.Car_Unicode || ''}${routeText}${updateText}${distanceText}。`,
+    shouldNotify: true
+  };
+}
+
+function chiayiCityGarbageTime(record) {
+  const date = new Date(`${String(record.LastUpdate || '').replace(' ', 'T')}+08:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+async function chiayiCityGarbage(location) {
+  if (canonicalCity(location.city) !== '嘉義市') return null;
+  const data = await fetchJson(chiayiCityGarbageUrl, { timeoutMs: 7000 });
+  const vehicles = (Array.isArray(data) ? data : [])
+    .filter(vehicle => Number(vehicle.car_x) && Number(vehicle.car_y))
+    .filter(vehicle => {
+      const date = chiayiCityGarbageTime(vehicle);
+      return date ? Date.now() - date.getTime() < 90 * 60 * 1000 : false;
+    });
+  if (!vehicles.length) return moenvRouteFallback(location);
+
+  const withDistance = Number(location.lat) && Number(location.lng)
+    ? vehicles.map(vehicle => ({
+      ...vehicle,
+      distance: distanceKm(Number(location.lat), Number(location.lng), Number(vehicle.car_x), Number(vehicle.car_y))
+    })).sort((a, b) => a.distance - b.distance)
+    : vehicles.sort((a, b) => (chiayiCityGarbageTime(b)?.getTime() || 0) - (chiayiCityGarbageTime(a)?.getTime() || 0));
+  const vehicle = withDistance[0];
+  const distanceText = Number.isFinite(vehicle.distance) ? `，距離約 ${vehicle.distance.toFixed(vehicle.distance < 1 ? 1 : 0)} 公里` : '';
+  const recycleText = vehicle.With_Recycle_Truck ? `，資收車${vehicle.With_Recycle_Truck}` : '';
+
+  return {
+    status: 'live',
+    source: '嘉義市環保即時通',
+    body: `嘉義市${location.district || ''}清潔車 ${vehicle.CarNo || vehicle.CarName || ''}：${vehicle.Caption || '即時位置已更新'}，${vehicle.LastUpdate || '最新'} 更新${recycleText}${distanceText}。`,
     shouldNotify: true
   };
 }
@@ -3413,6 +3450,7 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'fraud-alert') return fraudAlert();
   if (rule.moduleId === 'crime-watch') return crimeWatch(location);
   if (rule.moduleId === 'gas-work') return gasOutage(location);
+  if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '嘉義市') return chiayiCityGarbage(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck') {
     const eupResult = await eupGarbage(location);
