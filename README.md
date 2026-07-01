@@ -70,6 +70,7 @@ API 預設 port：`8061`。
 - 環境部空氣品質指標 AQI JSON：`air-quality`（全台灣；正式 key 優先，未設定時走政府資料開放平臺公開 JSON 檢視來源）
 - 高速公路局 TISVCloud LiveEvents XML：`commute`、`road-incident`、`roadwork`（全台灣國道即時事件；有定位時優先回附近事件）
 - TDX 城市道路交通消息：`road-incident`、`roadwork`（22 縣市地方道路事故、壅塞、施工與交管消息；需 `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET`）
+- PTX/MOTC 公車/客運營運通阻 JSON：`transit`（22 縣市市區公車與公路客運通阻；TDX key 未設定時 fallback）
 - 基隆市停車場剩餘車位 HTML：`parking`（基隆市）
 - 新竹市剩餘停車位資訊 JSON + 官方停車服務入口 fallback：`parking`（新竹市）
 - 新竹縣政府路邊停車中心：`parking`（新竹縣；官方停車資訊入口，未提供即時剩餘車位 API）

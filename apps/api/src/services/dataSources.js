@@ -248,6 +248,7 @@ const localBulletinDefaults = {
 
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
 const traLiveBoardPublicUrl = 'https://ptx.transportdata.tw/MOTC/v2/Rail/TRA/LiveBoard?$top=500&$format=JSON';
+const ptxBusAlertBaseUrl = 'https://ptx.transportdata.tw/MOTC/v2/Bus/Alert';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
 const taichungMetroStatusUrl = 'https://www.tmrt.com.tw/';
 const kaohsiungMetroNoticeUrl = 'https://www.krtc.com.tw/Information/notice';
@@ -1857,6 +1858,14 @@ function tdxApiUrl(path, params = {}) {
   return url.toString();
 }
 
+function ptxApiUrl(path, params = {}) {
+  const url = new URL(`https://ptx.transportdata.tw/MOTC${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
 function activeWindow(record) {
   const now = Date.now();
   const start = Date.parse(record.StartTime || record.startTime || record.PublishTime || record.publishTime || 0);
@@ -1958,6 +1967,40 @@ async function tdxBusAlerts(location) {
   };
 }
 
+async function ptxBusAlerts(location) {
+  const cityCode = tdxCityCodeFor(location);
+  const cityPromise = cityCode
+    ? fetchJson(ptxApiUrl(`/v2/Bus/Alert/City/${cityCode}`, { $top: '50', $format: 'JSON' }), { timeoutMs: 7000 })
+    : Promise.resolve(null);
+  const [cityData, interCityData] = await Promise.all([
+    cityPromise,
+    fetchJson(ptxApiUrl('/v2/Bus/Alert/InterCity', { $top: '50', $format: 'JSON' }), { timeoutMs: 7000 })
+  ]);
+  if (!cityData && !interCityData) return { status: 'no-event', source: 'PTX/MOTC 公車/客運營運通阻', body: '公車/客運營運通阻資料源暫時無法連線。' };
+
+  const records = [
+    ...(Array.isArray(cityData) ? cityData : extractRecords(cityData)),
+    ...(Array.isArray(interCityData) ? interCityData : extractRecords(interCityData))
+  ]
+    .filter(record => activeWindow(record))
+    .filter(record => Number(record.Status) !== 1)
+    .filter(record => scopedTdxRecord(record, location));
+
+  if (!records.length) {
+    return { status: 'no-event', source: 'PTX/MOTC 公車/客運營運通阻', body: `${location.city}${location.district || ''}目前沒有公車或公路客運營運通阻事件。` };
+  }
+
+  const record = records[0];
+  const routes = record.Scope?.Routes?.map(route => route.RouteName?.Zh_tw || route.RouteName?.En || route.RouteID).filter(Boolean).slice(0, 4).join('、');
+  const timeText = [record.StartTime, record.EndTime].filter(Boolean).join(' 至 ');
+  return {
+    status: 'live',
+    source: 'PTX/MOTC 公車/客運營運通阻',
+    body: `${routes ? `${routes}：` : ''}${record.Title || '公車/客運營運異常'}，${busStatusText(record.Status)}${timeText ? `（${timeText}）` : ''}。${trimAlertText(record.Description || record.AlertURL || '')}`,
+    shouldNotify: true
+  };
+}
+
 async function officialLocalBulletin(location) {
   const city = canonicalCity(location.city);
   const config = localBulletinDefaults[city] || localBulletinDefaults[location.city];
@@ -1989,7 +2032,8 @@ async function transitInfo(location) {
   if (railIncident.status === 'live') return railIncident;
   const traBoard = await traLiveBoard();
   if (traBoard.status === 'live') return traBoard;
-  const busAlert = await tdxBusAlerts({ ...location, city });
+  const tdxBusAlert = await tdxBusAlerts({ ...location, city });
+  const busAlert = tdxBusAlert.status === 'not-configured' ? await ptxBusAlerts({ ...location, city }) : tdxBusAlert;
   if (busAlert.status === 'live') return busAlert;
   if (city === '桃園市') return taoyuanMetroStatus({ ...location, city });
   if (city === '臺中市') return taichungMetroStatus();
@@ -2537,6 +2581,11 @@ export function getSourceCoverage() {
         modules: ['transit'],
         source: 'https://tdx.transportdata.tw/api/basic/v2/Bus/Alert/City/{City} + /v2/Bus/Alert/InterCity'
       },
+      'ptx-bus-alerts-public': {
+        coverage: [...Object.keys(tdxCitySourceNames), '公路客運'],
+        modules: ['transit'],
+        source: `${ptxBusAlertBaseUrl}/City/{City}?$format=JSON + ${ptxBusAlertBaseUrl}/InterCity?$format=JSON`
+      },
       'local-bulletin-portals': {
         coverage: Object.keys(Object.fromEntries(Object.keys(localBulletinDefaults).map(city => [canonicalCity(city), true]))),
         modules: ['local-bulletin'],
@@ -2593,7 +2642,7 @@ export function getSourceCoverage() {
     keyRequired: {
       cwa: [],
       moenv: [],
-      tdx: ['transit', 'road-incident', 'roadwork']
+      tdx: ['road-incident', 'roadwork']
     },
     configurable: Object.keys(moduleEnvNames).filter(moduleId => !publicDefaults[moduleId] && moduleId !== 'garbage-truck')
   };
