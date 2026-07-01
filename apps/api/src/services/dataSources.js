@@ -12,6 +12,8 @@ const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parki
 const yilanParkingFile = path.resolve(__dirname, '../../data/yilan-parking.json');
 const tainanRoadworkFile = path.resolve(__dirname, '../../data/tainan-roadwork.xml');
 const kaohsiungRoadworkFile = path.resolve(__dirname, '../../data/kaohsiung-roadwork.xml');
+const taichungRoadworkFile = path.resolve(__dirname, '../../data/taichung-roadwork.json');
+const keelungRoadworkFile = path.resolve(__dirname, '../../data/keelung-roadwork.json');
 const changhuaRoadworkFile = path.resolve(__dirname, '../../data/changhua-roadwork.json');
 const nantouRoadworkFile = path.resolve(__dirname, '../../data/nantou-roadwork.json');
 const yunlinRoadworkFile = path.resolve(__dirname, '../../data/yunlin-roadwork.json');
@@ -266,8 +268,10 @@ const ptxBusAlertBaseUrl = 'https://ptx.transportdata.tw/MOTC/v2/Bus/Alert';
 const taipeiTodayRoadworkUrl = 'https://tpnco.blob.core.windows.net/blobfs/Todaywork.json';
 const newTaipeiRoadworkUrl = 'https://data.ntpc.gov.tw/api/datasets/96B6101B-C033-4834-8BD5-E312651DB7A0/json?page=0&size=1000';
 const taoyuanTodayRoadworkUrl = 'https://opendata.tycg.gov.tw/api/dataset/56c616fe-07d7-4b0c-bb75-e8f8cd75500a/resource/52de3762-1490-4a86-a074-0062d746873b/download';
+const taichungRoadworkUrl = 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27';
 const tainanTodayRoadworkUrl = 'https://diggis.tainan.gov.tw/TNRoad/ashx/PresentDayCase.ashx';
 const kaohsiungRoadworkUrl = 'https://pipegis.kcg.gov.tw/openDataService.aspx';
+const keelungRoadworkUrl = 'https://kct.klcg.gov.tw/klroad/Models/MapPublic.ashx';
 const hsinchuCityRoadworkBaseUrl = 'https://pipe.hccg.gov.tw';
 const hsinchuCountyRoadworkListUrl = 'https://pu.hsinchu.gov.tw/svc/svc/CaseList.aspx';
 const miaoliRoadworkListUrl = 'https://miaoli-road.miaoli.gov.tw/newmiaoliweb/Common/CaseList_New.aspx';
@@ -2073,6 +2077,73 @@ async function taoyuanRoadwork(location) {
   };
 }
 
+async function taichungRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '臺中市') return { status: 'not-configured', source: '臺中市道路挖掘當日施工資訊' };
+  const data = await fetchJson(taichungRoadworkUrl, { timeoutMs: 15000 }) || readJsonFallback(taichungRoadworkFile, []);
+  const rows = Array.isArray(data)
+    ? data
+      .map(record => ({
+        ...record,
+        start: normalizeRoadworkDate(record['核准起日期']),
+        end: normalizeRoadworkDate(record['核准迄日期'])
+      }))
+      .filter(record => record['地點'] && dateRangeIncludesToday(record.start, record.end))
+    : [];
+  if (!rows.length) return { status: 'no-event', source: '臺中市道路挖掘當日施工資訊', body: `${location.city}${location.district || ''}目前沒有臺中市道路挖掘當日施工資訊。` };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record['區域名稱'] === district || record['地點']?.includes(district)) && !isEmptyEventRecord(record)) ||
+    rows.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '臺中市道路挖掘當日施工資訊', body: `${location.city}${district}目前沒有臺中市道路挖掘當日施工資訊。` };
+
+  return {
+    status: 'live',
+    source: '臺中市道路挖掘當日施工資訊',
+    body: `${matched['區域名稱'] || district || '臺中市'}道路挖掘施工：${matched['地點'] || '位置未標示'}，工程 ${matched['工程名稱'] || matched['案件類別'] || '未標示'}，期間 ${matched.start || matched['核准起日期'] || ''} 至 ${matched.end || matched['核准迄日期'] || ''}，單位 ${matched['申請單位'] || '未標示'}，許可 ${matched['許可證編號'] || '未標示'}，開工 ${matched['是否開工'] || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
+async function keelungRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '基隆市') return { status: 'not-configured', source: '基隆市道路管理資訊平台' };
+  const form = new URLSearchParams({ Mode: 'swork', CMode: 'road' });
+  const text = await fetchText(keelungRoadworkUrl, {
+    method: 'POST',
+    body: form.toString(),
+    timeoutMs: 7000,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
+  });
+  let records = [];
+  try {
+    records = JSON.parse(text || readTextFallback(keelungRoadworkFile));
+  } catch {
+    records = readJsonFallback(keelungRoadworkFile, []);
+  }
+  const rows = [];
+  const seen = new Set();
+  for (const record of Array.isArray(records) ? records : []) {
+    const key = `${record.AppNo || ''}-${record.IssuanceNo || ''}-${record.Location || ''}`;
+    if (!record.Location || seen.has(key)) continue;
+    seen.add(key);
+    rows.push(record);
+  }
+  if (!rows.length) return { status: 'no-event', source: '基隆市道路管理資訊平台', body: `${location.city}${location.district || ''}目前沒有基隆市道路挖掘施工中案件資訊。` };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record.DistrictName === district || record.Location?.includes(district)) && !isEmptyEventRecord(record)) ||
+    rows.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '基隆市道路管理資訊平台', body: `${location.city}${district}目前沒有基隆市道路挖掘施工中案件資訊。` };
+
+  return {
+    status: 'live',
+    source: '基隆市道路管理資訊平台',
+    body: `${matched.DistrictName || district || '基隆市'}道路挖掘施工中：${matched.Location || '位置未標示'}，類型 ${matched.CaseTypeName || '未標示'}，單位 ${matched.AppUnitName || '未標示'}，廠商 ${matched.ContractorName || '未標示'}，許可 ${matched.IssuanceNo || matched.AppNo || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
 async function tainanRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '臺南市') return { status: 'not-configured', source: '臺南市道路挖掘當日施工資訊' };
@@ -3170,7 +3241,7 @@ export async function resolveLiveAlert(rule, location) {
   if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
     let localRoadworkNoEvent = null;
     if (rule.moduleId === 'roadwork') {
-      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, hsinchuCityRoadwork, hsinchuCountyRoadwork, miaoliRoadwork, changhuaRoadwork, nantouRoadwork, yunlinRoadwork, chiayiCityRoadwork, chiayiCountyRoadwork, tainanRoadwork, kaohsiungRoadwork, pingtungRoadwork, yilanRoadwork, hualienRoadwork, taitungRoadwork, penghuRoadwork, kinmenRoadwork, lienchiangRoadwork]) {
+      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, taichungRoadwork, keelungRoadwork, hsinchuCityRoadwork, hsinchuCountyRoadwork, miaoliRoadwork, changhuaRoadwork, nantouRoadwork, yunlinRoadwork, chiayiCityRoadwork, chiayiCountyRoadwork, tainanRoadwork, kaohsiungRoadwork, pingtungRoadwork, yilanRoadwork, hualienRoadwork, taitungRoadwork, penghuRoadwork, kinmenRoadwork, lienchiangRoadwork]) {
         const localRoadwork = await source(location);
         if (localRoadwork.status === 'live') return localRoadwork;
         if (localRoadwork.status === 'no-event' && !localRoadworkNoEvent) localRoadworkNoEvent = localRoadwork;
@@ -3281,11 +3352,13 @@ export function getSourceCoverage() {
         source: taipeiTodayRoadworkUrl
       },
       'local-roadwork-public': {
-        coverage: ['新北市', '桃園市', '新竹市', '新竹縣', '苗栗縣', '彰化縣', '南投縣', '雲林縣', '嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣', '花蓮縣', '臺東縣', '澎湖縣', '金門縣', '連江縣'],
+        coverage: ['基隆市', '新北市', '桃園市', '臺中市', '新竹市', '新竹縣', '苗栗縣', '彰化縣', '南投縣', '雲林縣', '嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣', '花蓮縣', '臺東縣', '澎湖縣', '金門縣', '連江縣'],
         modules: ['roadwork'],
         sources: {
+          基隆市: keelungRoadworkUrl,
           新北市: newTaipeiRoadworkUrl,
           桃園市: taoyuanTodayRoadworkUrl,
+          臺中市: taichungRoadworkUrl,
           新竹市: `${hsinchuCityRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
           新竹縣: hsinchuCountyRoadworkListUrl,
           苗栗縣: miaoliRoadworkListUrl,
