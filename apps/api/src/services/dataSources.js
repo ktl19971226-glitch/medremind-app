@@ -571,6 +571,33 @@ async function hinetGarbage(location) {
   const regionId = hinetRegionIdFor(location);
   if (!regionId) return null;
 
+  const obus = await fetchJson(`https://www.bstruck.hinet.net/Page/Map/obu/ws/getObus.aspx?cid=${encodeURIComponent(regionId)}`, {
+    timeoutMs: 7000,
+    headers: {
+      Referer: `https://www.bstruck.hinet.net/Page/Map/obu/obuMapL.aspx?cid=${encodeURIComponent(regionId)}`
+    }
+  });
+  const vehicles = (Array.isArray(obus) ? obus : [])
+    .filter(vehicle => Number(vehicle.lat) && Number(vehicle.lon));
+  if (vehicles.length) {
+    const withDistance = Number(location.lat) && Number(location.lng)
+      ? vehicles.map(vehicle => ({
+        ...vehicle,
+        distance: distanceKm(Number(location.lat), Number(location.lng), Number(vehicle.lat), Number(vehicle.lon))
+      })).sort((a, b) => a.distance - b.distance)
+      : vehicles;
+    const vehicle = withDistance[0];
+    const distanceText = Number.isFinite(vehicle.distance) ? `，距離約 ${vehicle.distance.toFixed(vehicle.distance < 1 ? 1 : 0)} 公里` : '';
+    const statusText = vehicle.status_name ? `，狀態 ${vehicle.status_name}` : '';
+    const addressText = vehicle.address ? `，約略位置 ${vehicle.address}` : '';
+    return {
+      status: 'live',
+      source: '清運e點通即時車輛 JSON',
+      body: `${location.city}${location.district}清運e點通即時車輛：${vehicle.run || vehicle.car_no || '清運車'}${addressText}${statusText}${distanceText}。`,
+      shouldNotify: true
+    };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
