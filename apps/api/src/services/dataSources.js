@@ -60,6 +60,33 @@ const publicDefaults = {
 
 const npaWomenSafetyUrl = 'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/DBB18796-8A89-4917-B4AB-D0AF26FAFEDC/resource/ADD554F1-FE8C-422C-8ACE-1E560D119E2A/download';
 const npaFatalTrafficAccidentUrl = 'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/F4077949-50CC-4640-8114-79958CC8BBEA/resource/A07568BF-83F7-4A55-9B8D-3638A0B22271/download';
+const cwaTownForecastBaseUrl = 'https://opendata.cwa.gov.tw/fileapi/v1/opendataapi';
+const cwaPublicFileKey = 'rdec-key-123-45678-011121314';
+
+const cwaTownForecastDatasetIds = {
+  宜蘭縣: 'F-D0047-001',
+  桃園市: 'F-D0047-005',
+  新竹縣: 'F-D0047-009',
+  苗栗縣: 'F-D0047-013',
+  彰化縣: 'F-D0047-017',
+  南投縣: 'F-D0047-021',
+  雲林縣: 'F-D0047-025',
+  嘉義縣: 'F-D0047-029',
+  屏東縣: 'F-D0047-033',
+  臺東縣: 'F-D0047-037',
+  花蓮縣: 'F-D0047-041',
+  澎湖縣: 'F-D0047-045',
+  基隆市: 'F-D0047-049',
+  新竹市: 'F-D0047-053',
+  嘉義市: 'F-D0047-057',
+  臺北市: 'F-D0047-061',
+  高雄市: 'F-D0047-065',
+  新北市: 'F-D0047-069',
+  臺中市: 'F-D0047-073',
+  臺南市: 'F-D0047-077',
+  連江縣: 'F-D0047-081',
+  金門縣: 'F-D0047-085'
+};
 
 const parkingDefaults = {
   基隆市: {
@@ -292,6 +319,7 @@ let tainanParkingCache = null;
 let kaohsiungParkingCache = null;
 let yilanParkingCache = null;
 let tdxTokenCache = null;
+let cwaTownForecastCache = {};
 
 const ncdrEventNames = {
   rain: ['降雨'],
@@ -2066,6 +2094,71 @@ function firstParameter(elements, name) {
   return elements.find(entry => entry.elementName === name)?.time?.[0]?.parameter?.parameterName;
 }
 
+async function fetchCwaTownForecast(location) {
+  const city = canonicalCity(location.city || '臺北市');
+  const datasetId = cwaTownForecastDatasetIds[city];
+  if (!datasetId) return null;
+
+  const cached = cwaTownForecastCache[datasetId];
+  if (cached?.loadedAt > Date.now() - 30 * 60 * 1000) return cached.data;
+
+  const search = new URLSearchParams({ Authorization: cwaPublicFileKey, format: 'JSON' });
+  const data = await fetchJson(`${cwaTownForecastBaseUrl}/${datasetId}?${search}`, { timeoutMs: 7000 });
+  if (data?.cwaopendata?.Dataset) {
+    cwaTownForecastCache[datasetId] = { data, loadedAt: Date.now() };
+  }
+  return data;
+}
+
+function cwaTownLocation(data, location) {
+  const locations = data?.cwaopendata?.Dataset?.Locations;
+  const places = Array.isArray(locations) ? locations.flatMap(group => group.Location || []) : locations?.Location || [];
+  const district = location.district || '';
+  return places.find(place => place.LocationName === district) ||
+    places.find(place => district && (place.LocationName?.includes(district) || district.includes(place.LocationName))) ||
+    places[0];
+}
+
+function townWeatherValue(place, elementName, valueName) {
+  const value = place?.WeatherElement?.find(element => element.ElementName === elementName)?.Time?.[0]?.ElementValue;
+  return value?.[valueName] || Object.values(value || {})[0];
+}
+
+async function cwaTownForecast(rule, location) {
+  const city = canonicalCity(location.city || '臺北市');
+  const data = await fetchCwaTownForecast(location);
+  const place = cwaTownLocation(data, location);
+  const placeName = `${displayCity(city)}${place?.LocationName || location.district || ''}`;
+  if (!place) {
+    return { status: 'no-event', source: 'CWA F-D0047 鄉鎮預報公開檔', body: `${placeName}目前沒有可用的鄉鎮天氣預報資料。` };
+  }
+
+  const rain = townWeatherValue(place, '3小時降雨機率', 'ProbabilityOfPrecipitation');
+  const temp = townWeatherValue(place, '溫度', 'Temperature');
+  const weather = townWeatherValue(place, '天氣現象', 'Weather');
+  const description = townWeatherValue(place, '天氣預報綜合描述', 'WeatherDescription');
+
+  if (rule.moduleId === 'rain' && rain) {
+    return {
+      status: 'live',
+      source: 'CWA F-D0047 鄉鎮預報公開檔',
+      body: `${placeName}未來 3 小時降雨機率 ${rain}%，天氣${weather || '已更新'}。`,
+      shouldNotify: Number(rain) >= Number(process.env.RAIN_NOTIFY_THRESHOLD || 50)
+    };
+  }
+
+  if (rule.moduleId === 'temperature' && temp) {
+    return {
+      status: 'live',
+      source: 'CWA F-D0047 鄉鎮預報公開檔',
+      body: `${placeName}目前預報溫度約 ${temp} 度${description ? `，${description}` : ''}`,
+      shouldNotify: true
+    };
+  }
+
+  return { status: 'no-event', source: 'CWA F-D0047 鄉鎮預報公開檔', body: `${placeName}目前沒有可用的鄉鎮天氣預報資料。` };
+}
+
 async function cwaForecast(rule, location) {
   const city = canonicalCity(location.city || '臺北市');
   const data = await fetchCwaDatastore('F-C0032-001', { locationName: city });
@@ -2225,7 +2318,9 @@ async function genericConfiguredSource(rule, location) {
 export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'rain' || rule.moduleId === 'temperature') {
     const result = await cwaForecast(rule, location);
-    return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
+    if (result.status !== 'not-configured') return result;
+    const publicForecast = await cwaTownForecast(rule, location);
+    return publicForecast.status === 'live' ? publicForecast : ncdrCapAlert(rule.moduleId, location);
   }
   if (rule.moduleId === 'earthquake') {
     const result = await cwaEarthquake(location);
@@ -2310,6 +2405,11 @@ export function getSourceCoverage() {
         modules: ['rain', 'temperature', 'earthquake', 'typhoon', 'transit', 'evacuation', 'local-bulletin', 'accident'],
         source: 'https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx'
       },
+      'cwa-town-forecast-public': {
+        coverage: Object.keys(cwaTownForecastDatasetIds),
+        modules: ['rain', 'temperature'],
+        source: `${cwaTownForecastBaseUrl}/{datasetId}?Authorization=${cwaPublicFileKey}&format=JSON`
+      },
       'freeway-live-events': {
         coverage: '全台灣國道即時事件',
         modules: ['commute', 'road-incident', 'roadwork'],
@@ -2374,7 +2474,7 @@ export function getSourceCoverage() {
       }
     },
     keyRequired: {
-      cwa: ['rain', 'temperature', 'earthquake', 'typhoon'],
+      cwa: ['earthquake', 'typhoon'],
       moenv: [],
       tdx: ['transit', 'road-incident', 'roadwork']
     },
