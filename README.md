@@ -59,6 +59,7 @@ API 預設 port：`8061`。
 - 環境部全國垃圾車清運路線查詢網：`garbage-truck` fallback（22 縣市官方清運路線；無即時 GPS 的縣市不推播）
 - 清運e點通 ASP.NET 即時查詢：`garbage-truck`（南投、彰化、臺東、澎湖部分鄉鎮；無執勤車輛時回環境部路線 fallback）
 - NCDR 民生示警 CAP JSON：`rain`、`temperature`、`earthquake`、`typhoon`、`transit`、`evacuation`、`local-bulletin`、`accident`（全台灣；CWA key 未設定時作為官方示警來源，並接臺鐵營運異常/停駛警戒）
+- 22 縣市政府官方入口：`local-bulletin`（地方公告/市政或縣政新聞入口；一般公告不推播，重大民生示警仍以 NCDR CAP 優先）
 - 環境部空氣品質指標 AQI JSON：`air-quality`（全台灣；正式 key 優先，未設定時走政府資料開放平臺公開 JSON 檢視來源）
 - 高速公路局 TISVCloud LiveEvents XML：`commute`、`road-incident`、`roadwork`（全台灣國道即時事件；有定位時優先回附近事件）
 - TDX 城市道路交通消息：`road-incident`、`roadwork`（22 縣市地方道路事故、壅塞、施工與交管消息；需 `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET`）

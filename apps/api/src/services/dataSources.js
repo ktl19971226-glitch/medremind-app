@@ -186,6 +186,35 @@ const transitDefaults = {
   新北市: 'https://web.metro.taipei/pages2026/WebServiceStatus'
 };
 
+const localBulletinDefaults = {
+  臺北市: { info: 'https://www.gov.taipei/', label: '臺北市政府市政資訊', summary: '臺北市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  台北市: { info: 'https://www.gov.taipei/', label: '臺北市政府市政資訊', summary: '臺北市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  新北市: { info: 'https://www.ntpc.gov.tw/', label: '新北市政府市政資訊', summary: '新北市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  桃園市: { info: 'https://www.tycg.gov.tw/', label: '桃園市政府市政資訊', summary: '桃園市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  臺中市: { info: 'https://www.taichung.gov.tw/', label: '臺中市政府市政資訊', summary: '臺中市政府官方入口，提供市政新聞、市政公告、活動與各局處訊息。' },
+  台中市: { info: 'https://www.taichung.gov.tw/', label: '臺中市政府市政資訊', summary: '臺中市政府官方入口，提供市政新聞、市政公告、活動與各局處訊息。' },
+  臺南市: { info: 'https://www.tainan.gov.tw/', label: '臺南市政府市政資訊', summary: '臺南市政府官方入口，提供市政新聞、市政公告、活動與各局處訊息。' },
+  台南市: { info: 'https://www.tainan.gov.tw/', label: '臺南市政府市政資訊', summary: '臺南市政府官方入口，提供市政新聞、市政公告、活動與各局處訊息。' },
+  高雄市: { info: 'https://www.kcg.gov.tw/', label: '高雄市政府市政資訊', summary: '高雄市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  基隆市: { info: 'https://www.klcg.gov.tw/', label: '基隆市政府市政資訊', summary: '基隆市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  新竹市: { info: 'https://www.hccg.gov.tw/', label: '新竹市政府市政資訊', summary: '新竹市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  新竹縣: { info: 'https://www.hsinchu.gov.tw/', label: '新竹縣政府縣政資訊', summary: '新竹縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  苗栗縣: { info: 'https://www.miaoli.gov.tw/', label: '苗栗縣政府縣政資訊', summary: '苗栗縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  彰化縣: { info: 'https://www.chcg.gov.tw/', label: '彰化縣政府縣政資訊', summary: '彰化縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  南投縣: { info: 'https://www.nantou.gov.tw/', label: '南投縣政府縣政資訊', summary: '南投縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  雲林縣: { info: 'https://www.yunlin.gov.tw/', label: '雲林縣政府縣政資訊', summary: '雲林縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  嘉義縣: { info: 'https://www.cyhg.gov.tw/', label: '嘉義縣政府縣政資訊', summary: '嘉義縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  嘉義市: { info: 'https://www.chiayi.gov.tw/', label: '嘉義市政府市政資訊', summary: '嘉義市政府官方入口，提供市政新聞、公告、活動與各局處訊息。' },
+  屏東縣: { info: 'https://www.pthg.gov.tw/', label: '屏東縣政府縣政資訊', summary: '屏東縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  宜蘭縣: { info: 'https://www.e-land.gov.tw/', label: '宜蘭縣政府縣政資訊', summary: '宜蘭縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  花蓮縣: { info: 'https://www.hl.gov.tw/', label: '花蓮縣政府縣政資訊', summary: '花蓮縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  臺東縣: { info: 'https://www.taitung.gov.tw/', label: '臺東縣政府縣政資訊', summary: '臺東縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  台東縣: { info: 'https://www.taitung.gov.tw/', label: '臺東縣政府縣政資訊', summary: '臺東縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  澎湖縣: { info: 'https://www.penghu.gov.tw/', label: '澎湖縣政府縣政資訊', summary: '澎湖縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  金門縣: { info: 'https://www.kinmen.gov.tw/', label: '金門縣政府縣政資訊', summary: '金門縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' },
+  連江縣: { info: 'https://www.matsu.gov.tw/', label: '連江縣政府縣政資訊', summary: '連江縣政府官方入口，提供縣政新聞、公告、活動與各局處訊息。' }
+};
+
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
 
@@ -1768,6 +1797,29 @@ async function tdxBusAlerts(location) {
   };
 }
 
+async function officialLocalBulletin(location) {
+  const city = canonicalCity(location.city);
+  const config = localBulletinDefaults[city] || localBulletinDefaults[location.city];
+  if (!config) return genericConfiguredSource({ moduleId: 'local-bulletin' }, location);
+
+  const html = await fetchText(config.info, { timeoutMs: 7000 });
+  const title = cleanHtmlText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || config.label || `${city}政府公告`);
+  const snippets = [...html.matchAll(/<(?:a|h1|h2|h3|li|p)[^>]*>([\s\S]*?(?:公告|新聞|活動|市政|縣政|施政|訊息)[\s\S]*?)<\/(?:a|h1|h2|h3|li|p)>/gi)]
+    .map(match => cleanHtmlText(match[1]))
+    .filter(text => text && text.length >= 4 && text.length <= 120)
+    .filter((text, index, array) => array.indexOf(text) === index)
+    .slice(0, 3);
+
+  return {
+    status: 'live',
+    source: config.label || title,
+    body: snippets.length
+      ? `${city}${location.district || ''}已接入官方地方公告入口：${snippets.join('；')}。`
+      : `${city}${location.district || ''}已接入官方地方公告入口：${config.summary || title}`,
+    shouldNotify: false
+  };
+}
+
 async function transitInfo(location) {
   const city = canonicalCity(location.city);
   const highSpeedRail = await thsrStatus();
@@ -2088,7 +2140,11 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'fraud-alert') return fraudAlert();
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
-  if (['evacuation', 'local-bulletin', 'accident'].includes(rule.moduleId)) {
+  if (rule.moduleId === 'local-bulletin') {
+    const result = await ncdrCapAlert(rule.moduleId, location);
+    return result.status === 'live' ? result : officialLocalBulletin(location);
+  }
+  if (['evacuation', 'accident'].includes(rule.moduleId)) {
     const result = await ncdrCapAlert(rule.moduleId, location);
     if (result.status !== 'not-configured') return result;
   }
@@ -2137,6 +2193,11 @@ export function getSourceCoverage() {
         coverage: [...Object.keys(tdxCitySourceNames), '公路客運'],
         modules: ['transit'],
         source: 'https://tdx.transportdata.tw/api/basic/v2/Bus/Alert/City/{City} + /v2/Bus/Alert/InterCity'
+      },
+      'local-bulletin-portals': {
+        coverage: Object.keys(Object.fromEntries(Object.keys(localBulletinDefaults).map(city => [canonicalCity(city), true]))),
+        modules: ['local-bulletin'],
+        sources: Object.fromEntries(Object.entries(localBulletinDefaults).map(([city, config]) => [city, config.info]))
       },
       parking: {
         coverage: Object.keys(parkingDefaults),
