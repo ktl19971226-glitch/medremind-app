@@ -11,6 +11,7 @@ const tainanParkingFile = path.resolve(__dirname, '../../data/tainan-parking.jso
 const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parking.json');
 const yilanParkingFile = path.resolve(__dirname, '../../data/yilan-parking.json');
 const tainanRoadworkFile = path.resolve(__dirname, '../../data/tainan-roadwork.xml');
+const kaohsiungRoadworkFile = path.resolve(__dirname, '../../data/kaohsiung-roadwork.xml');
 const yilanRoadworkFile = path.resolve(__dirname, '../../data/yilan-roadwork.xml');
 const nfaFireInfoUrl = 'https://www.nfa.gov.tw/cht/index.php?code=list&ids=22';
 
@@ -2026,7 +2027,7 @@ async function tainanRoadwork(location) {
 async function kaohsiungRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '高雄市') return { status: 'not-configured', source: '高雄市道路挖掘資訊' };
-  const xml = await fetchText(kaohsiungRoadworkUrl, { timeoutMs: 7000 });
+  const xml = await fetchText(kaohsiungRoadworkUrl, { timeoutMs: 7000 }) || readTextFallback(kaohsiungRoadworkFile);
   const rows = [...xml.matchAll(/<DigCaseInfo\b[^>]*>([\s\S]*?)<\/DigCaseInfo>/gi)].map(match => ({
     district: xmlTagValue(match[1], 'AREA'),
     location: xmlTagValue(match[1], 'LOCATION'),
