@@ -263,11 +263,18 @@ const newTaipeiRoadworkUrl = 'https://data.ntpc.gov.tw/api/datasets/96B6101B-C03
 const taoyuanTodayRoadworkUrl = 'https://opendata.tycg.gov.tw/api/dataset/56c616fe-07d7-4b0c-bb75-e8f8cd75500a/resource/52de3762-1490-4a86-a074-0062d746873b/download';
 const tainanTodayRoadworkUrl = 'https://diggis.tainan.gov.tw/TNRoad/ashx/PresentDayCase.ashx';
 const kaohsiungRoadworkUrl = 'https://pipegis.kcg.gov.tw/openDataService.aspx';
+const hsinchuCityRoadworkBaseUrl = 'https://pipe.hccg.gov.tw';
+const hsinchuCountyRoadworkListUrl = 'https://pu.hsinchu.gov.tw/svc/svc/CaseList.aspx';
+const miaoliRoadworkListUrl = 'https://miaoli-road.miaoli.gov.tw/newmiaoliweb/Common/CaseList_New.aspx';
 const changhuaRoadworkBaseUrl = 'https://pipegis.chcg.gov.tw/CHCGPub';
 const nantouRoadworkBaseUrl = 'https://pipeline.nantou.gov.tw/Public';
 const yunlinRoadworkBaseUrl = 'https://pwd.yunlin.gov.tw/YLPub';
+const chiayiCityRoadworkSearchUrl = 'https://cyrdsys.chiayi.gov.tw/CYSvc/CaseQry/_CaseList';
 const chiayiCountyRoadworkSearchUrl = 'https://publicpipe.cyhg.gov.tw/ChiayiPubAPI/RoadDigCase/GetSearchList';
 const chiayiCountyRoadworkTownUrl = 'https://publicpipe.cyhg.gov.tw/ChiayiPubAPI/RoadDigCase/GetLocationTownDDL';
+const hualienRoadworkUrl = 'https://pipe.hl.gov.tw/HualienPipe_New/api/Map/MapPositioning/GetAllConstructionCases';
+const taitungRoadworkActionUrl = 'https://roadmang.taitung.gov.tw/information/Json.ashx?GetFlag=ActionMarker';
+const taitungRoadworkMarkerUrl = 'https://roadmang.taitung.gov.tw/information/Json.ashx?GetFlag=Marker';
 const penghuRoadworkBaseUrl = 'https://pipegis.penghu.gov.tw/PHPub';
 const lienchiangRoadworkListUrl = 'https://pub.matsu.gov.tw/MatsuPipe/Map/CaseLIst.aspx';
 const pingtungRoadworkUrl = 'https://e-road.pthg.gov.tw/openDataService.aspx';
@@ -649,11 +656,11 @@ async function fetchData(url, { timeoutMs = 4500, headers = {} } = {}) {
   }
 }
 
-async function fetchText(url, { timeoutMs = 4500, headers = {} } = {}) {
+async function fetchText(url, { timeoutMs = 4500, headers = {}, method = 'GET', body } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { signal: controller.signal, headers });
+    const response = await fetch(url, { signal: controller.signal, headers, method, body });
     if (!response.ok) return '';
     return response.text();
   } catch {
@@ -663,7 +670,7 @@ async function fetchText(url, { timeoutMs = 4500, headers = {} } = {}) {
   }
 }
 
-async function fetchTextAllowInvalidCert(url, { timeoutMs = 4500, headers = {} } = {}) {
+async function fetchTextAllowInvalidCert(url, { timeoutMs = 4500, headers = {}, method = 'GET', body } = {}) {
   return new Promise(resolve => {
     let settled = false;
     const done = value => {
@@ -672,10 +679,10 @@ async function fetchTextAllowInvalidCert(url, { timeoutMs = 4500, headers = {} }
         resolve(value);
       }
     };
-    const request = https.get(url, { headers, rejectUnauthorized: false }, response => {
+    const request = https.request(url, { headers, rejectUnauthorized: false, method }, response => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
-        fetchTextAllowInvalidCert(new URL(response.headers.location, url).toString(), { timeoutMs, headers }).then(done);
+        fetchTextAllowInvalidCert(new URL(response.headers.location, url).toString(), { timeoutMs, headers, method, body }).then(done);
         return;
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -695,6 +702,8 @@ async function fetchTextAllowInvalidCert(url, { timeoutMs = 4500, headers = {} }
       done('');
     });
     request.on('error', () => done(''));
+    if (body) request.write(body);
+    request.end();
   });
 }
 
@@ -1963,6 +1972,42 @@ function xmlTagValue(block = '', tag) {
   return cleanHtmlText(block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))?.[1] || '');
 }
 
+function htmlTableRows(html = '', tableId = '') {
+  const scope = tableId
+    ? html.match(new RegExp(`<table[^>]+id=["']${tableId}["'][^>]*>([\\s\\S]*?)<\\/table>`, 'i'))?.[1] || html
+    : html;
+  return [...scope.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(row =>
+    [...row[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(cell => cleanHtmlText(cell[1]))
+  );
+}
+
+function parseRoadworkDateRange(value = '') {
+  const dates = String(value)
+    .replace(/(\d{3,4})年(\d{1,2})月(\d{1,2})日/g, '$1/$2/$3')
+    .match(/\d{3,4}[/-]\d{1,2}[/-]\d{1,2}|\b\d{7,8}\b/g) || [];
+  return { start: normalizeRoadworkDate(dates[0]), end: normalizeRoadworkDate(dates[1] || dates[0]) };
+}
+
+function normalizeRoadworkDate(raw) {
+  if (!raw && raw !== 0) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  const compact = text.match(/^(\d{3,4})(\d{2})(\d{2})$/);
+  if (compact) {
+    const year = Number(compact[1]) < 1911 ? Number(compact[1]) + 1911 : Number(compact[1]);
+    return `${year}-${compact[2]}-${compact[3]}`;
+  }
+  const parts = text.match(/^(\d{3,4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  if (!parts) return null;
+  const year = Number(parts[1]) < 1911 ? Number(parts[1]) + 1911 : Number(parts[1]);
+  return `${year}-${parts[2].padStart(2, '0')}-${parts[3].padStart(2, '0')}`;
+}
+
+function dateRangeIncludesToday(start, end) {
+  const today = taiwanDateString();
+  return (!start || start <= today) && (!end || end >= today);
+}
+
 async function newTaipeiRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '新北市') return { status: 'not-configured', source: '新北市政府道路挖掘資訊' };
@@ -2116,15 +2161,18 @@ async function publicPipeRoadwork(location, config) {
   const district = location.district || '';
   const candidates = district ? records.slice(0, 40) : records.slice(0, 1);
   for (const record of candidates) {
-    const html = record.address ? '' : await fetchText(`${config.baseUrl}/Home/DetailsBox?id=${encodeURIComponent(record.AppNo)}`, { timeoutMs: 7000 });
+    const detailId = record.Hid_AppNo || record.AppNo;
+    const html = record.address ? '' : await fetchText(`${config.baseUrl}/Home/DetailsBox?id=${encodeURIComponent(detailId)}`, { timeoutMs: 7000 });
     const address = record.address || htmlTableValue(html, '地址');
     const note = record.note || htmlTableValue(html, '備註');
-    if (district && !address.includes(district) && !note.includes(district)) continue;
+    if (district && !config.ignoreDistrictMatch && !address.includes(district) && !note.includes(district)) continue;
     const status = record.statusText || htmlTableValue(html, '案件進度') || (record.type === '4' ? '緊急搶修案件' : '今日施工');
     const owner = record.owner || htmlTableValue(html, '路權單位');
     const unit = record.unit || htmlTableValue(html, '申請單位') || record.AppUnitName;
-    const start = record.start || htmlTableValue(html, '核准開挖日期起') || htmlTableValue(html, '申請開挖日期起');
-    const end = record.end || htmlTableValue(html, '核准開挖日期止') || htmlTableValue(html, '申請開挖日期止');
+    const approvedDate = htmlTableValue(html, '核准開挖日期');
+    const dateRange = parseRoadworkDateRange(approvedDate);
+    const start = record.start || htmlTableValue(html, '核准開挖日期起') || htmlTableValue(html, '申請開挖日期起') || dateRange.start || approvedDate;
+    const end = record.end || htmlTableValue(html, '核准開挖日期止') || htmlTableValue(html, '申請開挖日期止') || dateRange.end || approvedDate;
     return {
       status: 'live',
       source: config.source,
@@ -2134,6 +2182,79 @@ async function publicPipeRoadwork(location, config) {
   }
 
   return { status: 'no-event', source: config.source, body: `${location.city}${district}目前沒有${config.shortName}道路挖掘資訊。` };
+}
+
+async function hsinchuCityRoadwork(location) {
+  return publicPipeRoadwork(location, {
+    city: '新竹市',
+    source: '新竹市政府路平主題網',
+    shortName: '新竹市',
+    baseUrl: hsinchuCityRoadworkBaseUrl,
+    ignoreDistrictMatch: true
+  });
+}
+
+async function hsinchuCountyRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '新竹縣') return { status: 'not-configured', source: '新竹縣道路挖掘資訊便民服務系統' };
+  const html = await fetchText(hsinchuCountyRoadworkListUrl, { timeoutMs: 7000 });
+  const rows = htmlTableRows(html, 'ctl00_HomePageMain_ContentPlaceHolder1_GridView1')
+    .filter(cells => cells.length >= 5 && cells[0] !== '案號')
+    .map(cells => {
+      const range = parseRoadworkDateRange(cells[4]);
+      return {
+        caseId: cells[0],
+        owner: cells[1],
+        unit: cells[2],
+        location: cells[3],
+        dateText: cells[4],
+        ...range
+      };
+    })
+    .filter(record => record.location && dateRangeIncludesToday(record.start, record.end));
+  if (!rows.length) return { status: 'no-event', source: '新竹縣道路挖掘資訊便民服務系統', body: `${location.city}${location.district || ''}目前沒有新竹縣今日道路挖掘施工資訊。` };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record.location.includes(district) || record.owner.includes(district)) && !isEmptyEventRecord(record)) ||
+    rows.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '新竹縣道路挖掘資訊便民服務系統', body: `${location.city}${district}目前沒有新竹縣今日道路挖掘施工資訊。` };
+
+  return {
+    status: 'live',
+    source: '新竹縣道路挖掘資訊便民服務系統',
+    body: `${district || '新竹縣'}道路挖掘施工：${matched.location || '位置未標示'}，施工日期 ${matched.dateText || '未標示'}，單位 ${matched.unit || '未標示'}，路權 ${matched.owner || '未標示'}，案號 ${matched.caseId || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
+async function miaoliRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '苗栗縣') return { status: 'not-configured', source: '苗栗縣公共管線及設施資訊平台' };
+  const html = await fetchText(miaoliRoadworkListUrl, { timeoutMs: 7000 });
+  const rows = htmlTableRows(html, 'body_GridView1')
+    .filter(cells => cells.length >= 6 && cells[0] !== '施工鄉鎮' && cells[0] !== '第 頁/共 頁')
+    .map(cells => ({
+      district: cells[0],
+      caseId: cells[1],
+      unit: cells[2],
+      name: cells[3],
+      start: cells[4],
+      end: cells[5]
+    }))
+    .filter(record => record.caseId && dateRangeIncludesToday(record.start, record.end));
+  if (!rows.length) return { status: 'no-event', source: '苗栗縣公共管線及設施資訊平台', body: `${location.city}${location.district || ''}目前沒有苗栗縣今日道路挖掘施工資訊。` };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record.district === district || record.name.includes(district)) && !isEmptyEventRecord(record)) ||
+    rows.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '苗栗縣公共管線及設施資訊平台', body: `${location.city}${district}目前沒有苗栗縣今日道路挖掘施工資訊。` };
+
+  return {
+    status: 'live',
+    source: '苗栗縣公共管線及設施資訊平台',
+    body: `${matched.district || district || '苗栗縣'}道路挖掘施工：${matched.name || '工程名稱未標示'}，施工期間 ${matched.start || ''} 至 ${matched.end || ''}，單位 ${matched.unit || '未標示'}，案號 ${matched.caseId || '未標示'}。`,
+    shouldNotify: false
+  };
 }
 
 async function nantouRoadwork(location) {
@@ -2164,6 +2285,48 @@ async function yunlinRoadwork(location) {
     baseUrl: yunlinRoadworkBaseUrl,
     cacheFile: yunlinRoadworkFile
   });
+}
+
+async function chiayiCityRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '嘉義市') return { status: 'not-configured', source: '嘉義市政府道路工程便民服務系統' };
+  const district = location.district || '';
+  const form = new URLSearchParams({
+    CaseID: '',
+    Unit: '',
+    Place: '',
+    SDate: '',
+    EDate: ''
+  });
+  const html = await fetchText(chiayiCityRoadworkSearchUrl, {
+    method: 'POST',
+    body: form.toString(),
+    timeoutMs: 7000,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
+  });
+  const rows = htmlTableRows(html)
+    .filter(cells => cells.length >= 5)
+    .map(cells => ({
+      caseId: cells[0],
+      owner: cells[1],
+      unit: cells[2],
+      location: cells[3],
+      dateText: cells[4],
+      ...parseRoadworkDateRange(cells[4])
+    }))
+    .filter(record => record.caseId && record.location && dateRangeIncludesToday(record.start, record.end));
+  if (!rows.length) return { status: 'no-event', source: '嘉義市政府道路工程便民服務系統', body: `${location.city}${district}目前沒有嘉義市今日道路挖掘施工資訊。` };
+
+  const matched = rows.find(record => (!district || record.location.includes(district)) && !isEmptyEventRecord(record)) ||
+    rows.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '嘉義市政府道路工程便民服務系統', body: `${location.city}${district}目前沒有嘉義市今日道路挖掘施工資訊。` };
+
+  return {
+    status: 'live',
+    source: '嘉義市政府道路工程便民服務系統',
+    body: `${district || '嘉義市'}道路挖掘施工：${matched.location || '位置未標示'}，施工日期 ${matched.dateText || '未標示'}，單位 ${matched.unit || '未標示'}，路權 ${matched.owner || '未標示'}，案號 ${matched.caseId || '未標示'}。`,
+    shouldNotify: false
+  };
 }
 
 async function chiayiCountyRoadwork(location) {
@@ -2205,6 +2368,86 @@ async function chiayiCountyRoadwork(location) {
     status: 'live',
     source: '嘉義縣道路管理資訊平台',
     body: `${district || '嘉義縣'}道路挖掘施工：${matched.digLocation || '位置未標示'}，施工日期 ${matched.digDate || '未標示'}，單位 ${matched.applyUnitName || '未標示'}，管理 ${matched.manageUnitName || '未標示'}，狀態 ${matched.caseStateName || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
+async function hualienRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '花蓮縣') return { status: 'not-configured', source: '花蓮縣道路挖掘管理系統' };
+  const text = await fetchTextAllowInvalidCert(hualienRoadworkUrl, {
+    method: 'POST',
+    timeoutMs: 10000,
+    headers: { 'Content-Length': '0' }
+  });
+  let records = [];
+  try {
+    records = JSON.parse(text);
+  } catch {
+    records = [];
+  }
+  const rows = Array.isArray(records)
+    ? records
+      .map(record => ({
+        ...record,
+        start: normalizeRoadworkDate(record.startDate),
+        end: normalizeRoadworkDate(record.endDate)
+      }))
+      .filter(record => record.address && dateRangeIncludesToday(record.start, record.end))
+    : [];
+  if (!rows.length) return { status: 'no-event', source: '花蓮縣道路挖掘管理系統', body: `${location.city}${location.district || ''}目前沒有花蓮縣道路挖掘施工資訊。` };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record.address.includes(district) || record.authUnit?.includes(district)) && !isEmptyEventRecord(record)) ||
+    rows.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '花蓮縣道路挖掘管理系統', body: `${location.city}${district}目前沒有花蓮縣道路挖掘施工資訊。` };
+
+  return {
+    status: 'live',
+    source: '花蓮縣道路挖掘管理系統',
+    body: `${district || '花蓮縣'}道路挖掘施工：${matched.address || '位置未標示'}，期間 ${matched.start || matched.startDate || ''} 至 ${matched.end || matched.endDate || ''} ${matched.workTime || ''}，用途 ${matched.purpose || '未標示'}，單位 ${matched.appUnit || '未標示'}，路權 ${matched.authUnit || '未標示'}，案號 ${matched.appno || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
+async function taitungRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '臺東縣') return { status: 'not-configured', source: '臺東縣道路挖掘管理系統' };
+  const texts = await Promise.all([
+    fetchTextAllowInvalidCert(taitungRoadworkActionUrl, { timeoutMs: 10000 }),
+    fetchTextAllowInvalidCert(taitungRoadworkMarkerUrl, { timeoutMs: 10000 })
+  ]);
+  const seen = new Set();
+  const rows = texts.flatMap(text => {
+    try {
+      const parsed = JSON.parse(text);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })
+    .map(record => ({
+      ...record,
+      start: normalizeRoadworkDate(record.SPermitDate),
+      end: normalizeRoadworkDate(record.EPermitDate)
+    }))
+    .filter(record => {
+      const key = `${record.CaseNo || ''}-${record.PermitDigS || ''}-${record.PermitDigE || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return (record.PermitDigS || record.PermitDigE) && dateRangeIncludesToday(record.start, record.end);
+    });
+  if (!rows.length) return { status: 'no-event', source: '臺東縣道路挖掘管理系統', body: `${location.city}${location.district || ''}目前沒有臺東縣道路挖掘施工資訊。` };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record.townname?.includes(district) || record.PermitDigS?.includes(district) || record.PermitDigE?.includes(district)) && !isEmptyEventRecord(record)) ||
+    rows.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '臺東縣道路挖掘管理系統', body: `${location.city}${district}目前沒有臺東縣道路挖掘施工資訊。` };
+
+  return {
+    status: 'live',
+    source: '臺東縣道路挖掘管理系統',
+    body: `${district || matched.townname || '臺東縣'}道路挖掘施工：${matched.PermitDigS || '起點未標示'} 至 ${matched.PermitDigE || '終點未標示'}，期間 ${matched.start || matched.SPermitDate || ''} 至 ${matched.end || matched.EPermitDate || ''} ${matched.SPermitTime || ''}-${matched.EPermitTime || ''}，單位 ${matched.UnitName || '未標示'}，案號 ${matched.CaseNo || '未標示'}。`,
     shouldNotify: false
   };
 }
@@ -2921,7 +3164,7 @@ export async function resolveLiveAlert(rule, location) {
   if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
     let localRoadworkNoEvent = null;
     if (rule.moduleId === 'roadwork') {
-      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, changhuaRoadwork, nantouRoadwork, yunlinRoadwork, chiayiCountyRoadwork, tainanRoadwork, kaohsiungRoadwork, pingtungRoadwork, yilanRoadwork, penghuRoadwork, kinmenRoadwork, lienchiangRoadwork]) {
+      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, hsinchuCityRoadwork, hsinchuCountyRoadwork, miaoliRoadwork, changhuaRoadwork, nantouRoadwork, yunlinRoadwork, chiayiCityRoadwork, chiayiCountyRoadwork, tainanRoadwork, kaohsiungRoadwork, pingtungRoadwork, yilanRoadwork, hualienRoadwork, taitungRoadwork, penghuRoadwork, kinmenRoadwork, lienchiangRoadwork]) {
         const localRoadwork = await source(location);
         if (localRoadwork.status === 'live') return localRoadwork;
         if (localRoadwork.status === 'no-event' && !localRoadworkNoEvent) localRoadworkNoEvent = localRoadwork;
@@ -3032,19 +3275,25 @@ export function getSourceCoverage() {
         source: taipeiTodayRoadworkUrl
       },
       'local-roadwork-public': {
-        coverage: ['新北市', '桃園市', '彰化縣', '南投縣', '雲林縣', '嘉義縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣', '澎湖縣', '金門縣', '連江縣'],
+        coverage: ['新北市', '桃園市', '新竹市', '新竹縣', '苗栗縣', '彰化縣', '南投縣', '雲林縣', '嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣', '花蓮縣', '臺東縣', '澎湖縣', '金門縣', '連江縣'],
         modules: ['roadwork'],
         sources: {
           新北市: newTaipeiRoadworkUrl,
           桃園市: taoyuanTodayRoadworkUrl,
+          新竹市: `${hsinchuCityRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
+          新竹縣: hsinchuCountyRoadworkListUrl,
+          苗栗縣: miaoliRoadworkListUrl,
           彰化縣: `${changhuaRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
           南投縣: `${nantouRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
           雲林縣: `${yunlinRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
+          嘉義市: chiayiCityRoadworkSearchUrl,
           嘉義縣: chiayiCountyRoadworkSearchUrl,
           臺南市: tainanTodayRoadworkUrl,
           高雄市: kaohsiungRoadworkUrl,
           屏東縣: pingtungRoadworkUrl,
           宜蘭縣: yilanRoadworkUrl,
+          花蓮縣: hualienRoadworkUrl,
+          臺東縣: taitungRoadworkMarkerUrl,
           澎湖縣: `${penghuRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
           金門縣: `${kinmenApprovedRoadworkBaseUrl}?date={YYYY-MM-DD}&keyword=`,
           連江縣: lienchiangRoadworkListUrl
