@@ -1,5 +1,6 @@
 const STORAGE_KEY = "money-maker-records-v1";
 const API_BASE_KEY = "money-maker-api-base-v1";
+const DEFAULT_API_BASE = "https://yaojidecare.app/money-maker-api";
 
 const TYPES = {
   hotai: {
@@ -317,7 +318,7 @@ function getApiBase() {
     return configured;
   }
   if (location.protocol === "capacitor:") {
-    throw new Error("請先填 AI 伺服器網址");
+    return DEFAULT_API_BASE;
   }
   return location.origin;
 }
@@ -390,7 +391,7 @@ $("#clear-filter").addEventListener("click", () => {
   renderRecords();
 });
 $("#export-btn").addEventListener("click", exportCsv);
-$("#api-base").value = localStorage.getItem(API_BASE_KEY) || "";
+$("#api-base").value = localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE;
 $("#api-base").addEventListener("change", () => {
   const value = $("#api-base").value.trim().replace(/\/+$/, "");
   $("#api-base").value = value;
