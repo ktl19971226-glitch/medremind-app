@@ -69,9 +69,10 @@ API 預設 port：`8061`。
 - 22 縣市政府官方入口：`local-bulletin`（地方公告/市政或縣政新聞入口；一般公告不推播，重大民生示警仍以 NCDR CAP 優先）
 - 環境部空氣品質指標 AQI JSON：`air-quality`（全台灣；正式 key 優先，未設定時走政府資料開放平臺公開 JSON 檢視來源）
 - 高速公路局 TISVCloud LiveEvents XML：`commute`、`road-incident`、`roadwork`（全台灣國道即時事件；有定位時優先回附近事件）
+- 警廣即時路況 JSON：`road-incident`、`roadwork`（全台灣最後 1000 筆事故、阻塞、交通障礙、交通管制與道路施工）
 - 臺北市今日施工資訊 JSON：`roadwork`（臺北市道路挖掘即時施工通報，每 10 分鐘更新）
 - 基隆市道路管理資訊平台、新北市政府道路挖掘資訊 JSON、桃園市本日道路申挖、臺中市道路挖掘當日施工 JSON、新竹市路平主題網、新竹縣道路挖掘資訊便民服務系統、苗栗縣公共管線及設施資訊平台、彰化/南投/雲林/澎湖管線挖掘便民系統、嘉義市道路工程便民服務系統、嘉義縣道路管理資訊平台、臺南市道路挖掘當日施工 XML、高雄市道路挖掘資訊 XML、屏東縣道路挖掘施工資訊、宜蘭縣道路挖掘管理 XML、花蓮縣道路挖掘管理系統、臺東縣道路挖掘管理系統、金門縣道路挖掘管理系統、連江縣道路挖掘管理系統：`roadwork`
-- TDX 城市道路交通消息：`road-incident`、`roadwork`（22 縣市地方道路事故、壅塞、施工與交管消息；需 `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET`）
+- TDX 城市道路交通消息：`road-incident`、`roadwork`（22 縣市地方道路事故、壅塞、施工與交管消息；若設定 `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET` 會作為進階補充）
 - PTX/MOTC 公車/客運營運通阻 JSON：`transit`（22 縣市市區公車與公路客運通阻；TDX key 未設定時 fallback）
 - 基隆市停車場剩餘車位 HTML：`parking`（基隆市）
 - 新竹市剩餘停車位資訊 JSON + 官方停車服務入口 fallback：`parking`（新竹市）

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const moenvGarbageRoutesFile = path.resolve(__dirname, '../../data/moenv-garbage-routes.json');
 const freewayLiveEventsFile = path.resolve(__dirname, '../../data/freeway-live-events.xml');
+const pbsRoadTrafficFile = path.resolve(__dirname, '../../data/pbs-road-traffic.json');
 const fraudDashboardFile = path.resolve(__dirname, '../../data/fraud-dashboard.json');
 const tainanParkingFile = path.resolve(__dirname, '../../data/tainan-parking.json');
 const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parking.json');
@@ -76,6 +77,7 @@ const publicDefaults = {
 
 const npaWomenSafetyUrl = 'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/DBB18796-8A89-4917-B4AB-D0AF26FAFEDC/resource/ADD554F1-FE8C-422C-8ACE-1E560D119E2A/download';
 const npaFatalTrafficAccidentUrl = 'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/F4077949-50CC-4640-8114-79958CC8BBEA/resource/A07568BF-83F7-4A55-9B8D-3638A0B22271/download';
+const pbsRoadTrafficUrl = 'https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata';
 const cwaTownForecastBaseUrl = 'https://opendata.cwa.gov.tw/fileapi/v1/opendataapi';
 const cwaPublicFileKey = 'rdec-key-123-45678-011121314';
 
@@ -864,6 +866,59 @@ async function freewayLiveEvent(rule, location) {
     source: '高速公路局 TISVCloud LiveEvents',
     body: `${event.description || event.title}${distanceText}${event.updateTime ? `（更新 ${event.updateTime}）` : ''}`,
     shouldNotify: rule.moduleId === 'road-incident' && ['1', '4', '6', '8'].includes(event.type)
+  };
+}
+
+function pbsRoadEventTime(record) {
+  const timestamp = `${record.happendate || ''} ${String(record.happentime || '').slice(0, 8)}`.trim();
+  const date = new Date(`${timestamp.replace(' ', 'T')}+08:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pbsRoadEventMatches(record, location) {
+  const city = canonicalCity(location.city);
+  const district = location.district || '';
+  const text = `${record.areaNm || ''}${record.road || ''}${record.comment || ''}${record.srcdetail || ''}`;
+  return (!city || text.includes(city) || text.includes(location.city || '')) &&
+    (!district || text.includes(district));
+}
+
+async function pbsRoadTraffic(rule, location) {
+  if (!['road-incident', 'roadwork'].includes(rule.moduleId)) return { status: 'not-configured', source: '警廣即時路況' };
+  const data = await fetchJson(pbsRoadTrafficUrl, { timeoutMs: 7000 }) || readJsonFallback(pbsRoadTrafficFile, { result: [] });
+  const records = Array.isArray(data?.result) ? data.result : [];
+  if (!records.length) return { status: 'no-event', source: '警廣即時路況', body: '警廣即時路況資料源暫時無法連線。' };
+
+  const wantedTypes = rule.moduleId === 'roadwork'
+    ? new Set(['道路施工', '交通管制'])
+    : new Set(['事故', '阻塞', '交通障礙', '交通管制', '其他']);
+  const now = new Date();
+  const maxAgeMs = rule.moduleId === 'roadwork' ? 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000;
+  const staleText = /(?:已排除|排除\*|恢復|解除|結束|已恢復)/;
+  const candidates = records
+    .filter(record => wantedTypes.has(record.roadtype))
+    .filter(record => !staleText.test(`${record.comment || ''}`))
+    .filter(record => {
+      const eventTime = pbsRoadEventTime(record);
+      return eventTime && now.getTime() - eventTime.getTime() <= maxAgeMs;
+    })
+    .filter(record => pbsRoadEventMatches(record, location));
+
+  const matched = candidates[0];
+  if (!matched) {
+    return {
+      status: 'no-event',
+      source: '警廣即時路況',
+      body: `${location.city || '所在地'}${location.district || ''}目前沒有警廣即時${rule.moduleId === 'roadwork' ? '施工或交管' : '事故、壅塞或交通障礙'}通報。`
+    };
+  }
+
+  const place = [matched.areaNm, matched.road, matched.direction].filter(Boolean).join(' ');
+  return {
+    status: 'live',
+    source: '警廣即時路況',
+    body: `${matched.roadtype}：${place || location.city || '位置未標示'}，${trimAlertText(matched.comment || '')}${matched.happentime ? `（${matched.happendate || ''} ${String(matched.happentime).slice(0, 5)}）` : ''}`,
+    shouldNotify: rule.moduleId === 'road-incident' && ['事故', '阻塞', '交通障礙'].includes(matched.roadtype)
   };
 }
 
@@ -3247,6 +3302,8 @@ export async function resolveLiveAlert(rule, location) {
         if (localRoadwork.status === 'no-event' && !localRoadworkNoEvent) localRoadworkNoEvent = localRoadwork;
       }
     }
+    const pbsRoad = await pbsRoadTraffic(rule, location);
+    if (pbsRoad.status === 'live') return pbsRoad;
     const localRoad = await cityRoadNews(rule, location);
     if (localRoad.status === 'live') return localRoad;
     if (localRoadworkNoEvent) return localRoadworkNoEvent;
@@ -3340,6 +3397,11 @@ export function getSourceCoverage() {
         coverage: '全台灣國道即時事件',
         modules: ['commute', 'road-incident', 'roadwork'],
         source: 'https://tisvcloud.freeway.gov.tw/history/motc20/LiveEvents.xml'
+      },
+      'pbs-road-traffic': {
+        coverage: '全台灣警廣即時路況最後 1000 筆',
+        modules: ['road-incident', 'roadwork'],
+        source: pbsRoadTrafficUrl
       },
       'tdx-city-road-news': {
         coverage: Object.keys(tdxCitySourceNames),
@@ -3444,7 +3506,7 @@ export function getSourceCoverage() {
     keyRequired: {
       cwa: [],
       moenv: [],
-      tdx: ['road-incident', 'roadwork']
+      tdx: []
     },
     configurable: Object.keys(moduleEnvNames).filter(moduleId => !publicDefaults[moduleId] && moduleId !== 'garbage-truck')
   };
