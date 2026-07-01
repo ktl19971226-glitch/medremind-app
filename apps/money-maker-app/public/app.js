@@ -1,5 +1,4 @@
 const STORAGE_KEY = "money-maker-records-v1";
-const API_BASE_KEY = "money-maker-api-base-v1";
 const DEFAULT_API_BASE = "https://yaojidecare.app/money-maker-api";
 
 const TYPES = {
@@ -189,7 +188,7 @@ function setMode(type) {
   state.type = type;
   state.editingId = null;
   $$(".mode-card").forEach((button) => button.classList.toggle("active", button.dataset.type === type));
-  $("#scan-image").value = "";
+  resetScanInputs();
   setScanState("");
   renderForm();
   renderAll();
@@ -308,19 +307,21 @@ async function handleScan(event) {
     setScanState(message);
   } catch (error) {
     setScanState(error.message, true);
+  } finally {
+    event.target.value = "";
   }
 }
 
 function getApiBase() {
-  const configured = ($("#api-base").value || "").trim().replace(/\/+$/, "");
-  if (configured) {
-    localStorage.setItem(API_BASE_KEY, configured);
-    return configured;
-  }
   if (location.protocol === "capacitor:") {
     return DEFAULT_API_BASE;
   }
   return location.origin;
+}
+
+function resetScanInputs() {
+  $("#scan-camera").value = "";
+  $("#scan-upload").value = "";
 }
 
 function editRecord(id) {
@@ -375,12 +376,14 @@ document.addEventListener("click", (event) => {
   if (event.target.id === "reset-form") {
     state.editingId = null;
     renderForm();
+    resetScanInputs();
     setScanState("");
   }
 });
 
 $("#entry-form").addEventListener("submit", saveForm);
-$("#scan-image").addEventListener("change", handleScan);
+$("#scan-camera").addEventListener("change", handleScan);
+$("#scan-upload").addEventListener("change", handleScan);
 $("#search-input").addEventListener("input", (event) => {
   state.search = event.target.value;
   renderRecords();
@@ -391,13 +394,6 @@ $("#clear-filter").addEventListener("click", () => {
   renderRecords();
 });
 $("#export-btn").addEventListener("click", exportCsv);
-$("#api-base").value = localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE;
-$("#api-base").addEventListener("change", () => {
-  const value = $("#api-base").value.trim().replace(/\/+$/, "");
-  $("#api-base").value = value;
-  if (value) localStorage.setItem(API_BASE_KEY, value);
-  else localStorage.removeItem(API_BASE_KEY);
-});
 
 renderForm();
 renderAll();

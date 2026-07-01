@@ -25,7 +25,7 @@ npm run dev
 GEMINI_API_KEY=你的金鑰 npm run dev
 ```
 
-TestFlight 版需要在 App 裡的「AI 伺服器」欄位填正式後端網址；瀏覽器本機測試可以留空。
+TestFlight 版內建正式後端網址，App 畫面不顯示伺服器 API 欄位；瀏覽器本機測試會使用目前網頁來源。
 
 ## iOS
 

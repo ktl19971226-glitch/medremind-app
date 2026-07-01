@@ -57,14 +57,16 @@
           <h2 id="form-title">和泰托運紀錄</h2>
           <p id="form-subtitle">掃描或手動輸入配送日期、流水號、運送區間、附加費用。</p>
         </div>
-        <label class="api-field">
-          <span>AI 伺服器</span>
-          <input id="api-base" type="url" placeholder="瀏覽器測試可留空，TestFlight 請填正式網址">
-        </label>
-        <label class="scan-button">
-          <input id="scan-image" type="file" accept="image/*" capture="environment">
-          拍照 AI 掃描
-        </label>
+        <div class="scan-actions">
+          <label class="scan-button">
+            <input id="scan-camera" type="file" accept="image/*" capture="environment">
+            拍照掃描
+          </label>
+          <label class="scan-button secondary-scan">
+            <input id="scan-upload" type="file" accept="image/*">
+            上傳照片
+          </label>
+        </div>
         <div class="scan-state" id="scan-state"></div>
       </section>
 

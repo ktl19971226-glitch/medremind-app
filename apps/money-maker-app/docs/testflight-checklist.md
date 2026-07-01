@@ -10,7 +10,7 @@
 - Profile ID: `5SAR6NQ28P`
 - App Store Connect App ID: `6786379398`
 - Version: `1.0`
-- Build: `1`
+- Build: `4`
 - Camera permission: done
 - Photo library permission: done
 - iOS app icon: done
@@ -44,7 +44,7 @@ Workflow 會用 App Store Connect API 讀取 profile ID `5SAR6NQ28P`，不需要
 
 ## AI 後端
 
-TestFlight App 內的 AI 掃描會呼叫 App 裡設定的「AI 伺服器」網址。後端必須部署 `money-maker-app/server.js`，並在伺服器環境變數設定：
+TestFlight App 內的 AI 掃描會呼叫 App 內建的正式後端網址，畫面不顯示伺服器 API 欄位。後端必須部署 `money-maker-app/server.js`，並在伺服器環境變數設定：
 
 ```bash
 GEMINI_API_KEY=...

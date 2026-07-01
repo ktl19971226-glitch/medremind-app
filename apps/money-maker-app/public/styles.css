@@ -174,6 +174,12 @@ h1 {
   line-height: 1.45;
 }
 
+.scan-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .scan-button,
 .entry-form button[type="submit"] {
   display: grid;
@@ -186,6 +192,12 @@ h1 {
   font-weight: 900;
 }
 
+.scan-button.secondary-scan {
+  border: 1px solid var(--accent);
+  background: #f2fbf9;
+  color: var(--accent-strong);
+}
+
 .scan-button input {
   display: none;
 }
@@ -195,24 +207,6 @@ h1 {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.4;
-}
-
-.api-field {
-  display: grid;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.api-field input {
-  width: 100%;
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfc;
-  color: var(--ink);
-  padding: 9px 12px;
 }
 
 .scan-state.error {
@@ -360,5 +354,11 @@ dd {
 
   .field.full {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 380px) {
+  .scan-actions {
+    grid-template-columns: 1fr;
   }
 }
