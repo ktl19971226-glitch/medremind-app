@@ -10,6 +10,8 @@ const fraudDashboardFile = path.resolve(__dirname, '../../data/fraud-dashboard.j
 const tainanParkingFile = path.resolve(__dirname, '../../data/tainan-parking.json');
 const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parking.json');
 const yilanParkingFile = path.resolve(__dirname, '../../data/yilan-parking.json');
+const tainanRoadworkFile = path.resolve(__dirname, '../../data/tainan-roadwork.xml');
+const yilanRoadworkFile = path.resolve(__dirname, '../../data/yilan-roadwork.xml');
 const nfaFireInfoUrl = 'https://www.nfa.gov.tw/cht/index.php?code=list&ids=22';
 
 const cityAliases = {
@@ -462,6 +464,14 @@ function readYilanParkingFallback() {
     yilanParkingCache = [];
   }
   return yilanParkingCache;
+}
+
+function readTextFallback(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 function moenvRouteFallback(location) {
@@ -1949,7 +1959,7 @@ async function newTaipeiRoadwork(location) {
 async function tainanRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '臺南市') return { status: 'not-configured', source: '臺南市道路挖掘當日施工資訊' };
-  const xml = await fetchText(tainanTodayRoadworkUrl, { timeoutMs: 7000 });
+  const xml = await fetchText(tainanTodayRoadworkUrl, { timeoutMs: 7000 }) || readTextFallback(tainanRoadworkFile);
   const rows = [...xml.matchAll(/<row>([\s\S]*?)<\/row>/gi)].map(match => ({
     district: xmlTagValue(match[1], 'TOWN_NAME'),
     unit: xmlTagValue(match[1], 'UN_NA'),
@@ -1973,7 +1983,7 @@ async function tainanRoadwork(location) {
 async function yilanRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '宜蘭縣') return { status: 'not-configured', source: '宜蘭縣道路挖掘管理資訊' };
-  const xml = await fetchText(yilanRoadworkUrl, { timeoutMs: 7000 });
+  const xml = await fetchText(yilanRoadworkUrl, { timeoutMs: 7000 }) || readTextFallback(yilanRoadworkFile);
   const rows = [...xml.matchAll(/<CASE_DETAIL\b[^>]*>([\s\S]*?)<\/CASE_DETAIL>/gi)].map(match => ({
     district: xmlTagValue(match[1], 'TOWN_NAME'),
     name: xmlTagValue(match[1], 'CONST_NAME'),
