@@ -341,6 +341,7 @@ const moenvPublicAqiKeys = [
 ];
 
 const chiayiCityGarbageUrl = 'https://cleaner.web.cycepb.gov.tw/Car.ashx';
+const keelungGarbageRoutesUrl = 'https://z92.askeycloudapi.com/api/v1/fms-route/cit/rt/routes';
 
 const garbageTruckDefaults = {
   臺北市: 'https://data.taipei/api/frontstage/tpeod/dataset/resource.download?rid=a6e90031-7ec4-4089-afb5-361a4efe7202',
@@ -352,6 +353,7 @@ const garbageTruckDefaults = {
   台南市: 'https://soa.tainan.gov.tw/Api/Service/Get/2c8a70d5-06f2-4353-9e92-c40d33bcd969',
   宜蘭縣: 'https://opendata.ilepb.gov.tw/ILEPB04004?media=file',
   新竹市: 'https://7966.hccg.gov.tw/WEB/_IMP/API/CleanWeb/getCarLocation?rId=all',
+  基隆市: keelungGarbageRoutesUrl,
   嘉義市: chiayiCityGarbageUrl,
   高雄市: 'https://api.kcg.gov.tw/api/service/Get/aaf4ce4b-4ca8-43de-bfaf-6dc97e89cac0'
 };
@@ -362,6 +364,8 @@ const eupGarbageBaseUrl = 'https://customer-tw.eupfin.com/Eup_Servlet_Nuser_SOAP
 let moenvGarbageRoutesCache = null;
 let eupGarbageSettingsCache = null;
 let eupGarbageSettingsLoadedAt = 0;
+let keelungGarbageRoutesCache = null;
+let keelungGarbageRoutesLoadedAt = 0;
 let ncdrFeedCache = null;
 let ncdrFeedLoadedAt = 0;
 let fraudDashboardCache = null;
@@ -698,6 +702,85 @@ async function eupGarbage(location) {
     source: '樂圾通公開即時清運車輛',
     body: `${location.city}${location.district || district.District || ''}樂圾通即時車輛：${vehicle.Car_Style || '清運車'} ${vehicle.Car_Number || vehicle.Car_Unicode || ''}${routeText}${updateText}${distanceText}。`,
     shouldNotify: true
+  };
+}
+
+const keelungDistricts = {
+  200: '仁愛區',
+  201: '信義區',
+  202: '中正區',
+  203: '中山區',
+  204: '安樂區',
+  205: '暖暖區',
+  206: '七堵區'
+};
+
+async function keelungGarbageRoutes() {
+  const now = Date.now();
+  if (keelungGarbageRoutesCache && now - keelungGarbageRoutesLoadedAt < 5 * 60 * 1000) return keelungGarbageRoutesCache;
+  const data = await fetchJson(keelungGarbageRoutesUrl, { timeoutMs: 7000 });
+  const routes = Array.isArray(data?.data) ? data.data : [];
+  if (routes.length) {
+    keelungGarbageRoutesCache = routes;
+    keelungGarbageRoutesLoadedAt = now;
+  }
+  return keelungGarbageRoutesCache || [];
+}
+
+function keelungRouteDistrict(route) {
+  return keelungDistricts[route.area] || Object.values(keelungDistricts).find(district => route.routeName?.includes(district)) || '';
+}
+
+function keelungStopPoint(stop) {
+  const coordinates = stop.location?.coordinates || stop.stopLocation?.coordinates || [];
+  const lng = Number(coordinates[0]);
+  const lat = Number(coordinates[1]);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function keelungRouteHasLiveState(route) {
+  return Boolean(route.carPlate) ||
+    (route.state && !['UNAVAILABLE', 'enabled'].includes(route.state)) ||
+    route.stopList?.some(stop => stop.predictedArrivalTime || stop.checkedInAt || stop.arrivalStatus);
+}
+
+async function keelungGarbage(location) {
+  if (canonicalCity(location.city) !== '基隆市') return null;
+  const routes = await keelungGarbageRoutes();
+  if (!routes.length) return moenvRouteFallback(location);
+
+  const district = location.district || '';
+  const scoped = routes.filter(route => !district || keelungRouteDistrict(route) === district || route.routeName?.includes(district));
+  const candidates = scoped.length ? scoped : routes;
+  const flattened = candidates.flatMap(route => (route.stopList || []).map(stop => {
+    const point = keelungStopPoint(stop);
+    return {
+      route,
+      stop,
+      point,
+      distance: point && Number(location.lat) && Number(location.lng)
+        ? distanceKm(Number(location.lat), Number(location.lng), point.lat, point.lng)
+        : Infinity
+    };
+  })).filter(item => item.stop);
+  const nearest = flattened.sort((a, b) => a.distance - b.distance)[0] || { route: candidates[0], stop: candidates[0]?.stopList?.[0] };
+  if (!nearest?.route) return moenvRouteFallback(location);
+
+  const liveRoute = candidates.find(keelungRouteHasLiveState);
+  const route = liveRoute || nearest.route;
+  const stop = liveRoute?.stopList?.find(item => item.predictedArrivalTime || item.checkedInAt || item.arrivalStatus) || nearest.stop || route.stopList?.[0] || {};
+  const time = stop.predictedArrivalTime || stop.estimatedArrivalTime || route.estimatedTime?.[0] || '';
+  const stopText = stop.stopName ? `，最近站點 ${stop.stopName}` : '';
+  const timeText = time ? `，預估 ${time}` : '';
+  const distanceText = Number.isFinite(nearest.distance) ? `，距離約 ${nearest.distance.toFixed(nearest.distance < 1 ? 1 : 0)} 公里` : '';
+  const liveText = liveRoute ? `，車號 ${liveRoute.carPlate || '未標示'}，狀態 ${liveRoute.state || '執勤中'}` : '';
+  const recycleText = route.recycleTime ? `（${route.recycleTime}）` : '';
+
+  return {
+    status: 'live',
+    source: liveRoute ? '基隆垃圾車來了公開即時路線' : '基隆垃圾車來了公開清運路線',
+    body: `基隆市${district || keelungRouteDistrict(route)}清運路線：${route.routeName || '未命名路線'}${recycleText}${stopText}${timeText}${distanceText}${liveText}。`,
+    shouldNotify: Boolean(liveRoute)
   };
 }
 
@@ -3451,6 +3534,7 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'crime-watch') return crimeWatch(location);
   if (rule.moduleId === 'gas-work') return gasOutage(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '嘉義市') return chiayiCityGarbage(location);
+  if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '基隆市') return keelungGarbage(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
   if (rule.moduleId === 'garbage-truck') {
     const eupResult = await eupGarbage(location);
@@ -3514,6 +3598,11 @@ export function getSourceCoverage() {
         coverage: '樂圾通公開網頁啟用之縣市/鄉鎮（動態查詢）',
         modules: ['garbage-truck'],
         source: 'https://eupapp.ilepb.gov.tw/ + https://customer-tw.eupfin.com/Eup_Servlet_Nuser_SOAP/Eup_Servlet_Nuser_SOAP'
+      },
+      'keelung-garbage-routes': {
+        coverage: '基隆市',
+        modules: ['garbage-truck'],
+        source: keelungGarbageRoutesUrl
       },
       'ncdr-cap-alerts': {
         coverage: '全台灣民生示警 CAP',
