@@ -64,6 +64,7 @@ API 預設 port：`8061`。
 - 高雄市垃圾車及資源回收車動態資訊 JSON：`garbage-truck`（高雄市）
 - 環境部全國垃圾車清運路線查詢網：`garbage-truck` fallback（22 縣市官方清運路線；無即時 GPS 的縣市不推播）
 - 清運e點通 ASP.NET 即時查詢：`garbage-truck`（南投、彰化、臺東、澎湖部分鄉鎮；無執勤車輛時回環境部路線 fallback）
+- 樂圾通公開網頁 / EUP 清運車服務：`garbage-truck`（公開啟用縣市/鄉鎮即時清運車 GPS；無近期車輛時回環境部路線 fallback）
 - NCDR 民生示警 CAP JSON：`rain`、`temperature`、`earthquake`、`typhoon`、`transit`、`evacuation`、`local-bulletin`、`accident`（全台灣；CWA key 未設定時作為官方示警來源，並接臺鐵營運異常/停駛警戒）
 - PTX/MOTC 臺鐵即時到離站 LiveBoard JSON：`transit`（全台灣臺鐵列車即時到離站與延誤；TDX key 未設定時仍可用）
 - 22 縣市政府官方入口：`local-bulletin`（地方公告/市政或縣政新聞入口；一般公告不推播，重大民生示警仍以 NCDR CAP 優先）

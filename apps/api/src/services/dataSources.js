@@ -354,8 +354,11 @@ const garbageTruckDefaults = {
 };
 
 const cityWideGarbageDefaults = new Set(['新竹市']);
+const eupGarbageBaseUrl = 'https://customer-tw.eupfin.com/Eup_Servlet_Nuser_SOAP/Eup_Servlet_Nuser_SOAP';
 
 let moenvGarbageRoutesCache = null;
+let eupGarbageSettingsCache = null;
+let eupGarbageSettingsLoadedAt = 0;
 let ncdrFeedCache = null;
 let ncdrFeedLoadedAt = 0;
 let fraudDashboardCache = null;
@@ -601,6 +604,98 @@ async function hinetGarbage(location) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function postEupGarbage(methodName, params = {}, timeoutMs = 7000) {
+  const body = new URLSearchParams({
+    Param: JSON.stringify({ ...params, MethodName: methodName })
+  });
+  return fetchJson(eupGarbageBaseUrl, {
+    timeoutMs,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body
+  });
+}
+
+async function eupGarbageSettings() {
+  const now = Date.now();
+  if (eupGarbageSettingsCache && now - eupGarbageSettingsLoadedAt < 6 * 60 * 60 * 1000) return eupGarbageSettingsCache;
+  const data = await postEupGarbage('GetCountryRemovalIsEnable', {}, 10000);
+  const countries = Array.isArray(data?.result) ? data.result : [];
+  if (countries.length) {
+    eupGarbageSettingsCache = countries;
+    eupGarbageSettingsLoadedAt = now;
+  }
+  return eupGarbageSettingsCache || [];
+}
+
+async function eupGarbageDistrictFor(location) {
+  const city = canonicalCity(location.city);
+  const district = location.district || '';
+  const settings = await eupGarbageSettings();
+  const country = settings.find(item => sameCity(item.Country, city)) ||
+    settings.find(item => sameCity(item.Country, displayCity(city)));
+  const districts = country?.District || [];
+  const matched = districts.find(item => item.District === district) ||
+    districts.find(item => district && (item.District?.includes(district) || district.includes(item.District)));
+  if (matched?.IsEnabled && Number(matched.Cust_ID) && Number(matched.Team_ID)) return matched;
+
+  if (Number(location.lat) && Number(location.lng)) {
+    const point = await postEupGarbage('GetCustIDByLocation', {
+      GISX: Math.round(Number(location.lng) * 1000000),
+      GISY: Math.round(Number(location.lat) * 1000000)
+    });
+    const resolved = point?.result?.[0];
+    if (Number(resolved?.Cust_ID) && Number(resolved?.Team_ID)) {
+      return districts.find(item => String(item.Cust_ID) === String(resolved.Cust_ID) && String(item.Team_ID) === String(resolved.Team_ID)) ||
+        { ...resolved, District: district, IsEnabled: true };
+    }
+  }
+
+  return null;
+}
+
+function eupVehicleTime(record) {
+  const date = new Date(`${String(record.Log_DTime || '').replace(' ', 'T')}+08:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function eupVehicleIsRecent(record, maxAgeMs = 90 * 60 * 1000) {
+  const date = eupVehicleTime(record);
+  return date ? Date.now() - date.getTime() < maxAgeMs : false;
+}
+
+async function eupGarbage(location) {
+  const district = await eupGarbageDistrictFor(location);
+  if (!district) return null;
+
+  const data = await postEupGarbage('GetCarStatusGarbage', {
+    Cust_ID: district.Cust_ID,
+    Team_ID: district.Team_ID
+  });
+  const vehicles = (Array.isArray(data?.result) ? data.result : [])
+    .filter(vehicle => Number(vehicle.Log_GISX) && Number(vehicle.Log_GISY));
+  const recent = vehicles.filter(vehicle => eupVehicleIsRecent(vehicle));
+  if (!recent.length) return moenvRouteFallback(location);
+
+  const withDistance = Number(location.lat) && Number(location.lng)
+    ? recent.map(vehicle => ({
+      ...vehicle,
+      distance: distanceKm(Number(location.lat), Number(location.lng), Number(vehicle.Log_GISY), Number(vehicle.Log_GISX))
+    })).sort((a, b) => a.distance - b.distance)
+    : recent.sort((a, b) => (eupVehicleTime(b)?.getTime() || 0) - (eupVehicleTime(a)?.getTime() || 0));
+  const vehicle = withDistance[0];
+  const updateText = vehicle.Log_DTime ? `，${vehicle.Log_DTime} 更新` : '';
+  const distanceText = Number.isFinite(vehicle.distance) ? `，距離約 ${vehicle.distance.toFixed(vehicle.distance < 1 ? 1 : 0)} 公里` : '';
+  const routeText = vehicle.Car_Driver ? `（${vehicle.Car_Driver}）` : '';
+
+  return {
+    status: 'live',
+    source: '樂圾通公開即時清運車輛',
+    body: `${location.city}${location.district || district.District || ''}樂圾通即時車輛：${vehicle.Car_Style || '清運車'} ${vehicle.Car_Number || vehicle.Car_Unicode || ''}${routeText}${updateText}${distanceText}。`,
+    shouldNotify: true
+  };
 }
 
 async function fetchJson(url, { timeoutMs = 4500, headers = {}, method = 'GET', body } = {}) {
@@ -3319,6 +3414,10 @@ export async function resolveLiveAlert(rule, location) {
   if (rule.moduleId === 'crime-watch') return crimeWatch(location);
   if (rule.moduleId === 'gas-work') return gasOutage(location);
   if (rule.moduleId === 'garbage-truck' && canonicalCity(location.city) === '桃園市') return taoyuanGarbage(location);
+  if (rule.moduleId === 'garbage-truck') {
+    const eupResult = await eupGarbage(location);
+    if (eupResult) return eupResult;
+  }
   if (rule.moduleId === 'garbage-truck' && hinetRegionIdFor(location)) return (await hinetGarbage(location)) || moenvRouteFallback(location);
   if (rule.moduleId === 'local-bulletin') {
     const result = await ncdrCapAlert(rule.moduleId, location);
@@ -3372,6 +3471,11 @@ export function getSourceCoverage() {
       'hinet-garbage-realtime': {
         coverage: Object.keys(hinetRegionIds),
         source: 'https://www.bstruck.hinet.net/Page/CarSearch.aspx'
+      },
+      'eup-garbage-realtime': {
+        coverage: '樂圾通公開網頁啟用之縣市/鄉鎮（動態查詢）',
+        modules: ['garbage-truck'],
+        source: 'https://eupapp.ilepb.gov.tw/ + https://customer-tw.eupfin.com/Eup_Servlet_Nuser_SOAP/Eup_Servlet_Nuser_SOAP'
       },
       'ncdr-cap-alerts': {
         coverage: '全台灣民生示警 CAP',
