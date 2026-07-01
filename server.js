@@ -612,6 +612,24 @@ function consumeAiScanQuota(userId, isPro, accessType = 'free') {
     return { ok: true, type: 'free' };
 }
 
+function normalizeAiDurationDays(value, usageRaw = '') {
+    const direct = parseInt(value, 10);
+    if (Number.isFinite(direct) && direct > 0 && direct <= 3650) return direct;
+    const text = String(usageRaw || value || '').replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+    const patterns = [
+        /(?:用藥|服用|處方|給藥|療程|藥品|藥量|共|計|連續|持續)?\s*(?:天數|日數|期間|療程|份)?\s*[:：]?\s*(\d{1,4})\s*(?:天|日|日份)/i,
+        /(?:x|×)\s*(\d{1,4})\s*(?:天|日|days?)/i,
+        /(\d{1,4})\s*(?:天|日|日份)(?:份|量|療程|用藥|服用|$)/i
+    ];
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (!match) continue;
+        const days = parseInt(match[1], 10);
+        if (Number.isFinite(days) && days > 0 && days <= 3650) return days;
+    }
+    return null;
+}
+
 // 中間件
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
@@ -1755,10 +1773,11 @@ async function init() {
 - JSON 字串內不可有換行，多行文字請用「；」分隔
 - 藥袋上通常有中文藥名和英文藥名
 - 用法用量通常寫「每日X次」「每次X粒」「飯前/飯後/睡前」
+- 用藥天數請從「處方天數、給藥日數、共X天、X日份、連續服用X天」等文字提取，只回傳數字；無法判斷則回 null
 - 提醒時間用24小時制，如08:00、12:00、20:00
 - 只回傳純 JSON
 
-{"drug_name":"藥品中文名稱","drug_name_en":"藥品英文名稱(無則null)","dosage":"每次劑量","frequency":"每日次數","timing":"服用時間說明","remind_times":["08:00","12:00","20:00"],"side_effects":"副作用(無則null)","notes":"服用須知(無則null)","usage_raw":"藥袋上的用法用量原文"}`;
+{"drug_name":"藥品中文名稱","drug_name_en":"藥品英文名稱(無則null)","dosage":"每次劑量","frequency":"每日次數","timing":"服用時間說明","duration_days":用藥天數數字或null,"remind_times":["08:00","12:00","20:00"],"side_effects":"副作用(無則null)","notes":"服用須知(無則null)","usage_raw":"藥袋上的用法用量原文，包含天數/日份文字"}`;
 
             const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
                 method: 'POST',
@@ -1810,6 +1829,13 @@ async function init() {
             
             console.log('Gemini 解析成功');
             
+            const durationDays = normalizeAiDurationDays(parsed.duration_days, [
+                parsed.usage_raw,
+                parsed.frequency,
+                parsed.timing,
+                parsed.notes
+            ].filter(Boolean).join('；'));
+
             res.json({
                 success: true,
                 method: 'ai',
@@ -1820,6 +1846,7 @@ async function init() {
                     dosage: parsed.dosage || '',
                     frequency: parsed.frequency || '',
                     timing: parsed.timing || '',
+                    duration_days: durationDays,
                     remind_times: parsed.remind_times || [],
                     side_effects: parsed.side_effects || null,
                     notes: parsed.notes || null,

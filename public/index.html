@@ -3387,6 +3387,7 @@
             const img = document.querySelector('#scan-result img');
             const imgHTML = img ? img.outerHTML : '';
             const remindTimes = (r.remind_times || []).join(', ');
+            const durationText = normalizeAiDurationDays(r) ? normalizeAiDurationDays(r) + ' 天' : '未偵測';
 
             resultDiv.innerHTML = '<div style="padding:12px;background:#e8f5e9;border-radius:8px;font-size:15px;">' + imgHTML +
                 '<div style="background:#fff;padding:10px 12px;border-radius:8px;margin-bottom:10px;border-left:4px solid var(--green);">' +
@@ -3395,6 +3396,7 @@
                 (r.drug_name_en ? '<div style="font-size:14px;color:var(--text-light);">' + r.drug_name_en + '</div>' : '') +
                 '<div style="margin-top:6px;font-size:14px;">📋 劑量:' + (r.dosage || '未偵測') + ' · ' + (r.frequency || '') + '</div>' +
                 '<div style="font-size:14px;">⏰ 服用時間:' + (r.timing || '未偵測') + '</div>' +
+                '<div style="font-size:14px;">📅 用藥天數:' + durationText + '</div>' +
                 '<div style="font-size:14px;">🔔 建議提醒:' + (remindTimes || '請手動設定') + '</div>' +
                 (r.notes ? '<div style="margin-top:4px;font-size:13px;color:var(--text-light);">📝 注意:' + r.notes + '</div>' : '') +
                 (r.side_effects ? '<div style="font-size:13px;color:#E74C3C;">⚠️ 副作用:' + r.side_effects + '</div>' : '') +
@@ -3405,6 +3407,29 @@
                 '</div>' +
                 '<button onclick="confirmAIScanResult()" class="btn btn-primary" style="font-size:15px;padding:10px;">✅ 確認無誤,填入表單</button>' +
                 '</div>';
+        }
+
+        function normalizeAiDurationDays(r) {
+            const direct = parseInt(r?.duration_days, 10);
+            if (Number.isFinite(direct) && direct > 0 && direct <= 3650) return direct;
+            const text = [
+                r?.usage_raw,
+                r?.frequency,
+                r?.timing,
+                r?.notes
+            ].filter(Boolean).join('；').replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+            const patterns = [
+                /(?:用藥|服用|處方|給藥|療程|藥品|藥量|共|計|連續|持續)?\s*(?:天數|日數|期間|療程|份)?\s*[:：]?\s*(\d{1,4})\s*(?:天|日|日份)/i,
+                /(?:x|×)\s*(\d{1,4})\s*(?:天|日|days?)/i,
+                /(\d{1,4})\s*(?:天|日|日份)(?:份|量|療程|用藥|服用|$)/i
+            ];
+            for (const pattern of patterns) {
+                const match = text.match(pattern);
+                if (!match) continue;
+                const days = parseInt(match[1], 10);
+                if (Number.isFinite(days) && days > 0 && days <= 3650) return days;
+            }
+            return null;
         }
 
         function confirmAIScanResult() {
@@ -3425,14 +3450,9 @@
             document.getElementById('add-notes').value = notesParts.join(';');
             if (r.side_effects) document.getElementById('add-side-effects').value = r.side_effects;
 
-            // 嘗試從藥袋辨識處方天數(常見:28天、14天、7天)
-            if (r.usage_raw) {
-                const dayMatch = r.usage_raw.match(/處方天數[::]?\s*(\d+)\s*天|(\d+)\s*天/i);
-                if (dayMatch) {
-                    const days = parseInt(dayMatch[1] || dayMatch[2]);
-                    if (days > 0 && days <= 365) document.getElementById('add-duration').value = days;
-                }
-            }
+            // 優先使用 AI 結構化天數，沒有時再從藥袋原文常見寫法補抓。
+            const durationDays = normalizeAiDurationDays(r);
+            if (durationDays) document.getElementById('add-duration').value = durationDays;
 
             // 自動勾選提醒時間
             if (r.remind_times && r.remind_times.length > 0) {
