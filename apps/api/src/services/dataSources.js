@@ -341,6 +341,7 @@ const moenvPublicAqiKeys = [
 ];
 
 const chiayiCityGarbageUrl = 'https://cleaner.web.cycepb.gov.tw/Car.ashx';
+const keelungGarbageCarsUrl = 'https://z92.askeycloudapi.com/api/v1/fms-car/cit/rt/cars';
 const keelungGarbageRoutesUrl = 'https://z92.askeycloudapi.com/api/v1/fms-route/cit/rt/routes';
 
 const garbageTruckDefaults = {
@@ -366,6 +367,8 @@ let eupGarbageSettingsCache = null;
 let eupGarbageSettingsLoadedAt = 0;
 let keelungGarbageRoutesCache = null;
 let keelungGarbageRoutesLoadedAt = 0;
+let keelungGarbageCarsCache = null;
+let keelungGarbageCarsLoadedAt = 0;
 let ncdrFeedCache = null;
 let ncdrFeedLoadedAt = 0;
 let fraudDashboardCache = null;
@@ -754,6 +757,18 @@ async function keelungGarbageRoutes() {
   return keelungGarbageRoutesCache || [];
 }
 
+async function keelungGarbageCars() {
+  const now = Date.now();
+  if (keelungGarbageCarsCache && now - keelungGarbageCarsLoadedAt < 60 * 1000) return keelungGarbageCarsCache;
+  const data = await fetchJson(keelungGarbageCarsUrl, { timeoutMs: 7000 });
+  const cars = Array.isArray(data?.data) ? data.data : [];
+  if (cars.length) {
+    keelungGarbageCarsCache = cars;
+    keelungGarbageCarsLoadedAt = now;
+  }
+  return keelungGarbageCarsCache || [];
+}
+
 function keelungRouteDistrict(route) {
   return keelungDistricts[route.area] || Object.values(keelungDistricts).find(district => route.routeName?.includes(district)) || '';
 }
@@ -771,8 +786,39 @@ function keelungRouteHasLiveState(route) {
     route.stopList?.some(stop => stop.predictedArrivalTime || stop.checkedInAt || stop.arrivalStatus);
 }
 
+function keelungCarTime(car) {
+  const date = new Date(car.lastOnlineTime || car.updatedAt || car.lastUpdateTime || '');
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 async function keelungGarbage(location) {
   if (canonicalCity(location.city) !== '基隆市') return null;
+  const cars = await keelungGarbageCars();
+  const recentCars = cars.filter(car => {
+    const date = keelungCarTime(car);
+    return Number(car.carGps?.lat) && Number(car.carGps?.lng) && date && Date.now() - date.getTime() < 90 * 60 * 1000;
+  });
+  if (recentCars.length) {
+    const withDistance = Number(location.lat) && Number(location.lng)
+      ? recentCars.map(car => ({
+        ...car,
+        distance: distanceKm(Number(location.lat), Number(location.lng), Number(car.carGps.lat), Number(car.carGps.lng))
+      })).sort((a, b) => a.distance - b.distance)
+      : recentCars.sort((a, b) => (keelungCarTime(b)?.getTime() || 0) - (keelungCarTime(a)?.getTime() || 0));
+    const car = withDistance[0];
+    const updateTime = keelungCarTime(car);
+    const updateText = updateTime ? `，${updateTime.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false })} 更新` : '';
+    const distanceText = Number.isFinite(car.distance) ? `，距離約 ${car.distance.toFixed(car.distance < 1 ? 1 : 0)} 公里` : '';
+    const routeText = car.routeName || car.lastRouteName ? `，路線 ${car.routeName || car.lastRouteName}` : '';
+    const stateText = car.dutyStatus ? `，勤務 ${car.dutyStatus}` : '';
+    return {
+      status: 'live',
+      source: '基隆垃圾車來了公開即時車輛',
+      body: `基隆市${location.district || ''}垃圾車即時位置：${car.carPlate || '未標示車號'} ${car.carType || '清運車'}${routeText}${stateText}${updateText}${distanceText}。`,
+      shouldNotify: true
+    };
+  }
+
   const routes = await keelungGarbageRoutes();
   if (!routes.length) return moenvRouteFallback(location);
 
@@ -3629,7 +3675,7 @@ export function getSourceCoverage() {
       'keelung-garbage-routes': {
         coverage: '基隆市',
         modules: ['garbage-truck'],
-        source: keelungGarbageRoutesUrl
+        source: `${keelungGarbageCarsUrl} + ${keelungGarbageRoutesUrl}`
       },
       'ncdr-cap-alerts': {
         coverage: '全台灣民生示警 CAP',

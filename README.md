@@ -61,7 +61,7 @@ API 預設 port：`8061`。
 - 臺中市定時定點垃圾收運地點 JSON：`garbage-truck`（臺中市）
 - 臺南市垃圾車 GPS 即時服務 JSON：`garbage-truck`（臺南市）
 - 宜蘭縣垃圾清運路線 JSON：`garbage-truck`（宜蘭縣）
-- 基隆垃圾車來了公開路線 API：`garbage-truck`（基隆市；公開即時路線/站點，無執勤車輛時不推播）
+- 基隆垃圾車來了公開車輛/路線 API：`garbage-truck`（基隆市；公開即時車輛 GPS + 路線/站點，無近期車輛時不推播）
 - 嘉義市環保即時通清潔車 JSON：`garbage-truck`（嘉義市）
 - 高雄市垃圾車及資源回收車動態資訊 JSON：`garbage-truck`（高雄市）
 - 環境部全國垃圾車清運路線查詢網：`garbage-truck` fallback（22 縣市官方清運路線；無即時 GPS 的縣市不推播）
