@@ -1,0 +1,419 @@
+{
+  "updatedAt": "2026-07-01T10:41:46.463Z",
+  "towns": [
+    {
+      "value": "",
+      "text": "全部",
+      "isSelected": true
+    },
+    {
+      "value": "1000",
+      "text": "嘉義縣",
+      "isSelected": false
+    },
+    {
+      "value": "1001",
+      "text": "太保市",
+      "isSelected": false
+    },
+    {
+      "value": "1002",
+      "text": "朴子市",
+      "isSelected": false
+    },
+    {
+      "value": "1003",
+      "text": "布袋鎮",
+      "isSelected": false
+    },
+    {
+      "value": "1004",
+      "text": "大林鎮",
+      "isSelected": false
+    },
+    {
+      "value": "1005",
+      "text": "民雄鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1006",
+      "text": "溪口鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1007",
+      "text": "新港鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1008",
+      "text": "六腳鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1009",
+      "text": "東石鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1010",
+      "text": "義竹鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1011",
+      "text": "鹿草鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1012",
+      "text": "水上鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1013",
+      "text": "中埔鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1014",
+      "text": "竹崎鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1015",
+      "text": "梅山鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1016",
+      "text": "番路鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1017",
+      "text": "大埔鄉",
+      "isSelected": false
+    },
+    {
+      "value": "1018",
+      "text": "阿里山鄉",
+      "isSelected": false
+    }
+  ],
+  "records": [
+    {
+      "caseNo": "A1141847",
+      "caseGetNo": "C1141886",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台電輸變電工程處南區施工處",
+      "digLocation": "起點 : 縣道167線3k+650 ~ 終點 : 縣道167線11k+750",
+      "digDate": "自115年01月13日~至117年02月28日",
+      "caseStateName": "施工中",
+      "supervisor": "陳文山",
+      "supervisorPhone": "--",
+      "district": "太保市",
+      "locationTownId": "1001"
+    },
+    {
+      "caseNo": "A1150157",
+      "caseGetNo": "C1150396",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台電輸變電工程處南區施工處",
+      "digLocation": "起點 : 保鐵一路一段 ~ 終點 : 高鐵大道",
+      "digDate": "自115年04月16日~至116年06月29日",
+      "caseStateName": "施工中",
+      "supervisor": "沈俊琪",
+      "supervisorPhone": "07-3676782-",
+      "district": "太保市",
+      "locationTownId": "1001"
+    },
+    {
+      "caseNo": "A1150932",
+      "caseGetNo": "C1150864",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣自來水股份公司第五區管理處朴子服務所",
+      "digLocation": "起點 : 太保五路與縣府三街路口 ~ 終點 : 太保五路與縣府五街巷口",
+      "digDate": "自115年06月12日~至115年07月06日",
+      "caseStateName": "施工中",
+      "supervisor": "",
+      "supervisorPhone": "--",
+      "district": "太保市",
+      "locationTownId": "1001"
+    },
+    {
+      "caseNo": "A1150918",
+      "caseGetNo": "C1150849",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣電力公司嘉義區營業處",
+      "digLocation": "起點 : 嘉58線5K+680 ~ 終點 : 嘉58線5K+702",
+      "digDate": "自115年06月23日~至115年07月17日",
+      "caseStateName": "施工中",
+      "supervisor": "王OO",
+      "supervisorPhone": "05-2226711-3287",
+      "district": "太保市",
+      "locationTownId": "1001"
+    },
+    {
+      "caseNo": "A1151001",
+      "caseGetNo": "C1150935",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣中油股份有限公司天然氣事業部南區營業處嘉義供氣中心",
+      "digLocation": "起點 : 縣道159線12K+540 ~ 終點 : 縣道159線12K+545",
+      "digDate": "自115年06月25日~至115年07月20日",
+      "caseStateName": "施工中",
+      "supervisor": "李英錡",
+      "supervisorPhone": "05-2861419-103",
+      "district": "太保市",
+      "locationTownId": "1001"
+    },
+    {
+      "caseNo": "A1151020",
+      "caseGetNo": "C1150969",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "中華電信嘉義營運處客戶網路中心",
+      "digLocation": "起點 : 嘉62線1K+494 ~ 終點 : 嘉62線1K+516",
+      "digDate": "自115年06月29日~至115年07月23日",
+      "caseStateName": "施工中",
+      "supervisor": "林進榮",
+      "supervisorPhone": "05-2445104-",
+      "district": "太保市",
+      "locationTownId": "1001"
+    },
+    {
+      "caseNo": "A1142197",
+      "caseGetNo": "C1150230",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣電力公司嘉南供電區營運處",
+      "digLocation": "起點 : 縣道168線12K+440  ~ 終點 : 縣道168線12K+665 ",
+      "digDate": "自115年05月15日~至115年09月29日",
+      "caseStateName": "施工中",
+      "supervisor": "許銘恩",
+      "supervisorPhone": "06-6563711-23633",
+      "district": "朴子市",
+      "locationTownId": "1002"
+    },
+    {
+      "caseNo": "A1142197",
+      "caseGetNo": "C1150230",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣電力公司嘉南供電區營運處",
+      "digLocation": "起點 : 縣道168線12K+440  ~ 終點 : 縣道168線12K+665 ",
+      "digDate": "自115年05月15日~至115年09月29日",
+      "caseStateName": "施工中",
+      "supervisor": "許銘恩",
+      "supervisorPhone": "06-6563711-23633",
+      "district": "朴子市",
+      "locationTownId": "1002"
+    },
+    {
+      "caseNo": "A1150124",
+      "caseGetNo": "C1150111",
+      "manageUnitName": "朴子市公所",
+      "applyUnitName": "台灣電力公司嘉南供電區營運處",
+      "digLocation": "起點 : 產業道路(23.465491, 120.266959) ~ 終點 : 產業道路(23.465491, 120.266959)",
+      "digDate": "自115年05月18日~至115年07月18日",
+      "caseStateName": "展延申請",
+      "supervisor": "許銘恩",
+      "supervisorPhone": "06-6563711-23633",
+      "district": "朴子市",
+      "locationTownId": "1002"
+    },
+    {
+      "caseNo": "A1150985",
+      "caseGetNo": "C1150920",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣自來水股份公司第五區管理處義竹服務所",
+      "digLocation": "起點 : 縣道172線0K+460 ~ 終點 : 縣道172線0K+461",
+      "digDate": "自115年06月11日~至115年07月06日",
+      "caseStateName": "展延申請",
+      "supervisor": "蔡琮?",
+      "supervisorPhone": "05-3414045-",
+      "district": "布袋鎮",
+      "locationTownId": "1003"
+    },
+    {
+      "caseNo": "A1150517",
+      "caseGetNo": "C1150484",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣電力公司嘉義區營業處",
+      "digLocation": "起點 : 嘉99線4K+508 ~ 終點 : 嘉99線4K+510",
+      "digDate": "自115年04月15日~至115年08月24日",
+      "caseStateName": "施工中",
+      "supervisor": "吳OO",
+      "supervisorPhone": "05-2226711-3287",
+      "district": "大林鎮",
+      "locationTownId": "1004"
+    },
+    {
+      "caseNo": "A1150517",
+      "caseGetNo": "C1150484",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣電力公司嘉義區營業處",
+      "digLocation": "起點 : 嘉99線4K+508 ~ 終點 : 嘉99線4K+510",
+      "digDate": "自115年04月15日~至115年08月24日",
+      "caseStateName": "施工中",
+      "supervisor": "吳OO",
+      "supervisorPhone": "05-2226711-3287",
+      "district": "大林鎮",
+      "locationTownId": "1004"
+    },
+    {
+      "caseNo": "A1150689",
+      "caseGetNo": "C1150715",
+      "manageUnitName": "民雄鄉公所",
+      "applyUnitName": "嘉義縣政府水利處",
+      "digLocation": "起點 : 民雄鄉建國路一段97號 ~ 終點 : 民雄鄉民雄鄉建國路一段135號",
+      "digDate": "自115年05月13日~至115年07月13日",
+      "caseStateName": "施工中",
+      "supervisor": "賴禹丞",
+      "supervisorPhone": "05-2267390-",
+      "district": "民雄鄉",
+      "locationTownId": "1005"
+    },
+    {
+      "caseNo": "A1141882",
+      "caseGetNo": "C1141963",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "自來水公司南區工程處第四工務所",
+      "digLocation": "起點 : 縣道157線19K+550 ~ 終點 : 縣道157線21K+615",
+      "digDate": "自114年12月19日~至115年12月14日",
+      "caseStateName": "施工中",
+      "supervisor": "",
+      "supervisorPhone": "04-25663306-10",
+      "district": "新港鄉",
+      "locationTownId": "1007"
+    },
+    {
+      "caseNo": "A1150951",
+      "caseGetNo": "C1150892",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣自來水股份公司第五區管理處新港營運所",
+      "digLocation": "起點 : 嘉75線1k+336 ~ 終點 : 嘉75線1k+338",
+      "digDate": "自115年06月29日~至115年07月23日",
+      "caseStateName": "施工中",
+      "supervisor": "陳明菁",
+      "supervisorPhone": "--",
+      "district": "新港鄉",
+      "locationTownId": "1007"
+    },
+    {
+      "caseNo": "A1150718",
+      "caseGetNo": "C1150693",
+      "manageUnitName": "新港鄉公所",
+      "applyUnitName": "台電輸變電工程處南區施工處",
+      "digLocation": "起點 : 產業道路 ~ 終點 : 產業道路",
+      "digDate": "自115年05月25日~至116年07月24日",
+      "caseStateName": "施工中",
+      "supervisor": "沈俊琪",
+      "supervisorPhone": "07-3676782-",
+      "district": "新港鄉",
+      "locationTownId": "1007"
+    },
+    {
+      "caseNo": "A1150788",
+      "caseGetNo": "C1150741",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "中華電信嘉義營運處客戶網路中心",
+      "digLocation": "起點 : 嘉25線3K+315 ~ 終點 : 嘉25線3K+325",
+      "digDate": "自115年05月22日~至115年09月14日",
+      "caseStateName": "施工中",
+      "supervisor": "葉義立",
+      "supervisorPhone": "-2445104-",
+      "district": "義竹鄉",
+      "locationTownId": "1010"
+    },
+    {
+      "caseNo": "A1150599",
+      "caseGetNo": "C1150782",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "新勝能源開發股份有限公司",
+      "digLocation": "起點 : 嘉29線4K+578 ~ 終點 : 嘉29線7K+000",
+      "digDate": "自115年06月15日~至116年05月17日",
+      "caseStateName": "施工中",
+      "supervisor": "",
+      "supervisorPhone": "--",
+      "district": "義竹鄉",
+      "locationTownId": "1010"
+    },
+    {
+      "caseNo": "A1150501",
+      "caseGetNo": "C1150467",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "中華電信嘉義營運處客戶網路中心",
+      "digLocation": "起點 : 縣道167線8K+170 ~ 終點 : 縣道167線8K+180",
+      "digDate": "自115年05月06日~至115年08月01日",
+      "caseStateName": "施工中",
+      "supervisor": "葉義立",
+      "supervisorPhone": "05-2445125-",
+      "district": "鹿草鄉",
+      "locationTownId": "1011"
+    },
+    {
+      "caseNo": "A1150501",
+      "caseGetNo": "C1150467",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "中華電信嘉義營運處客戶網路中心",
+      "digLocation": "起點 : 縣道167線8K+170 ~ 終點 : 縣道167線8K+180",
+      "digDate": "自115年05月06日~至115年08月01日",
+      "caseStateName": "施工中",
+      "supervisor": "葉義立",
+      "supervisorPhone": "05-2445125-",
+      "district": "鹿草鄉",
+      "locationTownId": "1011"
+    },
+    {
+      "caseNo": "A1150765",
+      "caseGetNo": "C1150707",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "中華電信嘉義營運處客戶網路中心",
+      "digLocation": "起點 : 嘉35線0K+460 ~ 終點 : 嘉35線0K+461",
+      "digDate": "自115年05月28日~至115年08月22日",
+      "caseStateName": "施工中",
+      "supervisor": "葉義立",
+      "supervisorPhone": "05-2445125-",
+      "district": "鹿草鄉",
+      "locationTownId": "1011"
+    },
+    {
+      "caseNo": "A1141955",
+      "caseGetNo": "C1141873",
+      "manageUnitName": "鹿草鄉公所",
+      "applyUnitName": "台電輸變電工程處南區施工處",
+      "digLocation": "起點 : 縣道167線8K+650 ~ 終點 : 縣道167線9K+700",
+      "digDate": "自114年12月15日~至117年01月28日",
+      "caseStateName": "施工中",
+      "supervisor": "陳文山",
+      "supervisorPhone": "--",
+      "district": "鹿草鄉",
+      "locationTownId": "1011"
+    },
+    {
+      "caseNo": "A1150998",
+      "caseGetNo": "C1150950",
+      "manageUnitName": "嘉義縣政府",
+      "applyUnitName": "台灣自來水股份公司第五區管理處竹崎營運所",
+      "digLocation": "起點 : 嘉135線8K+010 ~ 終點 : 嘉135線8K+700",
+      "digDate": "自115年06月30日~至115年07月24日",
+      "caseStateName": "施工中",
+      "supervisor": "",
+      "supervisorPhone": "--",
+      "district": "中埔鄉",
+      "locationTownId": "1013"
+    },
+    {
+      "caseNo": "A1150994",
+      "caseGetNo": "C1150939",
+      "manageUnitName": "番路鄉公所",
+      "applyUnitName": "台灣自來水股份公司第五區管理處竹崎營運所",
+      "digLocation": "起點 : 嘉義縣番路鄉公田村板子龍15號(049劉新華) ~ 終點 : 嘉義縣番路鄉公田村板子龍15號(049劉新華)",
+      "digDate": "自115年06月24日~至115年09月24日",
+      "caseStateName": "施工中",
+      "supervisor": "蔡逸琳",
+      "supervisorPhone": "05-2611075-205",
+      "district": "番路鄉",
+      "locationTownId": "1016"
+    }
+  ]
+}

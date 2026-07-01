@@ -15,6 +15,7 @@ const kaohsiungRoadworkFile = path.resolve(__dirname, '../../data/kaohsiung-road
 const changhuaRoadworkFile = path.resolve(__dirname, '../../data/changhua-roadwork.json');
 const nantouRoadworkFile = path.resolve(__dirname, '../../data/nantou-roadwork.json');
 const yunlinRoadworkFile = path.resolve(__dirname, '../../data/yunlin-roadwork.json');
+const chiayiCountyRoadworkFile = path.resolve(__dirname, '../../data/chiayi-county-roadwork.json');
 const pingtungRoadworkFile = path.resolve(__dirname, '../../data/pingtung-roadwork.xml');
 const yilanRoadworkFile = path.resolve(__dirname, '../../data/yilan-roadwork.xml');
 const nfaFireInfoUrl = 'https://www.nfa.gov.tw/cht/index.php?code=list&ids=22';
@@ -2166,9 +2167,10 @@ async function chiayiCountyRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '嘉義縣') return { status: 'not-configured', source: '嘉義縣道路管理資訊平台' };
   const district = location.district || '';
+  const cached = readJsonFallback(chiayiCountyRoadworkFile, { towns: [], records: [] });
   let locationTownId = '';
   if (district) {
-    const towns = await fetchJson(chiayiCountyRoadworkTownUrl, { timeoutMs: 7000 });
+    const towns = await fetchJson(chiayiCountyRoadworkTownUrl, { timeoutMs: 7000 }) || cached.towns;
     const matchedTown = Array.isArray(towns) ? towns.find(town => town.text === district) : null;
     locationTownId = matchedTown?.value || '';
   }
@@ -2186,10 +2188,13 @@ async function chiayiCountyRoadwork(location) {
     timeoutMs: 7000,
     headers: { 'Content-Type': 'application/json' }
   });
-  const records = Array.isArray(data?.data) ? data.data : [];
+  let records = Array.isArray(data?.data) ? data.data : [];
+  if (!records.length && Array.isArray(cached.records)) {
+    records = district ? cached.records.filter(record => record.district === district) : cached.records;
+  }
   if (!records.length) return { status: 'no-event', source: '嘉義縣道路管理資訊平台', body: `${location.city}${district}目前沒有嘉義縣今日道路挖掘施工資訊。` };
 
-  const matched = records.find(record => (!district || record.digLocation?.includes(district)) && !isEmptyEventRecord(record)) ||
+  const matched = records.find(record => (!district || record.district === district || record.digLocation?.includes(district)) && !isEmptyEventRecord(record)) ||
     records.find(record => !isEmptyEventRecord(record));
   if (!matched) return { status: 'no-event', source: '嘉義縣道路管理資訊平台', body: `${location.city}${district}目前沒有嘉義縣今日道路挖掘施工資訊。` };
 
