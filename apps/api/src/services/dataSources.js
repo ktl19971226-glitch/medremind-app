@@ -12,6 +12,7 @@ const kaohsiungParkingFile = path.resolve(__dirname, '../../data/kaohsiung-parki
 const yilanParkingFile = path.resolve(__dirname, '../../data/yilan-parking.json');
 const tainanRoadworkFile = path.resolve(__dirname, '../../data/tainan-roadwork.xml');
 const kaohsiungRoadworkFile = path.resolve(__dirname, '../../data/kaohsiung-roadwork.xml');
+const pingtungRoadworkFile = path.resolve(__dirname, '../../data/pingtung-roadwork.xml');
 const yilanRoadworkFile = path.resolve(__dirname, '../../data/yilan-roadwork.xml');
 const nfaFireInfoUrl = 'https://www.nfa.gov.tw/cht/index.php?code=list&ids=22';
 
@@ -257,6 +258,9 @@ const newTaipeiRoadworkUrl = 'https://data.ntpc.gov.tw/api/datasets/96B6101B-C03
 const taoyuanTodayRoadworkUrl = 'https://opendata.tycg.gov.tw/api/dataset/56c616fe-07d7-4b0c-bb75-e8f8cd75500a/resource/52de3762-1490-4a86-a074-0062d746873b/download';
 const tainanTodayRoadworkUrl = 'https://diggis.tainan.gov.tw/TNRoad/ashx/PresentDayCase.ashx';
 const kaohsiungRoadworkUrl = 'https://pipegis.kcg.gov.tw/openDataService.aspx';
+const nantouRoadworkBaseUrl = 'https://pipeline.nantou.gov.tw/Public';
+const yunlinRoadworkBaseUrl = 'https://pwd.yunlin.gov.tw/YLPub';
+const pingtungRoadworkUrl = 'https://e-road.pthg.gov.tw/openDataService.aspx';
 const yilanRoadworkUrl = 'https://mntengmgt.e-land.gov.tw/YilanDigweb/Download/XML/dig.xml';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
 const taichungMetroStatusUrl = 'https://www.tmrt.com.tw/';
@@ -2056,6 +2060,106 @@ async function kaohsiungRoadwork(location) {
   };
 }
 
+function parseMaybeJsonString(text = '') {
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+  } catch {
+    return [];
+  }
+}
+
+function htmlTableValue(html = '', label) {
+  const rows = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+  for (const row of rows) {
+    const th = cleanHtmlText(row[1].match(/<th\b[^>]*>([\s\S]*?)<\/th>/i)?.[1] || '');
+    if (th !== label) continue;
+    return cleanHtmlText(row[1].match(/<td\b[^>]*>([\s\S]*?)<\/td>/i)?.[1] || '');
+  }
+  return '';
+}
+
+async function publicPipeRoadwork(location, config) {
+  const city = canonicalCity(location.city);
+  if (city !== config.city) return { status: 'not-configured', source: config.source };
+  const records = [];
+  for (const type of ['3', '4']) {
+    const text = await fetchText(`${config.baseUrl}/Home/Get_AppNoXY?type=${type}`, { timeoutMs: 7000 });
+    const items = parseMaybeJsonString(text);
+    if (Array.isArray(items)) records.push(...items.map(item => ({ ...item, type })));
+  }
+  if (!records.length) return { status: 'no-event', source: config.source, body: `${location.city}${location.district || ''}目前沒有${config.shortName}今日施工或緊急搶修資訊。` };
+
+  const district = location.district || '';
+  const candidates = district ? records.slice(0, 40) : records.slice(0, 1);
+  for (const record of candidates) {
+    const html = await fetchText(`${config.baseUrl}/Home/DetailsBox?id=${encodeURIComponent(record.AppNo)}`, { timeoutMs: 7000 });
+    const address = htmlTableValue(html, '地址');
+    const note = htmlTableValue(html, '備註');
+    if (district && !address.includes(district) && !note.includes(district)) continue;
+    const status = htmlTableValue(html, '案件進度') || (record.type === '4' ? '緊急搶修案件' : '今日施工');
+    const owner = htmlTableValue(html, '路權單位');
+    const unit = htmlTableValue(html, '申請單位') || record.AppUnitName;
+    const start = htmlTableValue(html, '核准開挖日期起') || htmlTableValue(html, '申請開挖日期起');
+    const end = htmlTableValue(html, '核准開挖日期止') || htmlTableValue(html, '申請開挖日期止');
+    return {
+      status: 'live',
+      source: config.source,
+      body: `${district || config.shortName}道路挖掘${record.type === '4' ? '緊急搶修' : '施工'}：${address || note || '位置未標示'}，期間 ${start || ''} 至 ${end || ''}，單位 ${unit || '未標示'}，路權 ${owner || '未標示'}，狀態 ${status || '未標示'}。`,
+      shouldNotify: record.type === '4'
+    };
+  }
+
+  return { status: 'no-event', source: config.source, body: `${location.city}${district}目前沒有${config.shortName}道路挖掘資訊。` };
+}
+
+async function nantouRoadwork(location) {
+  return publicPipeRoadwork(location, {
+    city: '南投縣',
+    source: '南投縣政府管線挖掘資訊便民服務系統',
+    shortName: '南投縣',
+    baseUrl: nantouRoadworkBaseUrl
+  });
+}
+
+async function yunlinRoadwork(location) {
+  return publicPipeRoadwork(location, {
+    city: '雲林縣',
+    source: '雲林縣政府管線挖掘資訊便民服務系統',
+    shortName: '雲林縣',
+    baseUrl: yunlinRoadworkBaseUrl
+  });
+}
+
+async function pingtungRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '屏東縣') return { status: 'not-configured', source: '屏東縣道路挖掘施工資訊' };
+  const xml = await fetchText(pingtungRoadworkUrl, { timeoutMs: 15000 }) || readTextFallback(pingtungRoadworkFile);
+  const rows = [...xml.matchAll(/<屏東縣道路挖掘施工案件[^>]*>([\s\S]*?)<\/屏東縣道路挖掘施工案件>/gi)].map(match => ({
+    unit: xmlTagValue(match[1], '申請單位'),
+    owner: xmlTagValue(match[1], '核准機關'),
+    reason: xmlTagValue(match[1], '施工原因'),
+    location: xmlTagValue(match[1], '挖掘地點'),
+    permit: xmlTagValue(match[1], '道路挖掘許可證字號'),
+    start: xmlTagValue(match[1], '核准施工起始日期'),
+    end: xmlTagValue(match[1], '核准施工終止日期')
+  }));
+  if (!rows.length) return { status: 'no-event', source: '屏東縣道路挖掘施工資訊', body: '屏東縣道路挖掘施工資訊資料源暫時無法連線。' };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record.location.includes(district)) && record.location) ||
+    rows.find(record => record.location);
+  if (!matched) return { status: 'no-event', source: '屏東縣道路挖掘施工資訊', body: `${location.city}${district}目前沒有屏東縣道路挖掘施工資訊。` };
+
+  return {
+    status: 'live',
+    source: '屏東縣道路挖掘施工資訊',
+    body: `${district || '屏東縣'}道路挖掘施工：${matched.reason || '施工原因未標示'}，位置 ${matched.location || '未標示'}，期間 ${matched.start || ''} 至 ${matched.end || ''}，單位 ${matched.unit || '未標示'}，許可 ${matched.permit || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
 async function yilanRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '宜蘭縣') return { status: 'not-configured', source: '宜蘭縣道路挖掘管理資訊' };
@@ -2668,7 +2772,7 @@ export async function resolveLiveAlert(rule, location) {
   if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
     let localRoadworkNoEvent = null;
     if (rule.moduleId === 'roadwork') {
-      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, tainanRoadwork, kaohsiungRoadwork, yilanRoadwork]) {
+      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, nantouRoadwork, yunlinRoadwork, tainanRoadwork, kaohsiungRoadwork, pingtungRoadwork, yilanRoadwork]) {
         const localRoadwork = await source(location);
         if (localRoadwork.status === 'live') return localRoadwork;
         if (localRoadwork.status === 'no-event' && !localRoadworkNoEvent) localRoadworkNoEvent = localRoadwork;
@@ -2779,13 +2883,16 @@ export function getSourceCoverage() {
         source: taipeiTodayRoadworkUrl
       },
       'local-roadwork-public': {
-        coverage: ['新北市', '桃園市', '臺南市', '高雄市', '宜蘭縣'],
+        coverage: ['新北市', '桃園市', '南投縣', '雲林縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣'],
         modules: ['roadwork'],
         sources: {
           新北市: newTaipeiRoadworkUrl,
           桃園市: taoyuanTodayRoadworkUrl,
+          南投縣: `${nantouRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
+          雲林縣: `${yunlinRoadworkBaseUrl}/Home/Get_AppNoXY?type=3`,
           臺南市: tainanTodayRoadworkUrl,
           高雄市: kaohsiungRoadworkUrl,
+          屏東縣: pingtungRoadworkUrl,
           宜蘭縣: yilanRoadworkUrl
         }
       },
