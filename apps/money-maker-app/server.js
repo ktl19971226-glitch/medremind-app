@@ -4,11 +4,16 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const path = require("path");
+const fs = require("fs/promises");
+const crypto = require("crypto");
 
 const app = express();
 const PORT = Number(process.env.PORT || 8092);
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const API_PREFIX = "/money-maker-api";
+const DATA_DIR = process.env.MONEY_MAKER_DATA_DIR || path.join(__dirname, "private_data", "vaults");
+const MAX_SYNC_RECORDS = 1000;
+const MAX_SYNC_BYTES = 1_500_000;
 
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -147,6 +152,104 @@ function sanitizeResult(type, result, rawText) {
   };
 }
 
+function isValidVaultKey(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{43,128}$/.test(value);
+}
+
+function vaultHash(vaultKey) {
+  return crypto.createHash("sha256").update(`money-maker-vault-id:${vaultKey}`).digest("hex");
+}
+
+function vaultFile(vaultKey) {
+  return path.join(DATA_DIR, `${vaultHash(vaultKey)}.json`);
+}
+
+function vaultEncryptionKey(vaultKey) {
+  return crypto.createHash("sha256").update(`money-maker-vault-data:${vaultKey}`).digest();
+}
+
+function encryptVault(vaultKey, payload) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", vaultEncryptionKey(vaultKey), iv);
+  const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  return {
+    version: 1,
+    key_hash: vaultHash(vaultKey),
+    updated_at: payload.updated_at,
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    ciphertext: encrypted.toString("base64")
+  };
+}
+
+function decryptVault(vaultKey, envelope) {
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    vaultEncryptionKey(vaultKey),
+    Buffer.from(envelope.iv, "base64")
+  );
+  decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(envelope.ciphertext, "base64")),
+    decipher.final()
+  ]);
+  return JSON.parse(decrypted.toString("utf8"));
+}
+
+function sanitizeRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return null;
+  const id = typeof record.id === "string" && record.id.length <= 80 ? record.id : "";
+  const type = typeof record.type === "string" && scanTemplates[record.type] ? record.type : "";
+  if (!id || !type) return null;
+  const clean = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!/^[a-zA-Z0-9_]+$/.test(key) || key.length > 40) continue;
+    if (Array.isArray(value)) {
+      clean[key] = value.slice(0, 100).map((item) => String(item ?? "").slice(0, 2000));
+    } else if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
+      clean[key] = typeof value === "string" ? value.slice(0, 10000) : value;
+    }
+  }
+  clean.id = id;
+  clean.type = type;
+  clean.updated_at = typeof clean.updated_at === "string" ? clean.updated_at : new Date().toISOString();
+  return clean;
+}
+
+function sanitizeRecords(records) {
+  if (!Array.isArray(records)) return null;
+  const clean = records.slice(0, MAX_SYNC_RECORDS).map(sanitizeRecord).filter(Boolean);
+  const serialized = JSON.stringify(clean);
+  if (Buffer.byteLength(serialized, "utf8") > MAX_SYNC_BYTES) return null;
+  return clean;
+}
+
+async function readVault(vaultKey) {
+  try {
+    const raw = await fs.readFile(vaultFile(vaultKey), "utf8");
+    const envelope = JSON.parse(raw);
+    if (envelope.key_hash !== vaultHash(vaultKey)) return null;
+    return decryptVault(vaultKey, envelope);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeVault(vaultKey, records) {
+  await fs.mkdir(DATA_DIR, { recursive: true, mode: 0o700 });
+  const payload = {
+    records,
+    updated_at: new Date().toISOString()
+  };
+  const file = vaultFile(vaultKey);
+  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(temp, JSON.stringify(encryptVault(vaultKey, payload)), { mode: 0o600 });
+  await fs.rename(temp, file);
+  return payload;
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
@@ -154,6 +257,45 @@ app.get("/api/health", (_req, res) => {
     model: GEMINI_MODEL,
     aiConfigured: Boolean(process.env.GEMINI_API_KEY)
   });
+});
+
+app.post("/api/private-sync/pull", async (req, res) => {
+  try {
+    const { vault_key: vaultKey } = req.body || {};
+    if (!isValidVaultKey(vaultKey)) {
+      return res.status(403).json({ error: "私有同步碼無效" });
+    }
+    const vault = await readVault(vaultKey);
+    res.set("Cache-Control", "no-store");
+    res.json({
+      records: vault && Array.isArray(vault.records) ? vault.records : [],
+      updated_at: vault ? vault.updated_at : null
+    });
+  } catch (error) {
+    res.status(500).json({ error: "同步讀取失敗", detail: error.message });
+  }
+});
+
+app.put("/api/private-sync/push", async (req, res) => {
+  try {
+    const { vault_key: vaultKey, records } = req.body || {};
+    if (!isValidVaultKey(vaultKey)) {
+      return res.status(403).json({ error: "私有同步碼無效" });
+    }
+    const clean = sanitizeRecords(records);
+    if (!clean) {
+      return res.status(400).json({ error: "同步資料格式太大或無效" });
+    }
+    const vault = await writeVault(vaultKey, clean);
+    res.set("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      count: clean.filter((record) => !record.deleted_at).length,
+      updated_at: vault.updated_at
+    });
+  } catch (error) {
+    res.status(500).json({ error: "同步寫入失敗", detail: error.message });
+  }
 });
 
 app.post("/api/ai-scan", async (req, res) => {

@@ -27,6 +27,16 @@ GEMINI_API_KEY=你的金鑰 npm run dev
 
 TestFlight 版內建正式後端網址，App 畫面不顯示伺服器 API 欄位；瀏覽器本機測試會使用目前網頁來源。
 
+## 私有同步
+
+App 會自動產生一組私有同步碼，資料同步到 money-maker 後端的獨立加密檔案，不寫進藥護家或其他 App 的資料庫。後端只提供 pull/push，沒有公開列表或搜尋全部資料的 API。
+
+正式機建議設定：
+
+```bash
+MONEY_MAKER_DATA_DIR=/opt/money-maker-app/data/vaults
+```
+
 ## iOS
 
 ```bash

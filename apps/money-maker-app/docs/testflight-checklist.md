@@ -10,7 +10,7 @@
 - Profile ID: `5SAR6NQ28P`
 - App Store Connect App ID: `6786379398`
 - Version: `1.0`
-- Build: `4`
+- Build: `5`
 - Camera permission: done
 - Photo library permission: done
 - iOS app icon: done
@@ -51,3 +51,13 @@ GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.5-flash
 PORT=8092
 ```
+
+## 私有同步
+
+資料同步使用 money-maker 後端獨立私有保險箱：
+
+- API：`/api/private-sync/pull`、`/api/private-sync/push`
+- App 端自動產生私有同步碼
+- 後端沒有公開列表或搜尋全部資料的 API
+- 正式機資料目錄：`/opt/money-maker-app/data/vaults`
+- 檔案內容以 App 私有同步碼衍生金鑰加密

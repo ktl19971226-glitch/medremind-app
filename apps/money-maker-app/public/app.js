@@ -1,4 +1,5 @@
 const STORAGE_KEY = "money-maker-records-v1";
+const VAULT_KEY = "money-maker-private-vault-key-v1";
 const DEFAULT_API_BASE = "https://yaojidecare.app/money-maker-api";
 
 const TYPES = {
@@ -76,7 +77,9 @@ const state = {
   type: "hotai",
   editingId: null,
   records: loadRecords(),
-  search: ""
+  search: "",
+  syncing: false,
+  syncQueued: false
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -90,8 +93,122 @@ function loadRecords() {
   }
 }
 
-function saveRecords() {
+function saveRecords(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+  if (options.sync !== false) {
+    queueSync();
+  }
+}
+
+function generateVaultKey() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function getVaultKey() {
+  let key = localStorage.getItem(VAULT_KEY);
+  if (!key) {
+    key = generateVaultKey();
+    localStorage.setItem(VAULT_KEY, key);
+  }
+  return key;
+}
+
+function setSyncState(text, error = false) {
+  const el = $("#sync-state");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("error", error);
+}
+
+function activeRecords(records = state.records) {
+  return records.filter((record) => !record.deleted_at);
+}
+
+function recordTimestamp(record) {
+  const time = Date.parse(record && (record.updated_at || record.created_at || record.deleted_at));
+  return Number.isFinite(time) ? time : 0;
+}
+
+function mergeRecords(localRecords, remoteRecords) {
+  const map = new Map();
+  for (const record of [...remoteRecords, ...localRecords]) {
+    if (!record || !record.id) continue;
+    const existing = map.get(record.id);
+    if (!existing || recordTimestamp(record) >= recordTimestamp(existing)) {
+      map.set(record.id, record);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => recordTimestamp(b) - recordTimestamp(a));
+}
+
+async function syncRequest(path, method, body) {
+  const response = await fetch(`${getApiBase()}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || result.detail || "同步失敗");
+  }
+  return result;
+}
+
+async function pullRemoteRecords() {
+  const result = await syncRequest("/api/private-sync/pull", "POST", {
+    vault_key: getVaultKey()
+  });
+  return Array.isArray(result.records) ? result.records : [];
+}
+
+async function pushRecords() {
+  return syncRequest("/api/private-sync/push", "PUT", {
+    vault_key: getVaultKey(),
+    records: state.records
+  });
+}
+
+async function initialSync() {
+  setSyncState("私有同步中");
+  try {
+    const remoteRecords = await pullRemoteRecords();
+    state.records = mergeRecords(state.records, remoteRecords);
+    saveRecords({ sync: false });
+    renderAll();
+    await pushRecords();
+    setSyncState("已私有同步");
+  } catch (error) {
+    setSyncState("同步稍後重試", true);
+    setTimeout(queueSync, 5000);
+  }
+}
+
+function queueSync() {
+  if (state.syncing) {
+    state.syncQueued = true;
+    return;
+  }
+  state.syncing = true;
+  state.syncQueued = false;
+  setSyncState("私有同步中");
+  setTimeout(async () => {
+    try {
+      await pushRecords();
+      setSyncState("已私有同步");
+    } catch (error) {
+      setSyncState("同步稍後重試", true);
+    } finally {
+      state.syncing = false;
+      if (state.syncQueued) {
+        queueSync();
+      }
+    }
+  }, 250);
 }
 
 function money(value) {
@@ -181,7 +298,7 @@ function saveForm(event) {
   saveRecords();
   renderForm();
   renderAll();
-  setScanState("已儲存。");
+  setScanState("已儲存，正在同步。");
 }
 
 function setMode(type) {
@@ -196,7 +313,7 @@ function setMode(type) {
 
 function filteredRecords() {
   const term = state.search.trim().toLowerCase();
-  return state.records.filter((record) => {
+  return activeRecords().filter((record) => {
     if (record.type !== state.type) return false;
     if (!term) return true;
     return JSON.stringify(record).toLowerCase().includes(term);
@@ -241,7 +358,7 @@ function renderStats() {
   const month = todayMonthPrefix();
   let monthCost = 0;
   let monthExtra = 0;
-  for (const record of state.records) {
+  for (const record of activeRecords()) {
     const dateText = record.delivery_date || record.fuel_date || record.service_date || record.created_at || "";
     const inMonth = String(dateText).startsWith(month);
     if (!inMonth) continue;
@@ -251,7 +368,7 @@ function renderStats() {
   }
   $("#month-cost").textContent = money(monthCost);
   $("#month-extra").textContent = money(monthExtra);
-  $("#total-count").textContent = String(state.records.length);
+  $("#total-count").textContent = String(activeRecords().length);
 }
 
 function renderAll() {
@@ -337,14 +454,15 @@ function editRecord(id) {
 
 function deleteRecord(id) {
   if (!confirm("確定刪除這筆紀錄？")) return;
-  state.records = state.records.filter((record) => record.id !== id);
+  const now = new Date().toISOString();
+  state.records = state.records.map((record) => record.id === id ? { ...record, deleted_at: now, updated_at: now } : record);
   saveRecords();
   renderAll();
 }
 
 function exportCsv() {
   const headers = ["type", "id", "created_at", "updated_at", "data"];
-  const rows = state.records.map((record) => [
+  const rows = activeRecords().map((record) => [
     record.type,
     record.id,
     record.created_at,
@@ -397,3 +515,4 @@ $("#export-btn").addEventListener("click", exportCsv);
 
 renderForm();
 renderAll();
+initialSync();

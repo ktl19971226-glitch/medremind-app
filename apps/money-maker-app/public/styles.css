@@ -56,6 +56,17 @@ button {
   font-weight: 800;
 }
 
+.sync-state {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sync-state.error {
+  color: var(--danger);
+}
+
 h1,
 h2,
 h3,
