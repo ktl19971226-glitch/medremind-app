@@ -15,7 +15,12 @@ const kaohsiungRoadworkFile = path.resolve(__dirname, '../../data/kaohsiung-road
 const changhuaRoadworkFile = path.resolve(__dirname, '../../data/changhua-roadwork.json');
 const nantouRoadworkFile = path.resolve(__dirname, '../../data/nantou-roadwork.json');
 const yunlinRoadworkFile = path.resolve(__dirname, '../../data/yunlin-roadwork.json');
+const hsinchuCountyRoadworkFile = path.resolve(__dirname, '../../data/hsinchu-county-roadwork.html');
+const miaoliRoadworkFile = path.resolve(__dirname, '../../data/miaoli-roadwork.html');
+const chiayiCityRoadworkFile = path.resolve(__dirname, '../../data/chiayi-city-roadwork.html');
 const chiayiCountyRoadworkFile = path.resolve(__dirname, '../../data/chiayi-county-roadwork.json');
+const hualienRoadworkFile = path.resolve(__dirname, '../../data/hualien-roadwork.json');
+const taitungRoadworkFile = path.resolve(__dirname, '../../data/taitung-roadwork.json');
 const penghuRoadworkFile = path.resolve(__dirname, '../../data/penghu-roadwork.json');
 const pingtungRoadworkFile = path.resolve(__dirname, '../../data/pingtung-roadwork.xml');
 const yilanRoadworkFile = path.resolve(__dirname, '../../data/yilan-roadwork.xml');
@@ -2197,7 +2202,7 @@ async function hsinchuCityRoadwork(location) {
 async function hsinchuCountyRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '新竹縣') return { status: 'not-configured', source: '新竹縣道路挖掘資訊便民服務系統' };
-  const html = await fetchText(hsinchuCountyRoadworkListUrl, { timeoutMs: 7000 });
+  const html = await fetchText(hsinchuCountyRoadworkListUrl, { timeoutMs: 7000 }) || readTextFallback(hsinchuCountyRoadworkFile);
   const rows = htmlTableRows(html, 'ctl00_HomePageMain_ContentPlaceHolder1_GridView1')
     .filter(cells => cells.length >= 5 && cells[0] !== '案號')
     .map(cells => {
@@ -2230,7 +2235,7 @@ async function hsinchuCountyRoadwork(location) {
 async function miaoliRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '苗栗縣') return { status: 'not-configured', source: '苗栗縣公共管線及設施資訊平台' };
-  const html = await fetchText(miaoliRoadworkListUrl, { timeoutMs: 7000 });
+  const html = await fetchText(miaoliRoadworkListUrl, { timeoutMs: 7000 }) || readTextFallback(miaoliRoadworkFile);
   const rows = htmlTableRows(html, 'body_GridView1')
     .filter(cells => cells.length >= 6 && cells[0] !== '施工鄉鎮' && cells[0] !== '第 頁/共 頁')
     .map(cells => ({
@@ -2303,7 +2308,7 @@ async function chiayiCityRoadwork(location) {
     body: form.toString(),
     timeoutMs: 7000,
     headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
-  });
+  }) || readTextFallback(chiayiCityRoadworkFile);
   const rows = htmlTableRows(html)
     .filter(cells => cells.length >= 5)
     .map(cells => ({
@@ -2379,7 +2384,7 @@ async function hualienRoadwork(location) {
     method: 'POST',
     timeoutMs: 10000,
     headers: { 'Content-Length': '0' }
-  });
+  }) || readTextFallback(hualienRoadworkFile);
   let records = [];
   try {
     records = JSON.parse(text);
@@ -2418,14 +2423,15 @@ async function taitungRoadwork(location) {
     fetchTextAllowInvalidCert(taitungRoadworkMarkerUrl, { timeoutMs: 10000 })
   ]);
   const seen = new Set();
-  const rows = texts.flatMap(text => {
+  const remoteRecords = texts.flatMap(text => {
     try {
       const parsed = JSON.parse(text);
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
-  })
+  });
+  const rows = (remoteRecords.length ? remoteRecords : readJsonFallback(taitungRoadworkFile, []))
     .map(record => ({
       ...record,
       start: normalizeRoadworkDate(record.SPermitDate),

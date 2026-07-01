@@ -1,0 +1,422 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>
+	苗栗縣公共管線及設施資訊平台
+</title><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><link href="../Css/cssreset-min.css" rel="stylesheet" type="text/css" /><link href="../Css/cssfonts-min.css" rel="stylesheet" type="text/css" /><link href="../Css/cssgrids-min.css" rel="stylesheet" type="text/css" /><link href="../Css/Layout.css" rel="stylesheet" type="text/css" /><link href="../Css/styles.css" rel="stylesheet" type="text/css" /><link href="../Css/redmond/jquery-ui-1.10.4.custom.css" rel="stylesheet" type="text/css" />
+    
+    <script src="../JS/jquery-3.7.1.min.js" type="text/javascript"></script>
+    <script src="../Js/jquery-ui-1.10.4.custom.min.js" type="text/javascript"></script>
+    <script src="../Js/menu_jquery.js" type="text/javascript"></script>
+    
+    <style type="text/css">
+        .table {
+            margin: auto;
+            width: 90%;
+        }
+
+        .table th {
+            width: 20%;
+            text-align: center;
+            height: 33px;
+            border: 1px solid #DCDCDC;
+            padding: 5px;
+            background-color: #F5F5F5;
+            /*border-radius:10px;*/
+        }
+
+        .table td {
+            width: 30%;
+            text-align: left;
+            padding: 6px;
+            height: 25px;
+            border: 1px solid #DCDCDC;
+            /*background-color: #FFFFE0;*/
+        }
+
+        .gview {
+            margin: auto;
+            width: 100%;
+        }
+
+        .gview th {
+            /*width: 20%;*/
+            text-align: center;
+            height: 35px;
+            border: 1px solid #DCDCDC;
+            background-color: #FCF5EE;
+            font-weight: bold;
+        }
+
+        .gview td {
+            /*width: 30%;*/
+            /*text-align: left;*/
+            padding-left: 1px;
+            height: 40px;
+            border: 1px solid #DCDCDC;
+        }
+
+        a {
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .BTCSS {
+            border-radius: 6px;
+            padding: 5px;
+            background-color: #32CD32;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+    </style>
+    <script language="javascript" type="text/javascript">
+        var currentTime1 = new Date();
+        var currentTime = new Date('2014', 1, -30);
+        //#APPLYDATA_SSearch_ctl00_s_APP_SDATE
+        $(function() {
+            $('#body_SDATE').datepicker({
+                changeYear: true,
+                changeMonth: true,
+                showMonthAfterYear: true,
+                dateFormat: "yy-mm-dd",
+                minDate: new Date(2014, 1, -30),
+                maxDate: new Date(new Date().getFullYear() + 1, new Date().getMonth(), new Date().getDate()),
+                onSelect: function(dateText, inst) {
+                    dateText = dateText;
+                    if (dateText < 1000000) {
+                        $(this).val('0' + dateText);
+                    } else {
+                        $(this).val(dateText);
+                    }
+                }
+            });
+        });
+        $(function() {
+            $('#body_EDATE').datepicker({
+                changeYear: true,
+                changeMonth: true,
+                showMonthAfterYear: true,
+                dateFormat: "yy-mm-dd",
+                minDate: new Date(2014, 1, -30),
+                maxDate: new Date(new Date().getFullYear() + 1, new Date().getMonth(), new Date().getDate()),
+                onSelect: function(dateText, inst) {
+                    dateText = dateText;
+                    if (dateText < 1000000) {
+                        $(this).val('0' + dateText);
+                    } else {
+                        $(this).val(dateText);
+                    }
+                }
+            });
+        });
+
+        jQuery(function($) {
+            $.datepicker.regional['zh-TW'] = {
+                dateFormat: 'yymmdd',
+                monthNamesShort: ['01月', '02月', '03月', '04月', '05月', '06月',
+                    '07月', '08月', '09月', '10月', '11月', '12月'
+                ],
+                dayNamesMin: ['日', '一', '二', '三', '四', '五', '六']
+            };
+            $.datepicker.setDefaults($.datepicker.regional['zh-TW']);
+        });
+    </script>
+</head>
+<body>
+    <form method="post" action="./CaseList_New.aspx" id="form1">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="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6ZmQ5YWs5Y+46IuX5qCX5Y2A54ef5qWt6JmVZGQCAw8PFgIfAQUgNTI2MDIwM+mZs0/okI3nlLPoq4vmlrDoqK3lt6XnqItkZAIEDw8WAh8BBQoyMDI2LTA3LTEzZGQCBQ8PFgIfAQUKMjAyNi0wNy0yNGRkAgYPZBYCAgEPDxYCHwMFBTYyNTA1ZGQCCQ9kFg5mDw8WAh8BBQnlhazppKjphIlkZAIBDw8WAh8BBQU2MjQ3MmRkAgIPDxYCHwEFQuWPsOeBo+iHquS+huawtOiCoeS7veaciemZkOWFrOWPuOesrOS4ieWNgOeuoeeQhuiZleiLl+agl+eHn+mBi+aJgGRkAgMPDxYCHwEFS+iLl+agl+e4o+mgreWxi+mEieabsua0nuadkTjphLA56YSw5L6b5rC05bu2566h5bel56iLIOWFrOmkqOmEiei3r+asiumDqOWIhmRkAgQPDxYCHwEFCjIwMjYtMDctMDFkZAIFDw8WAh8BBQoyMDI2LTA4LTMxZGQCBg9kFgICAQ8PFgIfAwUFNjI0NzJkZAIKD2QWDmYPDxYCHwEFCemgreWxi+mEiWRkAgEPDxYCHwEFBTYyNDcwZGQCAg8PFgIfAQVC5Y+w54Gj6Ieq5L6G5rC06IKh5Lu95pyJ6ZmQ5YWs5Y+456ys5LiJ5Y2A566h55CG6JmV6IuX5qCX54ef6YGL5omAZGQCAw8PFgIfAQVE6IuX5qCX57ij6aCt5bGL6YSJ5puy5rSe5p2ROOmEsDnphLDkvpvmsLTlu7bnrqHlj4rnlKjmiLblpJbnt5rlt6XnqItkZAIEDw8WAh8BBQoyMDI2LTA3LTAxZGQCBQ8PFgIfAQUKMjAyNi0wOC0zMGRkAgYPZBYCAgEPDxYCHwMFBTYyNDcwZGQCCw8PFgIeB1Zpc2libGVoZGQCDA9kFgJmD2QWBAIFDxAPFgIfAGdkDxYDZgIBAgIWAxAFATEFATFnEAUBMgUBMmcQBQEzBQEzZxYBZmQCBw8PFgIfAQUBM2RkAgUPD2QPDxQrAAIWBh4ETmFtZQUFU0RBVEUeDERlZmF1bHRWYWx1ZQUIMjAyNjA3MDEeDlBhcmFtZXRlclZhbHVlZBYGHwUFBUVEQVRFHwYFCDIwMjYxMjMxHwdkFCsBAgIDAgNkZBgCBR5fX0NvbnRyb2xzUmVxdWlyZVBvc3RCYWNrS2V5X18WBAUkY3RsMDAkYm9keSRHcmlkVmlldzEkY3RsMTMkR1YxX2ZpcnN0BSdjdGwwMCRib2R5JEdyaWRWaWV3MSRjdGwxMyRHVjFfUHJldmlvdXMFI2N0bDAwJGJvZHkkR3JpZFZpZXcxJGN0bDEzJEdWMV9OZXh0BSNjdGwwMCRib2R5JEdyaWRWaWV3MSRjdGwxMyRHVjFfTGFzdAUUY3RsMDAkYm9keSRHcmlkVmlldzEPPCsADAEIAgNk9SXTOWI8GYIgSFAr3n3WnOzcqfkZoN7QRPcz7x9KEX0=" />
+
+
+<script src="/NewMiaoliWeb/ScriptResource.axd?d=Q41m-gSur67rUOLVPMI7tJ5DEp4joyc1ILN6ZEbWUxpvzPURGBNNByR1ZBRlcOGCkQTouQq7wAkfQWWjuQM7xkpMFFGu5C4-gNYQTzOhUj4Xs2Mt7RX5pyNMnQZfY-ANxQknEqcAuMRzgjC-FjHi54h6pjo5-LKGiJA4TbWdIugrFcwLWg8_wwgxulXkVQ3n0&amp;t=5c0e0825" type="text/javascript"></script>
+<script type="text/javascript">
+//<![CDATA[
+if (typeof(Sys) === 'undefined') throw new Error('ASP.NET Ajax 用戶端架構無法載入。');
+//]]>
+</script>
+
+<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="574C2B81" />
+<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="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" />
+    <table width="1000" border="0" align="center" cellpadding="0" cellspacing="0">
+        <tr>
+            <td>
+                <img alt="banner" src="../Images/d1-07.gif" style="height: 132px;" />
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <span id="lb_logininfo"></span>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <div id='cssmenu'>
+                    <ul>
+                        <li id='default'><a href='../Default.aspx'><span>首頁</span></a></li>
+                        <li id='casemap'><a href='CaseMap.aspx'><span>案件地圖</span></a></li>
+                        <li id='conv' class='has-sub'><a href='#'><span>便民服務</span></a>
+                            <ul>
+                                
+                                <li class='last'><a href='CaseList_New.aspx'><span>管線挖掘案件查詢</span></a></li>
+                                
+                                <li class='last'><a href='Satisficing.aspx'><span>平台意見調查</span></a></li>
+                            </ul>
+                        </li>
+                        <li id='pipe' class='has-sub'><a href='#'><span>挖掘管理</span></a>
+                            <ul>
+                                <li class='last'><a href='../../pipe/' target='_blank'><span>道路挖掘管理系統</span></a></li>
+                                
+                                <li class='last'><a href='../../pipe/NewBuilder/NewBuilderCaseList.aspx' target='_blank'><span>新建房屋管線聯合挖掘申請</span></a></li>
+                            </ul>
+                        </li>
+                        <li id='pipe' class='has-sub'><a href='#'><span>寬頻管道管理</span></a>
+                            <ul>
+                                <li class='last'><a href='/MiaoliBBeam/Account/Login' target='_blank'><span>寬頻管道地理資訊收費管理系統</span></a></li>
+                            </ul>
+                        </li>
+                        <li id='course'><a href='Course.aspx'><span>課程資訊</span></a></li>
+                        <li id='law'><a href='Law.aspx'><span>相關法規</span></a></li>
+                        <li id='link'><a href='Link.aspx'><span>相關連結</span></a></li>
+                        <li id='info' class='last'><a href='Info.aspx'><span>機關資訊</span></a></li>
+                        
+                    </ul>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <table width="95%" border="0" align="center" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td valign="top" bgcolor="#FFFFFF" colspan="2">
+                            
+    <img alt="point" style="display: inline" src="../Images/d1-06.gif" width="20" height="39">
+    <p style="display: inline; font-size: 20px; line-height: 35px; vertical-align: top; font-weight: bolder;">管線挖掘案件查詢</p>
+    <br />
+    <div>
+        <table class="table">
+            <tr>
+                <th colspan="4" style="text-align: left; font-size: 16px; font-weight: bolder;">快速搜尋
+                </th>
+            </tr>
+            <tr>
+                <th>申請管線單位
+                </th>
+                <td>
+                    <select name="ctl00$body$DDL_PipeUnit" id="body_DDL_PipeUnit" class="form-control">
+	<option selected="selected" value="">全選</option>
+	<option value="35">台灣電力股份有限公司苗栗區營業處</option>
+	<option value="36">台灣電力股份有限公司新桃供電區營運處</option>
+	<option value="37">台灣電力股份有限公司輸變電工程處中區施工處</option>
+	<option value="38">台灣電力股份有限公司台中區營業處</option>
+	<option value="39">台灣中油股份有限公司油品行銷事業部竹苗營業處(新竹供油服務中心)</option>
+	<option value="40">台灣中油股份有限公司資訊處電信所</option>
+	<option value="41">台灣中油股份有限公司天然氣事業部公用天然氣營業處(苗栗服務中心)</option>
+	<option value="42">台灣中油股份有限公司天然氣事業部北區營業處（新竹服務中心）</option>
+	<option value="43">台灣中油股份有限公司天然氣事業部公用天然氣營業處（竹南服務中心）</option>
+	<option value="44">台灣中油股份有限公司天然氣事業部北區營業處（苗栗供氣中心）</option>
+	<option value="45">台灣中油股份有限公司天然氣事業部北區營業處（新竹供氣中心）</option>
+	<option value="46">台灣中油股份有限公司天然氣事業部南區營業處（併北區）</option>
+	<option value="47">台灣中油股份有限公司探採事業部採油工程處</option>
+	<option value="48">中華電信股份有限公司苗栗營運處</option>
+	<option value="49">中華電信股份有限公司臺中營運處</option>
+	<option value="50">台灣自來水股份有限公司第三區管理處苗栗營運所</option>
+	<option value="51">台灣自來水股份有限公司第三區管理處竹南頭份營運所</option>
+	<option value="52">台灣自來水股份有限公司第三區管理處通霄銅鑼營運所</option>
+	<option value="53">台灣自來水股份有限公司第四區管理處東勢營運所</option>
+	<option value="54">台灣自來水股份有限公司第四區管理處鯉魚潭給水廠</option>
+	<option value="55">台灣自來水股份有限公司第三區管理處東興給水廠</option>
+	<option value="56">台灣固網股份有限公司</option>
+	<option value="57">信和有線電視股份有限公司</option>
+	<option value="58">吉元有線電視股份有限公司</option>
+	<option value="59">竹建瓦斯股份有限公司</option>
+	<option value="60">亞太電信股份有限公司</option>
+	<option value="61">遠傳電信股份有限公司</option>
+	<option value="62">新世紀資通股份有限公司</option>
+	<option value="63">裕苗天然氣股份有限公司</option>
+	<option value="64">台灣中油股份有限公司探採事業部天然氣處理廠</option>
+	<option value="65">龍威風力發電股份有限公司</option>
+	<option value="66">車亭企業股份有限公司</option>
+	<option value="67">台灣中油股份有限公司天然氣事業部北區營業處</option>
+	<option value="70">內政部國土管理署下水道工程處中區分處</option>
+	<option value="71">台灣自來水股份有限公司第三區管理處</option>
+	<option value="72">台灣佳光電訊股份有限公司</option>
+	<option value="75">台灣自來水股份有限公司中區工程處</option>
+	<option value="76">台塑石化股份有限公司</option>
+	<option value="77">台灣中油股份有限公司探採事業部工服處管線工程組</option>
+	<option value="78">台灣中油股份有限公司台中區營業處(台中供油中心)</option>
+	<option value="79">長春石油化學股份有限公司(苗栗廠)</option>
+	<option value="80">海洋風力發電股份有限公司</option>
+	<option value="81">臺灣苗栗農田水利會</option>
+	<option value="82">內政部警政署警察通訊所新竹分所</option>
+	<option value="83">台灣之星電信股份有限公司</option>
+	<option value="86">永能風力發電股份有限公司</option>
+	<option value="87">台灣中油股份有限公司探採事業部注儲工程處</option>
+	<option value="88">苗栗縣政府(工商發展處)</option>
+	<option value="89">海能風力發電股份有限公司</option>
+	<option value="90">苗栗縣政府水利處(下水道科)</option>
+	<option value="91">台灣中油股份有限公司液化天然氣工程處</option>
+	<option value="93">大台中數位有線電視股份有限公司</option>
+	<option value="94">亞東工業氣體股份有限公司</option>
+	<option value="97">台灣自來水股份有限公司北區工程處</option>
+	<option value="99">新元科技股份有限公司</option>
+	<option value="100">台灣電力股份有限公司通霄發電廠</option>
+	<option value="104">國洋環境科技股份有限公司</option>
+	<option value="107">台灣中油股份有限公司天然氣事業部北區營業處通霄轉輸中心</option>
+	<option value="109">海盛發電股份有限公司</option>
+	<option value="113">東豐科技股份有限公司</option>
+	<option value="115">渢妙二號離岸風力發電股份有限公司籌備處</option>
+	<option value="118">台灣中油股份有限公司探採事業部資訊室</option>
+
+</select>
+                    
+                </td>
+                <th>管轄路權單位
+                </th>
+                <td>
+                    <select name="ctl00$body$DDL_RoadUnit" id="body_DDL_RoadUnit" class="form-control">
+	<option selected="selected" value="">全選</option>
+	<option value="3">苗栗市公所</option>
+	<option value="6">頭份市公所</option>
+	<option value="13">苑裡鎮公所</option>
+	<option value="14">通霄鎮公所</option>
+	<option value="15">竹南鎮公所</option>
+	<option value="16">後龍鎮公所</option>
+	<option value="17">卓蘭鎮公所</option>
+	<option value="18">大湖鄉公所</option>
+	<option value="19">公館鄉公所</option>
+	<option value="20">銅鑼鄉公所</option>
+	<option value="21">南庄鄉公所</option>
+	<option value="22">頭屋鄉公所</option>
+	<option value="23">三義鄉公所</option>
+	<option value="24">西湖鄉公所</option>
+	<option value="25">造橋鄉公所</option>
+	<option value="26">三灣鄉公所</option>
+	<option value="27">獅潭鄉公所</option>
+	<option value="28">泰安鄉公所</option>
+	<option value="29">苗栗縣政府(路權-交通工務處)</option>
+	<option value="32">路權單位-測試</option>
+	<option value="106">苗栗縣消防局</option>
+	<option value="116">坤眾科技股份有限公司(圖資審查)</option>
+
+</select>
+                    
+                </td>
+            </tr>
+            <tr>
+                <th>施工日期
+                </th>
+                <td colspan="3">
+                    <input name="ctl00$body$SDATE" type="text" value="2026-07-01" id="body_SDATE" />&nbsp;至&nbsp;<input name="ctl00$body$EDATE" type="text" value="2026-12-31" id="body_EDATE" />
+                </td>
+            </tr>
+            <tr>
+                <td colspan="4" style="text-align: center">
+                    <input type="submit" name="ctl00$body$bt_inquire" value="查詢" id="body_bt_inquire" class="BTCSS" />
+
+                </td>
+            </tr>
+        </table>
+        <br />
+        
+        <div id="body_UpdatePanel1">
+	
+                <span id="body_CaseCount"><b><font color="Blue">案件共28筆，共3頁</font></b></span>
+                <div>
+		<table cellspacing="0" rules="all" class="gview" border="1" id="body_GridView1">
+			<tr class="TbBoxListTh">
+				<th scope="col">施工鄉鎮</th><th scope="col">案件編號</th><th scope="col">施工單位</th><th scope="col">工程名稱</th><th scope="col">預定施工日期</th><th scope="col">預定完工日期</th><th scope="col">查看</th>
+			</tr><tr>
+				<td align="center" width="8%">苗栗市</td><td align="center" width="8%">62565</td><td width="25%">台灣電力股份有限公司苗栗區營業處</td><td width="35%">2260015麗天建設申請設計變更管路工程</td><td align="center" width="10%">2026-07-13</td><td align="center" width="10%">2026-07-24</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_0" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl02$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">苗栗市</td><td align="center" width="8%">62564</td><td width="25%">台灣電力股份有限公司苗栗區營業處</td><td width="35%">5260151謝O蘭申請線路遷移管路工程</td><td align="center" width="10%">2026-07-13</td><td align="center" width="10%">2026-07-24</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_1" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl03$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">苗栗市</td><td align="center" width="8%">62563</td><td width="25%">台灣電力股份有限公司苗栗區營業處</td><td width="35%">5260250皓丞建設有限公司申請新設用電管路工程</td><td align="center" width="10%">2026-07-06</td><td align="center" width="10%">2026-07-17</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_2" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl04$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">卓蘭鎮</td><td align="center" width="8%">62539</td><td width="25%">台灣自來水股份有限公司第四區管理處東勢營運所</td><td width="35%">自來水新裝騰O營造有限公司</td><td align="center" width="10%">2026-07-06</td><td align="center" width="10%">2026-07-13</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_3" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl05$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">卓蘭鎮</td><td align="center" width="8%">62534</td><td width="25%">台灣自來水股份有限公司第四區管理處東勢營運所</td><td width="35%">自來水新裝羅O福</td><td align="center" width="10%">2026-07-06</td><td align="center" width="10%">2026-07-13</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_4" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl06$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">卓蘭鎮</td><td align="center" width="8%">62532</td><td width="25%">台灣自來水股份有限公司第四區管理處東勢營運所</td><td width="35%">自來水新裝童O富</td><td align="center" width="10%">2026-07-06</td><td align="center" width="10%">2026-07-13</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_5" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl07$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">卓蘭鎮</td><td align="center" width="8%">62531</td><td width="25%">台灣自來水股份有限公司第四區管理處東勢營運所</td><td width="35%">自來水新裝劉O麟</td><td align="center" width="10%">2026-07-06</td><td align="center" width="10%">2026-07-13</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_6" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl08$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">頭份市</td><td align="center" width="8%">62505</td><td width="25%">台灣電力股份有限公司苗栗區營業處</td><td width="35%">5260203陳O萍申請新設工程</td><td align="center" width="10%">2026-07-13</td><td align="center" width="10%">2026-07-24</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_7" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl09$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">公館鄉</td><td align="center" width="8%">62472</td><td width="25%">台灣自來水股份有限公司第三區管理處苗栗營運所</td><td width="35%">苗栗縣頭屋鄉曲洞村8鄰9鄰供水延管工程 公館鄉路權部分</td><td align="center" width="10%">2026-07-01</td><td align="center" width="10%">2026-08-31</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_8" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl10$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr>
+				<td align="center" width="8%">頭屋鄉</td><td align="center" width="8%">62470</td><td width="25%">台灣自來水股份有限公司第三區管理處苗栗營運所</td><td width="35%">苗栗縣頭屋鄉曲洞村8鄰9鄰供水延管及用戶外線工程</td><td align="center" width="10%">2026-07-01</td><td align="center" width="10%">2026-08-30</td><td align="center" width="5%">
+                                <a id="body_GridView1_bt_gv1_link_1_9" title="查看" class="hvr-icon-push" href="javascript:__doPostBack(&#39;ctl00$body$GridView1$ctl11$bt_gv1_link_1&#39;,&#39;&#39;)">查看</a>                                
+                            </td>
+			</tr><tr class="wid20" align="center">
+				<td colspan="7">
+                        <input type="image" name="ctl00$body$GridView1$ctl13$GV1_first" id="body_GridView1_GV1_first" src="../images/Page_First.gif" />
+                        <input type="image" name="ctl00$body$GridView1$ctl13$GV1_Previous" id="body_GridView1_GV1_Previous" src="../images/Page_Previous.gif" />
+                        第
+                        <select name="ctl00$body$GridView1$ctl13$GV1_DDL" id="body_GridView1_GV1_DDL">
+					<option selected="selected" value="1">1</option>
+					<option value="2">2</option>
+					<option value="3">3</option>
+
+				</select>
+                        頁/共
+                        <span id="body_GridView1_PageCount">3</span>
+                        頁
+                        <input type="image" name="ctl00$body$GridView1$ctl13$GV1_Next" id="body_GridView1_GV1_Next" src="../images/Page_Next.gif" />
+                        <input type="image" name="ctl00$body$GridView1$ctl13$GV1_Last" id="body_GridView1_GV1_Last" src="../images/Page_Last.gif" />
+                        <br />
+                    </td>
+			</tr>
+		</table>
+	</div>
+
+                
+                
+            
+</div>
+    </div>
+
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="style4">
+                            <div align="center" style="padding-left:82px;">
+                                <p>
+                                    <br />
+                                    網站為苗栗縣政府版權所有，未經允許，不得以任何形式複製和採用<br />
+                                    地址：36001 苗栗市縣府路100號 ‧電話：037-322150 (總機)</p>
+                                <p>
+                                    <br />
+                                </p>
+                            </div>
+                        </td>
+                        
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+    </form>
+</body>
+</html>
