@@ -1,0 +1,9 @@
+{
+  "appId": "app.zhuandachian.private",
+  "appName": "賺大錢",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "automatic"
+  }
+}

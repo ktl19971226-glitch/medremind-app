@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101418">
+  <title>賺大錢</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">自用 TestFlight</p>
+        <h1>賺大錢</h1>
+      </div>
+      <button class="icon-button" id="export-btn" type="button" title="匯出 CSV">CSV</button>
+    </header>
+
+    <main>
+      <section class="summary-band" aria-label="統計">
+        <div>
+          <span>本月成本</span>
+          <strong id="month-cost">$0</strong>
+        </div>
+        <div>
+          <span>附加費用</span>
+          <strong id="month-extra">$0</strong>
+        </div>
+        <div>
+          <span>總筆數</span>
+          <strong id="total-count">0</strong>
+        </div>
+      </section>
+
+      <nav class="mode-grid" aria-label="功能">
+        <button class="mode-card active" data-type="hotai" type="button">
+          <span>和泰</span>
+          <strong>托運紀錄</strong>
+        </button>
+        <button class="mode-card" data-type="taichung" type="button">
+          <span>泰中</span>
+          <strong>托運紀錄</strong>
+        </button>
+        <button class="mode-card" data-type="fuel" type="button">
+          <span>油耗</span>
+          <strong>成本紀錄</strong>
+        </button>
+        <button class="mode-card" data-type="maintenance" type="button">
+          <span>保養</span>
+          <strong>維修紀錄</strong>
+        </button>
+      </nav>
+
+      <section class="scan-panel" aria-label="掃描">
+        <div>
+          <h2 id="form-title">和泰托運紀錄</h2>
+          <p id="form-subtitle">掃描或手動輸入配送日期、流水號、運送區間、附加費用。</p>
+        </div>
+        <label class="api-field">
+          <span>AI 伺服器</span>
+          <input id="api-base" type="url" placeholder="瀏覽器測試可留空，TestFlight 請填正式網址">
+        </label>
+        <label class="scan-button">
+          <input id="scan-image" type="file" accept="image/*" capture="environment">
+          拍照 AI 掃描
+        </label>
+        <div class="scan-state" id="scan-state"></div>
+      </section>
+
+      <form class="entry-form" id="entry-form" autocomplete="off"></form>
+
+      <section class="toolbar">
+        <input id="search-input" type="search" placeholder="搜尋日期、單號、廠商或備註">
+        <button id="clear-filter" type="button">清除</button>
+      </section>
+
+      <section class="record-list" id="record-list" aria-label="紀錄列表"></section>
+    </main>
+  </div>
+
+  <template id="record-template">
+    <article class="record-card">
+      <div class="record-head">
+        <div>
+          <p class="record-type"></p>
+          <h3></h3>
+        </div>
+        <div class="record-actions">
+          <button class="edit-record" type="button">編輯</button>
+          <button class="delete-record" type="button">刪除</button>
+        </div>
+      </div>
+      <dl></dl>
+    </article>
+  </template>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

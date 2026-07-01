@@ -1,0 +1,189 @@
+name: Build Money Maker iOS TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "apps/money-maker-app/trigger-build.txt"
+      - "apps/money-maker-app/package.json"
+      - "apps/money-maker-app/package-lock.json"
+      - "apps/money-maker-app/capacitor.config.json"
+      - "apps/money-maker-app/server.js"
+      - "apps/money-maker-app/public/**"
+      - "apps/money-maker-app/ios/**"
+      - ".github/workflows/build-money-maker-ios-testflight.yml"
+
+jobs:
+  build:
+    runs-on: macos-26
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: apps/money-maker-app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: |
+          set -euxo pipefail
+          npm install
+          npx cap sync ios
+
+      - name: Install Apple signing assets
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          : "${IOS_DISTRIBUTION_P12_BASE64:?Missing IOS_DISTRIBUTION_P12_BASE64 secret}"
+          : "${IOS_DISTRIBUTION_P12_PASSWORD:?Missing IOS_DISTRIBUTION_P12_PASSWORD secret}"
+          : "${APPSTORE_KEY_ID:?Missing APPSTORE_KEY_ID secret}"
+          : "${APPSTORE_ISSUER_ID:?Missing APPSTORE_ISSUER_ID secret}"
+          : "${APPSTORE_PRIVATE_KEY_BASE64:?Missing APPSTORE_PRIVATE_KEY_BASE64 secret}"
+
+          KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-temporary-ci-keychain-password}"
+          CERT_PATH="$RUNNER_TEMP/distribution.p12"
+          PROFILE_PATH="$RUNNER_TEMP/appstore.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "$IOS_DISTRIBUTION_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          export PROFILE_PATH APPSTORE_PROFILE_ID="5SAR6NQ28P"
+          node <<'NODE'
+          const fs = require('fs');
+          const jwt = require('jsonwebtoken');
+          const key = Buffer.from(process.env.APPSTORE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
+          const token = jwt.sign(
+            {
+              iss: process.env.APPSTORE_ISSUER_ID,
+              aud: 'appstoreconnect-v1',
+              exp: Math.floor(Date.now() / 1000) + 600
+            },
+            key,
+            { algorithm: 'ES256', header: { kid: process.env.APPSTORE_KEY_ID, typ: 'JWT' } }
+          );
+
+          fetch(`https://api.appstoreconnect.apple.com/v1/profiles/${process.env.APPSTORE_PROFILE_ID}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+            .then(async response => {
+              const payload = await response.json();
+              if (!response.ok) throw new Error(JSON.stringify(payload));
+              fs.writeFileSync(process.env.PROFILE_PATH, Buffer.from(payload.data.attributes.profileContent, 'base64'));
+            })
+            .catch(error => {
+              console.error(error);
+              process.exit(1);
+            });
+          NODE
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$IOS_DISTRIBUTION_P12_PASSWORD" -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/xcodebuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security cms -D -i "$PROFILE_PATH" -o "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          {
+            echo "PROFILE_NAME=$PROFILE_NAME"
+          } >> "$GITHUB_ENV"
+
+      - name: Archive
+        run: |
+          set -o pipefail
+          cd ios/App
+          xcodebuild -resolvePackageDependencies \
+            -project App.xcodeproj \
+            -scheme App
+          xcodebuild archive \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$GITHUB_WORKSPACE/apps/money-maker-app/build/money-maker.xcarchive" \
+            DEVELOPMENT_TEAM=7Q3USC33A5 \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild-archive.log"
+
+      - name: Export IPA
+        run: |
+          set -euxo pipefail
+          cat > "$RUNNER_TEMP/exportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>7Q3USC33A5</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>app.zhuandachian.private</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+            <key>compileBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$GITHUB_WORKSPACE/apps/money-maker-app/build/money-maker.xcarchive" \
+            -exportPath "$GITHUB_WORKSPACE/apps/money-maker-app/build" \
+            -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist"
+          ls -lh build/*.ipa
+
+      - name: Save IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: money-maker-ios-ipa
+          path: apps/money-maker-app/build/*.ipa
+          retention-days: 30
+
+      - name: Upload IPA to App Store Connect
+        env:
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          : "${APPSTORE_KEY_ID:?Missing APPSTORE_KEY_ID secret}"
+          : "${APPSTORE_ISSUER_ID:?Missing APPSTORE_ISSUER_ID secret}"
+          : "${APPSTORE_PRIVATE_KEY_BASE64:?Missing APPSTORE_PRIVATE_KEY_BASE64 secret}"
+
+          mkdir -p "$HOME/private_keys"
+          echo "$APPSTORE_PRIVATE_KEY_BASE64" | base64 --decode > "$HOME/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          chmod 600 "$HOME/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+
+          IPA_PATH="$(find "$GITHUB_WORKSPACE/apps/money-maker-app/build" -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$IPA_PATH"
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$IPA_PATH" \
+            --apiKey "$APPSTORE_KEY_ID" \
+            --apiIssuer "$APPSTORE_ISSUER_ID"
