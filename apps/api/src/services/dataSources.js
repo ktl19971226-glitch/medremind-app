@@ -217,6 +217,8 @@ const localBulletinDefaults = {
 
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
+const taichungMetroStatusUrl = 'https://www.tmrt.com.tw/';
+const kaohsiungMetroNoticeUrl = 'https://www.krtc.com.tw/Information/notice';
 
 const tdxCityCodes = {
   臺北市: 'Taipei',
@@ -1688,6 +1690,33 @@ async function taoyuanMetroStatus(location) {
   };
 }
 
+async function taichungMetroStatus() {
+  const text = await fetchText(taichungMetroStatusUrl, { timeoutMs: 7000 });
+  if (!text) return { status: 'no-event', source: '臺中捷運營運狀態', body: '臺中捷運營運狀態資料源暫時無法連線。' };
+  const statusText = cleanHtmlText(text.match(/捷運營運狀態[:：]\s*([\s\S]*?)(?:<\/|票價與乘車時間|<option)/)?.[1] || '');
+  if (!statusText) return { status: 'no-event', source: '臺中捷運營運狀態', body: '臺中捷運目前沒有可解析的營運狀態。' };
+  if (statusText.includes('正常')) {
+    return { status: 'no-event', source: '臺中捷運營運狀態', body: `臺中捷運${statusText}。` };
+  }
+  return {
+    status: 'live',
+    source: '臺中捷運營運狀態',
+    body: `臺中捷運目前狀態：${statusText}，詳情：${taichungMetroStatusUrl}`,
+    shouldNotify: true
+  };
+}
+
+async function kaohsiungMetroNotice() {
+  const text = await fetchText(kaohsiungMetroNoticeUrl, { timeoutMs: 7000 });
+  if (!text) return { status: 'no-event', source: '高雄捷運重要公告', body: '高雄捷運重要公告資料源暫時無法連線。' };
+  return {
+    status: 'no-event',
+    source: '高雄捷運重要公告',
+    body: '高雄捷運已接入官方重要公告入口；目前未解析到明確營運異常狀態。',
+    shouldNotify: false
+  };
+}
+
 function tdxApiUrl(path, params = {}) {
   const url = new URL(`https://tdx.transportdata.tw/api/basic${path}`);
   for (const [key, value] of Object.entries(params)) {
@@ -1829,7 +1858,9 @@ async function transitInfo(location) {
   const busAlert = await tdxBusAlerts({ ...location, city });
   if (busAlert.status === 'live') return busAlert;
   if (city === '桃園市') return taoyuanMetroStatus({ ...location, city });
+  if (city === '臺中市') return taichungMetroStatus();
   if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
+  if (city === '高雄市') return kaohsiungMetroNotice();
   if (busAlert.status !== 'not-configured') return busAlert;
   if (railIncident.status !== 'not-configured') return railIncident;
   if (highSpeedRail.status !== 'not-configured') return highSpeedRail;
@@ -2220,6 +2251,16 @@ export function getSourceCoverage() {
         coverage: '桃園捷運營運狀態',
         modules: ['transit'],
         source: taoyuanMetroStatusUrl
+      },
+      'taichung-metro-status': {
+        coverage: '臺中捷運營運狀態',
+        modules: ['transit'],
+        source: taichungMetroStatusUrl
+      },
+      'kaohsiung-metro-notice': {
+        coverage: '高雄捷運重要公告',
+        modules: ['transit'],
+        source: kaohsiungMetroNoticeUrl
       },
       'fraud-dashboard': {
         coverage: '全台灣防詐宣導與今日常見手法',
