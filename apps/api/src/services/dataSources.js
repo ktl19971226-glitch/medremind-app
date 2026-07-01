@@ -59,6 +59,7 @@ const publicDefaults = {
 };
 
 const npaWomenSafetyUrl = 'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/DBB18796-8A89-4917-B4AB-D0AF26FAFEDC/resource/ADD554F1-FE8C-422C-8ACE-1E560D119E2A/download';
+const npaFatalTrafficAccidentUrl = 'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/F4077949-50CC-4640-8114-79958CC8BBEA/resource/A07568BF-83F7-4A55-9B8D-3638A0B22271/download';
 
 const parkingDefaults = {
   基隆市: {
@@ -1682,6 +1683,37 @@ async function gasOutage(location) {
   };
 }
 
+async function fatalTrafficAccident(location) {
+  const data = await fetchJson(npaFatalTrafficAccidentUrl, { timeoutMs: 7000 });
+  const records = data?.result?.records || [];
+  if (!records.length) {
+    return { status: 'no-event', source: '內政部警政署即時交通事故資料 A1', body: '警政署 A1 交通事故資料源暫時無法連線。' };
+  }
+  const city = displayCity(canonicalCity(location.city));
+  const district = location.district || '';
+  const matched = records
+    .slice()
+    .reverse()
+    .find(record => {
+      const text = `${record['處理單位名稱警局層'] || ''}${record['發生地點'] || ''}`;
+      return (!city || text.includes(city) || text.includes(canonicalCity(city))) &&
+        (!district || text.includes(district));
+    });
+
+  if (!matched) {
+    return { status: 'no-event', source: '內政部警政署即時交通事故資料 A1', body: `${location.city}${location.district || ''}目前沒有警政署公開 A1 重大交通事故資料。` };
+  }
+
+  const date = matched['發生日期'] || '';
+  const time = `${matched['發生時間'] || ''}`.padStart(6, '0').replace(/(\d{2})(\d{2})(\d{2})/, '$1:$2:$3');
+  return {
+    status: 'live',
+    source: '內政部警政署即時交通事故資料 A1',
+    body: `${matched['發生地點'] || location.city} A1 重大交通事故，${matched['死亡受傷人數'] || '傷亡未提供'}，事故型態 ${matched['事故類型及型態子類別名稱'] || '未提供'}，肇因 ${matched['肇因研判子類別名稱-主要'] || '未提供'}${date ? `，時間 ${date} ${time}` : ''}。`,
+    shouldNotify: false
+  };
+}
+
 async function taipeiMetroStatus(location) {
   const text = await fetchText(transitDefaults[canonicalCity(location.city)] || transitDefaults[location.city], { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '臺北捷運營運燈號', body: '臺北捷運營運燈號資料源暫時無法連線。' };
@@ -2224,7 +2256,11 @@ export async function resolveLiveAlert(rule, location) {
     const result = await ncdrCapAlert(rule.moduleId, location);
     return result.status === 'live' ? result : officialLocalBulletin(location);
   }
-  if (['evacuation', 'accident'].includes(rule.moduleId)) {
+  if (rule.moduleId === 'accident') {
+    const result = await ncdrCapAlert(rule.moduleId, location);
+    return result.status === 'live' ? result : fatalTrafficAccident(location);
+  }
+  if (rule.moduleId === 'evacuation') {
     const result = await ncdrCapAlert(rule.moduleId, location);
     if (result.status !== 'not-configured') return result;
   }
@@ -2251,6 +2287,11 @@ export function getSourceCoverage() {
         coverage: '全台灣婦幼安全警示地點',
         modules: ['crime-watch'],
         source: npaWomenSafetyUrl
+      },
+      'npa-fatal-traffic-accidents': {
+        coverage: '全台灣 A1 重大交通事故公開資料',
+        modules: ['accident'],
+        source: npaFatalTrafficAccidentUrl
       },
       'garbage-truck': {
         coverage: [...Object.keys(garbageTruckDefaults), '桃園市'],
