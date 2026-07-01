@@ -249,6 +249,7 @@ const localBulletinDefaults = {
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
 const traLiveBoardPublicUrl = 'https://ptx.transportdata.tw/MOTC/v2/Rail/TRA/LiveBoard?$top=500&$format=JSON';
 const ptxBusAlertBaseUrl = 'https://ptx.transportdata.tw/MOTC/v2/Bus/Alert';
+const taipeiTodayRoadworkUrl = 'https://tpnco.blob.core.windows.net/blobfs/Todaywork.json';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
 const taichungMetroStatusUrl = 'https://www.tmrt.com.tw/';
 const kaohsiungMetroNoticeUrl = 'https://www.krtc.com.tw/Information/notice';
@@ -1896,6 +1897,29 @@ function tdxRoadCategory(rule) {
   };
 }
 
+async function taipeiRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '臺北市') return { status: 'not-configured', source: '臺北市今日施工資訊' };
+  const data = await fetchJson(taipeiTodayRoadworkUrl, { timeoutMs: 7000 });
+  const records = Array.isArray(data) ? data : data?.features?.map(feature => feature.properties || feature) || [];
+  if (!records.length) return { status: 'no-event', source: '臺北市今日施工資訊', body: '臺北市今日施工資訊資料源暫時無法連線。' };
+
+  const district = location.district || '';
+  const matched = records.find(record => (!district || record.C_Name === district || record.Addr?.includes(district)) && !isEmptyEventRecord(record)) ||
+    records.find(record => !isEmptyEventRecord(record));
+  if (!matched) {
+    return { status: 'no-event', source: '臺北市今日施工資訊', body: `${location.city}${district}目前沒有臺北市道路挖掘即時施工通報。` };
+  }
+
+  const modeNames = { 0: '施工通報', 3: '銑鋪通報', 4: '搶修通報', 5: '道路維護通報', 6: '人手孔施工通報', B: '建案公設復舊' };
+  return {
+    status: 'live',
+    source: '臺北市今日施工資訊',
+    body: `${matched.C_Name || district || '臺北市'}${modeNames[matched.AppMode] || '道路施工'}：${matched.Addr || '位置未標示'}，${matched.WItem || matched.NPurp || '工項未標示'}，施工時間 ${matched.Cb_Da || ''} 至 ${matched.Ce_Da || ''} ${matched.Co_Ti || ''}${matched.IsBlock ? `，影響通行：${matched.IsBlock}` : ''}。`,
+    shouldNotify: false
+  };
+}
+
 async function cityRoadNews(rule, location) {
   const cityCode = tdxCityCodeFor(location);
   if (!cityCode) return { status: 'not-configured', source: 'TDX 城市道路交通消息' };
@@ -2478,6 +2502,10 @@ export async function resolveLiveAlert(rule, location) {
   }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
+    if (rule.moduleId === 'roadwork') {
+      const localRoadwork = await taipeiRoadwork(location);
+      if (localRoadwork.status === 'live') return localRoadwork;
+    }
     const localRoad = await cityRoadNews(rule, location);
     if (localRoad.status === 'live') return localRoad;
     const freeway = await freewayLiveEvent(rule, location);
@@ -2575,6 +2603,11 @@ export function getSourceCoverage() {
         coverage: Object.keys(tdxCitySourceNames),
         modules: ['road-incident', 'roadwork'],
         source: 'https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/News/City/{City}'
+      },
+      'taipei-roadwork-today': {
+        coverage: '臺北市道路挖掘即時施工通報',
+        modules: ['roadwork'],
+        source: taipeiTodayRoadworkUrl
       },
       'tdx-bus-alerts': {
         coverage: [...Object.keys(tdxCitySourceNames), '公路客運'],
