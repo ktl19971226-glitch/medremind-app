@@ -263,6 +263,7 @@ const kaohsiungRoadworkUrl = 'https://pipegis.kcg.gov.tw/openDataService.aspx';
 const nantouRoadworkBaseUrl = 'https://pipeline.nantou.gov.tw/Public';
 const yunlinRoadworkBaseUrl = 'https://pwd.yunlin.gov.tw/YLPub';
 const pingtungRoadworkUrl = 'https://e-road.pthg.gov.tw/openDataService.aspx';
+const kinmenApprovedRoadworkBaseUrl = 'https://roaddig.kinmen.gov.tw/KMDigAPI/api/OpenData/GetApprovedCaseList';
 const yilanRoadworkUrl = 'https://mntengmgt.e-land.gov.tw/YilanDigweb/Download/XML/dig.xml';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
 const taichungMetroStatusUrl = 'https://www.tmrt.com.tw/';
@@ -2175,6 +2176,38 @@ async function pingtungRoadwork(location) {
   };
 }
 
+function taiwanDateString(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+async function kinmenRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '金門縣') return { status: 'not-configured', source: '金門縣道路挖掘管理系統' };
+  const url = `${kinmenApprovedRoadworkBaseUrl}?date=${taiwanDateString()}&keyword=`;
+  const data = await fetchJson(url, { timeoutMs: 7000 });
+  const records = Array.isArray(data?.Data) ? data.Data : [];
+  if (!records.length) return { status: 'no-event', source: '金門縣道路挖掘管理系統', body: `${location.city}${location.district || ''}目前沒有金門縣道路挖掘當日已核定或施工中資料。` };
+
+  const district = location.district || '';
+  const matched = records.find(record => (!district || record.Road?.includes(district) || record.EngUse?.includes(district)) && !isEmptyEventRecord(record)) ||
+    records.find(record => !isEmptyEventRecord(record));
+  if (!matched) return { status: 'no-event', source: '金門縣道路挖掘管理系統', body: `${location.city}${district}目前沒有金門縣道路挖掘當日已核定或施工中資料。` };
+
+  return {
+    status: 'live',
+    source: '金門縣道路挖掘管理系統',
+    body: `${district || '金門縣'}道路挖掘：${matched.EngUse || '工程名稱未標示'}，位置 ${matched.Road || '未標示'}，期間 ${matched.AllowStart || ''} 至 ${matched.AllowStop || ''}，單位 ${matched.PPName || '未標示'}，狀態 ${matched.Status || matched.CaseType || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
 async function yilanRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '宜蘭縣') return { status: 'not-configured', source: '宜蘭縣道路挖掘管理資訊' };
@@ -2787,7 +2820,7 @@ export async function resolveLiveAlert(rule, location) {
   if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
     let localRoadworkNoEvent = null;
     if (rule.moduleId === 'roadwork') {
-      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, nantouRoadwork, yunlinRoadwork, tainanRoadwork, kaohsiungRoadwork, pingtungRoadwork, yilanRoadwork]) {
+      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, nantouRoadwork, yunlinRoadwork, tainanRoadwork, kaohsiungRoadwork, pingtungRoadwork, yilanRoadwork, kinmenRoadwork]) {
         const localRoadwork = await source(location);
         if (localRoadwork.status === 'live') return localRoadwork;
         if (localRoadwork.status === 'no-event' && !localRoadworkNoEvent) localRoadworkNoEvent = localRoadwork;
@@ -2898,7 +2931,7 @@ export function getSourceCoverage() {
         source: taipeiTodayRoadworkUrl
       },
       'local-roadwork-public': {
-        coverage: ['新北市', '桃園市', '南投縣', '雲林縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣'],
+        coverage: ['新北市', '桃園市', '南投縣', '雲林縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣', '金門縣'],
         modules: ['roadwork'],
         sources: {
           新北市: newTaipeiRoadworkUrl,
@@ -2908,7 +2941,8 @@ export function getSourceCoverage() {
           臺南市: tainanTodayRoadworkUrl,
           高雄市: kaohsiungRoadworkUrl,
           屏東縣: pingtungRoadworkUrl,
-          宜蘭縣: yilanRoadworkUrl
+          宜蘭縣: yilanRoadworkUrl,
+          金門縣: `${kinmenApprovedRoadworkBaseUrl}?date={YYYY-MM-DD}&keyword=`
         }
       },
       'tdx-bus-alerts': {
