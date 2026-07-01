@@ -320,6 +320,7 @@ let kaohsiungParkingCache = null;
 let yilanParkingCache = null;
 let tdxTokenCache = null;
 let cwaTownForecastCache = {};
+let cwaPublicFileCache = {};
 
 const ncdrEventNames = {
   rain: ['降雨'],
@@ -2159,6 +2160,16 @@ async function cwaTownForecast(rule, location) {
   return { status: 'no-event', source: 'CWA F-D0047 鄉鎮預報公開檔', body: `${placeName}目前沒有可用的鄉鎮天氣預報資料。` };
 }
 
+async function fetchCwaPublicFile(datasetId, maxAgeMs = 30 * 60 * 1000) {
+  const cached = cwaPublicFileCache[datasetId];
+  if (cached?.loadedAt > Date.now() - maxAgeMs) return cached.data;
+
+  const search = new URLSearchParams({ Authorization: cwaPublicFileKey, format: 'JSON' });
+  const data = await fetchJson(`${cwaTownForecastBaseUrl}/${datasetId}?${search}`, { timeoutMs: 7000 });
+  if (data?.cwaopendata) cwaPublicFileCache[datasetId] = { data, loadedAt: Date.now() };
+  return data;
+}
+
 async function cwaForecast(rule, location) {
   const city = canonicalCity(location.city || '臺北市');
   const data = await fetchCwaDatastore('F-C0032-001', { locationName: city });
@@ -2219,6 +2230,26 @@ async function cwaTyphoon(location) {
     status: 'live',
     source: 'CWA typhoon dataset',
     body: `中央氣象署目前有 ${name} 相關颱風資料，請留意最新路徑與警報。`,
+    shouldNotify: true
+  };
+}
+
+async function cwaTyphoonPublic() {
+  const data = await fetchCwaPublicFile('W-C0034-005');
+  const records = data?.cwaopendata?.Dataset?.TropicalCyclones?.TropicalCyclone || [];
+  const items = Array.isArray(records) ? records : [records].filter(Boolean);
+  if (items.length === 0) {
+    return { status: 'no-event', source: 'CWA W-C0034-005 公開颱風資料', body: '目前沒有中央氣象署發布中的颱風資料。' };
+  }
+  const item = items[0];
+  const fix = item?.AnalysisData?.Fix || {};
+  const name = item?.CwaTyphoonName || item?.TyphoonName || (item?.CwaTdNo ? `熱帶性低氣壓 ${item.CwaTdNo}` : '颱風');
+  const movement = Array.isArray(fix.MovingPrediction) ? fix.MovingPrediction.find(entry => entry['@lang'] === 'zh-hant')?.['#text'] : fix.MovingPrediction?.['#text'];
+  const time = fix.DateTime || data?.cwaopendata?.Sent;
+  return {
+    status: 'live',
+    source: 'CWA W-C0034-005 公開颱風資料',
+    body: `中央氣象署${time ? ` ${time}` : ''} 發布 ${name} 資料，中心位置約北緯 ${fix.CoordinateLatitude || '?'} 度、東經 ${fix.CoordinateLongitude || '?'} 度${movement ? `，${movement}` : ''}。`,
     shouldNotify: true
   };
 }
@@ -2328,7 +2359,9 @@ export async function resolveLiveAlert(rule, location) {
   }
   if (rule.moduleId === 'typhoon') {
     const result = await cwaTyphoon(location);
-    return result.status === 'not-configured' ? ncdrCapAlert(rule.moduleId, location) : result;
+    if (result.status !== 'not-configured') return result;
+    const publicTyphoon = await cwaTyphoonPublic();
+    return publicTyphoon.status === 'live' ? publicTyphoon : ncdrCapAlert(rule.moduleId, location);
   }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
@@ -2410,6 +2443,11 @@ export function getSourceCoverage() {
         modules: ['rain', 'temperature'],
         source: `${cwaTownForecastBaseUrl}/{datasetId}?Authorization=${cwaPublicFileKey}&format=JSON`
       },
+      'cwa-typhoon-public': {
+        coverage: '西北太平洋颱風與熱帶性低氣壓路徑資料',
+        modules: ['typhoon'],
+        source: `${cwaTownForecastBaseUrl}/W-C0034-005?Authorization=${cwaPublicFileKey}&format=JSON`
+      },
       'freeway-live-events': {
         coverage: '全台灣國道即時事件',
         modules: ['commute', 'road-incident', 'roadwork'],
@@ -2474,7 +2512,7 @@ export function getSourceCoverage() {
       }
     },
     keyRequired: {
-      cwa: ['earthquake', 'typhoon'],
+      cwa: ['earthquake'],
       moenv: [],
       tdx: ['transit', 'road-incident', 'roadwork']
     },
