@@ -247,6 +247,7 @@ const localBulletinDefaults = {
 };
 
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
+const traLiveBoardPublicUrl = 'https://ptx.transportdata.tw/MOTC/v2/Rail/TRA/LiveBoard?$top=500&$format=JSON';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
 const taichungMetroStatusUrl = 'https://www.tmrt.com.tw/';
 const kaohsiungMetroNoticeUrl = 'https://www.krtc.com.tw/Information/notice';
@@ -1779,6 +1780,29 @@ async function thsrStatus() {
   };
 }
 
+async function traLiveBoard() {
+  const records = await fetchJson(traLiveBoardPublicUrl, { timeoutMs: 7000 });
+  if (!Array.isArray(records)) {
+    return { status: 'no-event', source: 'PTX/MOTC 臺鐵即時到離站', body: '臺鐵即時到離站資料源暫時無法連線。' };
+  }
+  const delayed = records
+    .filter(record => Number(record.DelayTime || 0) >= Number(process.env.TRA_DELAY_NOTIFY_THRESHOLD || 5))
+    .sort((a, b) => Number(b.DelayTime || 0) - Number(a.DelayTime || 0));
+  if (!delayed.length) {
+    return { status: 'no-event', source: 'PTX/MOTC 臺鐵即時到離站', body: '臺鐵目前沒有 5 分鐘以上即時延誤資料。' };
+  }
+  const record = delayed[0];
+  const station = record.StationName?.Zh_tw || record.StationName?.En || record.StationID || '臺鐵車站';
+  const trainType = record.TrainTypeName?.Zh_tw || record.TrainTypeName?.En || '列車';
+  const ending = record.EndingStationName?.Zh_tw || record.EndingStationName?.En || '目的地未標示';
+  return {
+    status: 'live',
+    source: 'PTX/MOTC 臺鐵即時到離站',
+    body: `臺鐵 ${station} 站 ${record.TrainNo || ''} ${trainType} 往 ${ending}，目前延誤 ${record.DelayTime} 分鐘，表定到站 ${record.ScheduledArrivalTime || '未標示'}，更新 ${record.UpdateTime || record.SrcUpdateTime || '未標示'}。`,
+    shouldNotify: Number(record.DelayTime || 0) >= Number(process.env.TRA_DELAY_PUSH_THRESHOLD || 10)
+  };
+}
+
 async function taoyuanMetroStatus(location) {
   const text = await fetchText(taoyuanMetroStatusUrl, { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '桃園捷運最新營運狀態', body: '桃園捷運營運狀態資料源暫時無法連線。' };
@@ -1963,6 +1987,8 @@ async function transitInfo(location) {
   if (highSpeedRail.status === 'live') return highSpeedRail;
   const railIncident = await ncdrCapAlert('transit', location);
   if (railIncident.status === 'live') return railIncident;
+  const traBoard = await traLiveBoard();
+  if (traBoard.status === 'live') return traBoard;
   const busAlert = await tdxBusAlerts({ ...location, city });
   if (busAlert.status === 'live') return busAlert;
   if (city === '桃園市') return taoyuanMetroStatus({ ...location, city });
@@ -1970,6 +1996,7 @@ async function transitInfo(location) {
   if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
   if (city === '高雄市') return kaohsiungMetroNotice();
   if (busAlert.status !== 'not-configured') return busAlert;
+  if (traBoard.status !== 'not-configured') return traBoard;
   if (railIncident.status !== 'not-configured') return railIncident;
   if (highSpeedRail.status !== 'not-configured') return highSpeedRail;
   return genericConfiguredSource({ moduleId: 'transit' }, location);
@@ -2531,6 +2558,11 @@ export function getSourceCoverage() {
         coverage: '全台灣高鐵列車運行狀況',
         modules: ['transit'],
         source: thsrStatusUrl
+      },
+      'tra-live-board-public': {
+        coverage: '全台灣臺鐵列車即時到離站與延誤',
+        modules: ['transit'],
+        source: traLiveBoardPublicUrl
       },
       'taoyuan-metro-status': {
         coverage: '桃園捷運營運狀態',
