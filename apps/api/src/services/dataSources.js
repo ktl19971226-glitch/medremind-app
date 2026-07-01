@@ -253,7 +253,9 @@ const traLiveBoardPublicUrl = 'https://ptx.transportdata.tw/MOTC/v2/Rail/TRA/Liv
 const ptxBusAlertBaseUrl = 'https://ptx.transportdata.tw/MOTC/v2/Bus/Alert';
 const taipeiTodayRoadworkUrl = 'https://tpnco.blob.core.windows.net/blobfs/Todaywork.json';
 const newTaipeiRoadworkUrl = 'https://data.ntpc.gov.tw/api/datasets/96B6101B-C033-4834-8BD5-E312651DB7A0/json?page=0&size=1000';
+const taoyuanTodayRoadworkUrl = 'https://opendata.tycg.gov.tw/api/dataset/56c616fe-07d7-4b0c-bb75-e8f8cd75500a/resource/52de3762-1490-4a86-a074-0062d746873b/download';
 const tainanTodayRoadworkUrl = 'https://diggis.tainan.gov.tw/TNRoad/ashx/PresentDayCase.ashx';
+const kaohsiungRoadworkUrl = 'https://pipegis.kcg.gov.tw/openDataService.aspx';
 const yilanRoadworkUrl = 'https://mntengmgt.e-land.gov.tw/YilanDigweb/Download/XML/dig.xml';
 const taoyuanMetroStatusUrl = 'https://www.tymetro.com.tw/tymetro-new/tw/index.php';
 const taichungMetroStatusUrl = 'https://www.tmrt.com.tw/';
@@ -1956,6 +1958,47 @@ async function newTaipeiRoadwork(location) {
   };
 }
 
+async function taoyuanRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '桃園市') return { status: 'not-configured', source: '桃園市本日道路申挖' };
+  const text = await fetchText(taoyuanTodayRoadworkUrl, { timeoutMs: 7000 });
+  const district = location.district || '';
+
+  if (text.trim().startsWith('[')) {
+    const records = JSON.parse(text);
+    const matched = records.find(record => (!district || record.Addtownship === district || record.SLocation?.includes(district)) && !isEmptyEventRecord(record)) ||
+      records.find(record => !isEmptyEventRecord(record));
+    if (!matched) return { status: 'no-event', source: '桃園市本日道路申挖', body: `${location.city}${district}目前沒有桃園市本日道路申挖資訊。` };
+    return {
+      status: 'live',
+      source: '桃園市本日道路申挖',
+      body: `${matched.Addtownship || district || '桃園市'}道路申挖：${matched.ConstName || matched.TypeDetail || '工程名稱未標示'}，位置 ${matched.SLocation || '未標示'}，施工期間 ${matched.Start || ''} 至 ${matched.stop || ''} ${matched.ConstTime || ''}，單位 ${matched.Factory || matched.Supervise || '未標示'}。`,
+      shouldNotify: false
+    };
+  }
+
+  const rows = [...text.matchAll(/<row>([\s\S]*?)<\/row>/gi)].map(match => ({
+    district: xmlTagValue(match[1], 'Addtownship'),
+    name: xmlTagValue(match[1], 'ConstName'),
+    type: xmlTagValue(match[1], 'TypeDetail'),
+    location: xmlTagValue(match[1], 'SLocation'),
+    start: xmlTagValue(match[1], 'Start'),
+    end: xmlTagValue(match[1], 'stop'),
+    time: xmlTagValue(match[1], 'ConstTime'),
+    unit: xmlTagValue(match[1], 'Factory') || xmlTagValue(match[1], 'Supervise')
+  }));
+  const matched = rows.find(record => (!district || record.district === district || record.location.includes(district)) && record.location) ||
+    rows.find(record => record.location);
+  if (!matched) return { status: 'no-event', source: '桃園市本日道路申挖', body: `${location.city}${district}目前沒有桃園市本日道路申挖資訊。` };
+
+  return {
+    status: 'live',
+    source: '桃園市本日道路申挖',
+    body: `${matched.district || district || '桃園市'}道路申挖：${matched.name || matched.type || '工程名稱未標示'}，位置 ${matched.location || '未標示'}，施工期間 ${matched.start || ''} 至 ${matched.end || ''} ${matched.time || ''}，單位 ${matched.unit || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
 async function tainanRoadwork(location) {
   const city = canonicalCity(location.city);
   if (city !== '臺南市') return { status: 'not-configured', source: '臺南市道路挖掘當日施工資訊' };
@@ -1976,6 +2019,38 @@ async function tainanRoadwork(location) {
     status: 'live',
     source: '臺南市道路挖掘當日施工資訊',
     body: `${matched.district || district || '臺南市'}道路挖掘施工：${matched.location || '位置未標示'}，施工/申挖單位 ${matched.unit || '未標示'}。`,
+    shouldNotify: false
+  };
+}
+
+async function kaohsiungRoadwork(location) {
+  const city = canonicalCity(location.city);
+  if (city !== '高雄市') return { status: 'not-configured', source: '高雄市道路挖掘資訊' };
+  const xml = await fetchText(kaohsiungRoadworkUrl, { timeoutMs: 7000 });
+  const rows = [...xml.matchAll(/<DigCaseInfo\b[^>]*>([\s\S]*?)<\/DigCaseInfo>/gi)].map(match => ({
+    district: xmlTagValue(match[1], 'AREA'),
+    location: xmlTagValue(match[1], 'LOCATION'),
+    company: xmlTagValue(match[1], 'COMPANY'),
+    reason: xmlTagValue(match[1], 'REASON'),
+    start: xmlTagValue(match[1], 'DATE_DIG_S'),
+    end: xmlTagValue(match[1], 'DATE_DIG_E'),
+    extendedStart: xmlTagValue(match[1], 'DATE_EXT_S'),
+    extendedEnd: xmlTagValue(match[1], 'DATE_EXT_E'),
+    result: xmlTagValue(match[1], 'RESULT')
+  }));
+  if (!rows.length) return { status: 'no-event', source: '高雄市道路挖掘資訊', body: '高雄市道路挖掘資訊資料源暫時無法連線。' };
+
+  const district = location.district || '';
+  const matched = rows.find(record => (!district || record.district === district || record.location.includes(district)) && record.location) ||
+    rows.find(record => record.location);
+  if (!matched) return { status: 'no-event', source: '高雄市道路挖掘資訊', body: `${location.city}${district}目前沒有高雄市道路挖掘資訊。` };
+
+  const start = matched.extendedStart && matched.extendedStart !== '　' ? matched.extendedStart : matched.start;
+  const end = matched.extendedEnd && matched.extendedEnd !== '　' ? matched.extendedEnd : matched.end;
+  return {
+    status: 'live',
+    source: '高雄市道路挖掘資訊',
+    body: `${matched.district || district || '高雄市'}道路挖掘：${matched.reason || '施工原因未標示'}，位置 ${matched.location || '未標示'}，施工期間 ${start || ''} 至 ${end || ''}，單位 ${matched.company || '未標示'}。`,
     shouldNotify: false
   };
 }
@@ -2590,14 +2665,17 @@ export async function resolveLiveAlert(rule, location) {
   }
   if (rule.moduleId === 'air-quality') return moenvAqi(location);
   if (['road-incident', 'roadwork'].includes(rule.moduleId)) {
+    let localRoadworkNoEvent = null;
     if (rule.moduleId === 'roadwork') {
-      for (const source of [taipeiRoadwork, newTaipeiRoadwork, tainanRoadwork, yilanRoadwork]) {
+      for (const source of [taipeiRoadwork, newTaipeiRoadwork, taoyuanRoadwork, tainanRoadwork, kaohsiungRoadwork, yilanRoadwork]) {
         const localRoadwork = await source(location);
         if (localRoadwork.status === 'live') return localRoadwork;
+        if (localRoadwork.status === 'no-event' && !localRoadworkNoEvent) localRoadworkNoEvent = localRoadwork;
       }
     }
     const localRoad = await cityRoadNews(rule, location);
     if (localRoad.status === 'live') return localRoad;
+    if (localRoadworkNoEvent) return localRoadworkNoEvent;
     const freeway = await freewayLiveEvent(rule, location);
     if (freeway.status === 'live') return freeway;
     return localRoad.status !== 'not-configured' ? localRoad : freeway;
@@ -2700,11 +2778,13 @@ export function getSourceCoverage() {
         source: taipeiTodayRoadworkUrl
       },
       'local-roadwork-public': {
-        coverage: ['新北市', '臺南市', '宜蘭縣'],
+        coverage: ['新北市', '桃園市', '臺南市', '高雄市', '宜蘭縣'],
         modules: ['roadwork'],
         sources: {
           新北市: newTaipeiRoadworkUrl,
+          桃園市: taoyuanTodayRoadworkUrl,
           臺南市: tainanTodayRoadworkUrl,
+          高雄市: kaohsiungRoadworkUrl,
           宜蘭縣: yilanRoadworkUrl
         }
       },
