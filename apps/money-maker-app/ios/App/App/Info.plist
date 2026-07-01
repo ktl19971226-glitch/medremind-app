@@ -20,6 +20,8 @@
 	<string>用來拍攝托運單、送貨單、加油或保養單據，進行 AI 辨識與紀錄。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用來選取已拍好的單據照片，進行 AI 辨識與紀錄。</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
