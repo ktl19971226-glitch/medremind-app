@@ -1,1 +1,1 @@
-2026-07-01 xiaoyue ios TestFlight build 13 line payment reminders trigger
+2026-07-02 xiaoyue ios TestFlight build 14 app design refresh trigger
