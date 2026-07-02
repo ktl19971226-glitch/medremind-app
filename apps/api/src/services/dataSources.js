@@ -178,7 +178,8 @@ const parkingDefaults = {
     availability: 'https://www.opendata.vip/tdx/parking/YunlinCounty'
   },
   嘉義縣: {
-    info: 'https://www.greenparking.com.tw/Chiayi',
+    availability: 'https://chiayi.greenparking.com.tw/chiayi/query',
+    info: 'https://chiayi.greenparking.com.tw/chiayi/query',
     label: '嘉義縣路邊停車管理',
     summary: '提供嘉義縣政府周邊路邊停車格、收費時間與費率資訊；目前未公開穩定即時剩餘車位 API。'
   },
@@ -228,7 +229,7 @@ const fireDefaults = {
   宜蘭縣: 'https://61.60.54.30/DTS/caselist/html',
   屏東縣: 'https://pteoc.pthg.gov.tw/News119',
   花蓮縣: nfaFireInfoUrl,
-  臺東縣: nfaFireInfoUrl,
+  臺東縣: 'https://emic.ttfd.gov.tw/',
   澎湖縣: 'http://210.241.42.144:8080/DTS/caselist/html',
   金門縣: nfaFireInfoUrl,
   連江縣: nfaFireInfoUrl
@@ -1001,12 +1002,12 @@ async function fetchTextAllowInvalidCert(url, { timeoutMs = 4500, headers = {}, 
         done('');
         return;
       }
-      let body = '';
+      let responseBody = '';
       response.setEncoding('utf8');
       response.on('data', chunk => {
-        body += chunk;
+        responseBody += chunk;
       });
-      response.on('end', () => done(body));
+      response.on('end', () => done(responseBody));
     });
     request.setTimeout(timeoutMs, () => {
       request.destroy();
@@ -1733,6 +1734,22 @@ async function taitungParking(location) {
   };
 }
 
+async function chiayiCountyParking(location) {
+  const html = await fetchText(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
+  const noticeHtml = html.match(/<h4[^>]*>\s*嘉義縣路邊停車查詢繳費－繳費須知\s*<\/h4>[\s\S]*?<div class="p-2 border-t/i)?.[0] || html;
+  const items = [...noticeHtml.matchAll(/<(?:li|p)\b[^>]*>([\s\S]*?)<\/(?:li|p)>/gi)]
+    .map(match => cleanHtmlText(match[1]))
+    .filter(text => /嘉義縣|高鐵|保鐵|收費|費率|客服電話|地址/.test(text))
+    .filter((text, index, array) => text && array.indexOf(text) === index);
+  if (!items.length) return officialParkingPortal(location);
+  return {
+    status: 'live',
+    source: '嘉義縣路邊停車管理收費規則',
+    body: trimAlertText(items.slice(0, 7).join('；'), 300),
+    shouldNotify: false
+  };
+}
+
 async function opendataVipParking(location) {
   const url = parkingDefaults[location.city]?.availability;
   const html = await fetchText(url, { timeoutMs: 7000 });
@@ -1822,6 +1839,7 @@ async function parkingInfo(location) {
   if (city === '苗栗縣') return miaoliParking({ ...location, city });
   if (city === '彰化縣') return changhuaParking({ ...location, city });
   if (city === '嘉義市') return chiayiCityParking({ ...location, city });
+  if (city === '嘉義縣') return chiayiCountyParking({ ...location, city });
   if (city === '臺北市') return taipeiParking({ ...location, city });
   if (city === '新北市') return newTaipeiParking({ ...location, city });
   if (city === '桃園市') return taoyuanParking({ ...location, city });
@@ -2169,6 +2187,40 @@ async function pingtungFire(location) {
   };
 }
 
+async function taitungFire(location) {
+  const html = await fetchTextAllowInvalidCert(fireDefaults[location.city], { timeoutMs: 7000 });
+  const rows = htmlTableRows(html)
+    .filter(row => row.length >= 3)
+    .map(row => ({
+      category: row[0],
+      content: row[1],
+      unit: row[2]
+    }));
+  const record = rows.find(row => row.category.includes('消防救災'));
+  if (!record) return nfaFire(location);
+  const content = cleanHtmlText(record.content || '');
+  if (!content) {
+    return {
+      status: 'no-event',
+      source: '臺東縣災情看板消防救災',
+      body: `${location.city}${location.district || ''}目前沒有臺東縣災情看板公開消防救災資訊。`
+    };
+  }
+  if (location.district && !content.includes(location.district)) {
+    return {
+      status: 'no-event',
+      source: '臺東縣災情看板消防救災',
+      body: `${location.city}${location.district}目前沒有臺東縣災情看板公開消防救災資訊。`
+    };
+  }
+  return {
+    status: 'live',
+    source: '臺東縣災情看板消防救災',
+    body: `臺東縣消防救災：${trimAlertText(content, 180)}${record.unit ? `，負責單位 ${record.unit}` : ''}。`,
+    shouldNotify: /火|火警|火災|爆炸|氣爆|災害|搶救/.test(content)
+  };
+}
+
 async function nfaFire(location) {
   const html = await fetchTextAllowInvalidCert(nfaFireInfoUrl, { timeoutMs: 7000 });
   const rows = [...html.matchAll(/<a href="([^"]*article_id=[^"]+)"[^>]*title="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)]
@@ -2213,7 +2265,7 @@ async function fireEmergency(location) {
   if (city === '宜蘭縣') return dtsFire({ ...location, city }, '宜蘭縣政府消防局 119 即時災情');
   if (city === '屏東縣') return pingtungFire({ ...location, city });
   if (city === '花蓮縣') return nfaFire({ ...location, city });
-  if (city === '臺東縣') return nfaFire({ ...location, city });
+  if (city === '臺東縣') return taitungFire({ ...location, city });
   if (city === '澎湖縣') return dtsFire({ ...location, city }, '澎湖縣政府消防局即時災情訊息');
   if (city === '金門縣') return nfaFire({ ...location, city });
   if (city === '連江縣') return nfaFire({ ...location, city });
