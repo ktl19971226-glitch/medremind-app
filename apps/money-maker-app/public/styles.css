@@ -192,7 +192,8 @@ h1 {
 }
 
 .scan-button,
-.entry-form button[type="submit"] {
+.entry-form button[type="submit"],
+#save-reconciliation {
   display: grid;
   min-height: 48px;
   place-items: center;
@@ -299,6 +300,90 @@ label.field {
   padding: 24px 12px;
   color: var(--muted);
   text-align: center;
+}
+
+.recon-empty {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.recon-empty strong {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.recon-summary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.recon-summary div,
+.recon-issue {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 12px;
+}
+
+.recon-summary span,
+.recon-totals span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.recon-summary strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 19px;
+}
+
+.recon-totals {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f2fbf9;
+  padding: 12px;
+}
+
+.recon-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.recon-issue h3 {
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.recon-issue ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.recon-issue li {
+  overflow-wrap: anywhere;
+}
+
+.ok-item,
+.ok-text {
+  color: var(--accent-strong);
+}
+
+.danger-text {
+  color: var(--danger);
+  font-weight: 900;
 }
 
 .record-card {

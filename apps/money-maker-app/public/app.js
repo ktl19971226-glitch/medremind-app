@@ -70,6 +70,30 @@ const TYPES = {
       ["note", "textarea"]
     ],
     primary: (r) => `${r.service_date || "保養"} ${r.shop_name || ""}`.trim()
+  },
+  reconciliation: {
+    title: "月底 AI 對帳",
+    subtitle: "上傳客戶月底對帳單，AI 會讀出明細並和 App 內托運紀錄核對缺漏。",
+    labels: {
+      statement_month: "對帳月份",
+      customer_name: "客戶",
+      items: "對帳明細",
+      subtotal: "小計",
+      fuel_subsidy: "補貼油資",
+      repayment_deduction: "扣借還款",
+      total: "總計",
+      note: "備註"
+    },
+    fields: [
+      ["statement_month", "text"],
+      ["customer_name", "text"],
+      ["subtotal", "number"],
+      ["fuel_subsidy", "number"],
+      ["repayment_deduction", "number"],
+      ["total", "number"],
+      ["note", "textarea"]
+    ],
+    primary: (r) => `${r.statement_month || "月底"} 對帳 ${r.customer_name || ""}`.trim()
   }
 };
 
@@ -79,7 +103,8 @@ const state = {
   records: loadRecords(),
   search: "",
   syncing: false,
-  syncQueued: false
+  syncQueued: false,
+  reconciliation: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -238,6 +263,11 @@ function renderForm(values = {}) {
   $("#form-title").textContent = type.title;
   $("#form-subtitle").textContent = type.subtitle;
 
+  if (state.type === "reconciliation") {
+    $("#entry-form").innerHTML = renderReconciliationPanel();
+    return;
+  }
+
   const fields = type.fields.map(([key, inputType, options]) => {
     const label = type.labels[key] || key;
     const value = values[key] ?? "";
@@ -354,6 +384,172 @@ function formatDisplayValue(value) {
   return String(value || "-");
 }
 
+function normalizeMatchText(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function recordDateText(record) {
+  return String(record.delivery_date || record.fuel_date || record.service_date || record.created_at || "");
+}
+
+function normalizeStatementMonth(value) {
+  const text = String(value || "").trim();
+  const western = text.match(/(20\d{2})[年/.-]?\s*(\d{1,2})/);
+  if (western) return `${western[1]}-${western[2].padStart(2, "0")}`;
+  const roc = text.match(/(\d{2,3})\s*[年/.-]\s*(\d{1,2})/);
+  if (roc) return `${Number(roc[1]) + 1911}-${roc[2].padStart(2, "0")}`;
+  return text.slice(0, 7);
+}
+
+function normalizeStatementDate(value, statementMonth = "") {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const western = text.match(/(20\d{2})[年/.-]\s*(\d{1,2})[月/.-]\s*(\d{1,2})/);
+  if (western) return `${western[1]}-${western[2].padStart(2, "0")}-${western[3].padStart(2, "0")}`;
+  const roc = text.match(/(\d{2,3})[年/.-]\s*(\d{1,2})[月/.-]\s*(\d{1,2})/);
+  if (roc) return `${Number(roc[1]) + 1911}-${roc[2].padStart(2, "0")}-${roc[3].padStart(2, "0")}`;
+  const monthDay = text.match(/^(\d{1,2})[月/.-]\s*(\d{1,2})/);
+  if (monthDay && /^\d{4}-\d{2}$/.test(statementMonth)) {
+    return `${statementMonth.slice(0, 4)}-${monthDay[1].padStart(2, "0")}-${monthDay[2].padStart(2, "0")}`;
+  }
+  const dayOnly = text.match(/^(\d{1,2})$/);
+  if (dayOnly && /^\d{4}-\d{2}$/.test(statementMonth)) {
+    return `${statementMonth}-${dayOnly[1].padStart(2, "0")}`;
+  }
+  return text;
+}
+
+function deliveryRecordsForMonth(statementMonth) {
+  return activeRecords().filter((record) => {
+    if (!["hotai", "taichung"].includes(record.type)) return false;
+    if (!statementMonth) return true;
+    return recordDateText(record).startsWith(statementMonth);
+  });
+}
+
+function statementRowKey(row, statementMonth = "") {
+  const orderNo = normalizeMatchText(row.order_no);
+  if (orderNo) return `order:${orderNo}`;
+  const date = normalizeStatementDate(row.date, statementMonth);
+  return `fallback:${normalizeMatchText(date)}:${normalizeMatchText(row.vendor_name)}:${normalizeMatchText(row.route)}`;
+}
+
+function appRecordKey(record) {
+  const orderNo = normalizeMatchText(record.order_no || record.serial_no);
+  if (orderNo) return `order:${orderNo}`;
+  return `fallback:${normalizeMatchText(recordDateText(record).slice(0, 10))}:${normalizeMatchText(record.vendor_name)}:${normalizeMatchText(record.route_code)}`;
+}
+
+function compareReconciliation(fields) {
+  const statementMonth = normalizeStatementMonth(fields.statement_month);
+  const statementRows = (Array.isArray(fields.items) ? fields.items : []).map((row, index) => ({
+    index,
+    date: normalizeStatementDate(row.date, statementMonth),
+    order_no: String(row.order_no || "").trim(),
+    vendor_name: String(row.vendor_name || "").trim(),
+    route: String(row.route || "").trim(),
+    weight: row.weight ?? "",
+    amount: Number(row.amount || 0),
+    note: String(row.note || "").trim()
+  }));
+  const appRows = deliveryRecordsForMonth(statementMonth);
+  const appByKey = new Map();
+  for (const record of appRows) {
+    const key = appRecordKey(record);
+    if (!appByKey.has(key)) appByKey.set(key, []);
+    appByKey.get(key).push(record);
+  }
+
+  const matchedAppIds = new Set();
+  const matchedRows = [];
+  const duplicates = [];
+  const amountMismatches = [];
+  const statementKeyCounts = new Map();
+
+  for (const row of statementRows) {
+    const key = statementRowKey(row, statementMonth);
+    statementKeyCounts.set(key, (statementKeyCounts.get(key) || 0) + 1);
+    const matches = appByKey.get(key) || [];
+    if (matches.length) {
+      const appRecord = matches[0];
+      matchedAppIds.add(appRecord.id);
+      matchedRows.push({ row, record: appRecord });
+      const appAmount = Number(appRecord.amount || appRecord.total_due || appRecord.extra_fee || 0);
+      if (row.amount && appAmount && Math.abs(row.amount - appAmount) > 1) {
+        amountMismatches.push({ row, record: appRecord, appAmount });
+      }
+    }
+  }
+
+  for (const [key, count] of statementKeyCounts.entries()) {
+    if (count > 1 && key !== "fallback:::") duplicates.push({ key, count });
+  }
+
+  return {
+    fields,
+    statementMonth,
+    statementRows,
+    appRows,
+    matchedRows,
+    missingInApp: statementRows.filter((row) => !(appByKey.get(statementRowKey(row, statementMonth)) || []).length),
+    missingInStatement: appRows.filter((record) => !matchedAppIds.has(record.id)),
+    amountMismatches,
+    duplicates,
+    calculatedTotal: Number(fields.subtotal || 0) + Number(fields.fuel_subsidy || 0) + Number(fields.repayment_deduction || 0)
+  };
+}
+
+function rowTitle(row) {
+  return [row.date, row.order_no, row.vendor_name || row.route].filter(Boolean).join(" / ") || "未命名明細";
+}
+
+function renderIssueList(title, rows, formatter) {
+  const items = rows.length
+    ? rows.map((row) => `<li>${escapeHtml(formatter(row))}</li>`).join("")
+    : `<li class="ok-item">沒有發現</li>`;
+  return `<section class="recon-issue"><h3>${title}</h3><ul>${items}</ul></section>`;
+}
+
+function renderReconciliationPanel() {
+  const report = state.reconciliation;
+  if (!report) {
+    return `
+      <div class="recon-empty">
+        <strong>上傳客戶月底對帳單後，AI 會自動核對。</strong>
+        <p>支援一張或多張照片，會抓日期、單號、廠商、重量、金額、小計、補貼、扣款與總計，再跟 App 裡的和泰/泰中托運紀錄比對。</p>
+      </div>
+    `;
+  }
+  const totalDiff = Number(report.fields.total || 0) - report.calculatedTotal;
+  return `
+    <div class="recon-summary">
+      <div><span>對帳月份</span><strong>${escapeHtml(report.statementMonth || "-")}</strong></div>
+      <div><span>對帳單明細</span><strong>${report.statementRows.length}</strong></div>
+      <div><span>App 托運紀錄</span><strong>${report.appRows.length}</strong></div>
+      <div><span>已配對</span><strong>${report.matchedRows.length}</strong></div>
+    </div>
+    <div class="recon-totals">
+      <span>小計 ${money(report.fields.subtotal)}</span>
+      <span>補貼 ${money(report.fields.fuel_subsidy)}</span>
+      <span>扣款 ${money(report.fields.repayment_deduction)}</span>
+      <span>總計 ${money(report.fields.total)}</span>
+      <span class="${Math.abs(totalDiff) > 1 ? "danger-text" : "ok-text"}">表尾差額 ${money(totalDiff)}</span>
+    </div>
+    <div class="recon-grid">
+      ${renderIssueList("對帳單有，App 沒有", report.missingInApp, rowTitle)}
+      ${renderIssueList("App 有，對帳單沒有", report.missingInStatement, (record) => `${TYPES[record.type].title} / ${TYPES[record.type].primary(record)}`)}
+      ${renderIssueList("金額不一致", report.amountMismatches, (item) => `${rowTitle(item.row)}：對帳單 ${money(item.row.amount)} / App ${money(item.appAmount)}`)}
+      ${renderIssueList("重複單號", report.duplicates, (item) => `${item.key.replace(/^order:/, "")} 重複 ${item.count} 次`)}
+    </div>
+    <div class="form-actions">
+      <button type="button" id="save-reconciliation">儲存這次核對結果</button>
+      <button class="secondary-button" id="clear-reconciliation" type="button">清除</button>
+    </div>
+  `;
+}
+
 function renderStats() {
   const month = todayMonthPrefix();
   let monthCost = 0;
@@ -392,22 +588,33 @@ async function fileToDataUrl(file) {
 }
 
 async function handleScan(event) {
-  const file = event.target.files && event.target.files[0];
-  if (!file) return;
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
   setScanState("AI 辨識中...");
   try {
-    const image = await fileToDataUrl(file);
+    const images = await Promise.all(files.slice(0, state.type === "reconciliation" ? 4 : 1).map(fileToDataUrl));
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/api/ai-scan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: state.type, image })
+      body: JSON.stringify({ type: state.type, image: images[0], images })
     });
     const result = await response.json();
     if (!response.ok) {
       throw new Error(result.error || result.detail || "AI 辨識失敗");
     }
     const fields = { ...result.fields };
+    if (state.type === "reconciliation") {
+      state.reconciliation = compareReconciliation(fields);
+      renderForm();
+      const issueCount = state.reconciliation.missingInApp.length
+        + state.reconciliation.missingInStatement.length
+        + state.reconciliation.amountMismatches.length
+        + state.reconciliation.duplicates.length;
+      setScanState(issueCount ? `核對完成，發現 ${issueCount} 個需要確認的項目。` : "核對完成，沒有發現缺漏。");
+      renderRecords();
+      return;
+    }
     if (state.type === "hotai" && fields.delivery_date) {
       fields.delivery_date = normalizeAiDate(fields.delivery_date);
     }
@@ -496,6 +703,35 @@ document.addEventListener("click", (event) => {
     renderForm();
     resetScanInputs();
     setScanState("");
+  }
+
+  if (event.target.id === "clear-reconciliation") {
+    state.reconciliation = null;
+    renderForm();
+    resetScanInputs();
+    setScanState("");
+  }
+
+  if (event.target.id === "save-reconciliation" && state.reconciliation) {
+    const now = new Date().toISOString();
+    const report = state.reconciliation;
+    state.records.unshift({
+      id: crypto.randomUUID(),
+      type: "reconciliation",
+      statement_month: report.statementMonth,
+      customer_name: report.fields.customer_name || "",
+      subtotal: report.fields.subtotal || 0,
+      fuel_subsidy: report.fields.fuel_subsidy || 0,
+      repayment_deduction: report.fields.repayment_deduction || 0,
+      total: report.fields.total || 0,
+      note: `對帳單 ${report.statementRows.length} 筆，App ${report.appRows.length} 筆，缺 App ${report.missingInApp.length} 筆，缺對帳單 ${report.missingInStatement.length} 筆，金額不符 ${report.amountMismatches.length} 筆，重複 ${report.duplicates.length} 筆。`,
+      items: report.statementRows,
+      created_at: now,
+      updated_at: now
+    });
+    saveRecords();
+    renderAll();
+    setScanState("核對結果已儲存，正在同步。");
   }
 });
 

@@ -20,7 +20,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 app.use(cors());
-app.use(express.json({ limit: "16mb" }));
+app.use(express.json({ limit: "28mb" }));
 app.use((req, _res, next) => {
   if (req.url === API_PREFIX || req.url.startsWith(`${API_PREFIX}/`)) {
     req.url = req.url.slice(API_PREFIX.length) || "/";
@@ -87,6 +87,25 @@ const scanTemplates = {
       "這是保養或維修成本單據。",
       "items 請保留主要保養項目、零件和耗材，不要編造看不到的內容。"
     ]
+  },
+  reconciliation: {
+    label: "月底客戶對帳單",
+    fields: {
+      statement_month: "對帳月份，優先輸出西元 YYYY-MM；若只有民國年月請換算，例如 115 年 6 月為 2026-06",
+      customer_name: "客戶、公司、廠商或對帳單抬頭名稱",
+      items: "對帳單每一列明細陣列，每列包含 date、order_no、vendor_name、route、weight、amount、note。看不到的欄位填空字串或 0",
+      subtotal: "小計，數字",
+      fuel_subsidy: "補貼油資，數字，沒有則 0",
+      repayment_deduction: "扣借還款或其他扣款，負數，沒有則 0",
+      total: "總計或應付金額，數字"
+    },
+    notes: [
+      "這是客戶月底傳來用來核對的對帳單，可能是紙本照片、Excel 截圖或多頁圖片。",
+      "重點是逐列抓出明細，不是只抓總金額。",
+      "日期若使用民國年，請換算成西元日期；無法確認完整年月日才保留原字串。",
+      "order_no 請保留單據號碼、流水號或運出單號；vendor_name 請保留廠商/客戶列名。",
+      "補貼、扣款、總計要從表尾摘要抓出來，不要自行推算看不到的項目。"
+    ]
   }
 };
 
@@ -120,6 +139,11 @@ function parseDataUrl(dataUrl) {
   return { mimeType: match[1], data: match[2] };
 }
 
+function parseImages(image, images) {
+  const values = Array.isArray(images) && images.length ? images : [image];
+  return values.map(parseDataUrl).filter(Boolean).slice(0, 4);
+}
+
 function extractJson(text) {
   const trimmed = String(text || "").trim();
   if (!trimmed) return null;
@@ -150,6 +174,29 @@ function sanitizeResult(type, result, rawText) {
     raw_text: String((result && result.raw_text) || rawText || ""),
     warnings: Array.isArray(result && result.warnings) ? result.warnings.slice(0, 6) : []
   };
+}
+
+function sanitizeReconciliationResult(result, rawText) {
+  const base = sanitizeResult("reconciliation", result, rawText);
+  const sourceItems = Array.isArray(base.fields.items) ? base.fields.items : [];
+  base.fields.items = sourceItems.slice(0, 300).map((item) => {
+    const row = item && typeof item === "object" ? item : {};
+    return {
+      date: String(row.date ?? "").slice(0, 40),
+      order_no: String(row.order_no ?? row.serial_no ?? "").slice(0, 80),
+      vendor_name: String(row.vendor_name ?? row.customer_name ?? "").slice(0, 160),
+      route: String(row.route ?? row.route_code ?? "").slice(0, 120),
+      weight: row.weight === "" || row.weight == null ? "" : String(row.weight).slice(0, 80),
+      amount: Number.isFinite(Number(row.amount)) ? Number(row.amount) : 0,
+      note: String(row.note ?? "").slice(0, 500)
+    };
+  });
+  for (const key of ["subtotal", "fuel_subsidy", "repayment_deduction", "total"]) {
+    base.fields[key] = Number.isFinite(Number(base.fields[key])) ? Number(base.fields[key]) : 0;
+  }
+  base.fields.statement_month = String(base.fields.statement_month || "").slice(0, 20);
+  base.fields.customer_name = String(base.fields.customer_name || "").slice(0, 160);
+  return base;
 }
 
 function isValidVaultKey(value) {
@@ -300,12 +347,12 @@ app.put("/api/private-sync/push", async (req, res) => {
 
 app.post("/api/ai-scan", async (req, res) => {
   try {
-    const { type, image } = req.body || {};
+    const { type, image, images } = req.body || {};
     if (!scanTemplates[type]) {
       return res.status(400).json({ error: "不支援的掃描類型" });
     }
-    const parsedImage = parseDataUrl(image);
-    if (!parsedImage) {
+    const parsedImages = parseImages(image, images);
+    if (!parsedImages.length) {
       return res.status(400).json({ error: "請上傳圖片" });
     }
     if (!process.env.GEMINI_API_KEY) {
@@ -321,7 +368,9 @@ app.post("/api/ai-scan", async (req, res) => {
           role: "user",
           parts: [
             { text: buildPrompt(type) },
-            { inlineData: { mimeType: parsedImage.mimeType, data: parsedImage.data } }
+            ...parsedImages.map((parsedImage) => ({
+              inlineData: { mimeType: parsedImage.mimeType, data: parsedImage.data }
+            }))
           ]
         }],
         generationConfig: {
@@ -345,7 +394,9 @@ app.post("/api/ai-scan", async (req, res) => {
     if (!parsed) {
       return res.status(502).json({ error: "AI 回傳格式無法解析", raw: text });
     }
-    res.json(sanitizeResult(type, parsed, text));
+    res.json(type === "reconciliation"
+      ? sanitizeReconciliationResult(parsed, text)
+      : sanitizeResult(type, parsed, text));
   } catch (error) {
     res.status(500).json({ error: "伺服器錯誤", detail: error.message });
   }

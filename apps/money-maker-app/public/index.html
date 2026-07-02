@@ -51,6 +51,10 @@
           <span>保養</span>
           <strong>維修紀錄</strong>
         </button>
+        <button class="mode-card" data-type="reconciliation" type="button">
+          <span>月底</span>
+          <strong>AI 對帳</strong>
+        </button>
       </nav>
 
       <section class="scan-panel" aria-label="掃描">
@@ -60,11 +64,11 @@
         </div>
         <div class="scan-actions">
           <label class="scan-button">
-            <input id="scan-camera" type="file" accept="image/*" capture="environment">
+            <input id="scan-camera" type="file" accept="image/*" capture="environment" multiple>
             拍照掃描
           </label>
           <label class="scan-button secondary-scan">
-            <input id="scan-upload" type="file" accept="image/*">
+            <input id="scan-upload" type="file" accept="image/*" multiple>
             上傳照片
           </label>
         </div>
