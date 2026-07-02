@@ -162,6 +162,7 @@ const parkingDefaults = {
     summary: '提供停車場查詢、地址、收費時間與費率資訊；目前未公開穩定即時剩餘車位 API。'
   },
   苗栗縣: {
+    availability: 'https://miaoliparking.jotangi.com.tw/Roads/QueryRoad',
     info: 'https://miaoliparking.jotangi.com.tw/',
     label: '苗栗縣政府停車服務資訊',
     summary: '提供停車費查詢、收費路段與停車服務資訊；目前未公開穩定即時剩餘車位 API。'
@@ -1670,6 +1671,39 @@ async function nantouParking(location) {
   return officialParkingPortal(location);
 }
 
+async function miaoliParking(location) {
+  const url = parkingDefaults[location.city]?.availability;
+  const pages = await Promise.all([1, 2, 3, 4].map(page =>
+    fetchText(url, {
+      timeoutMs: 7000,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+      body: new URLSearchParams({ administrativeDivisionId: '0', name: '', page: String(page) }).toString()
+    })
+  ));
+  const rows = pages.flatMap(html => htmlTableRows(html))
+    .filter(row => row.length >= 5 && row[0] !== '地區')
+    .map(row => ({
+      city: '苗栗縣',
+      district: row[0],
+      name: row[1],
+      range: row[2],
+      time: row[3],
+      fee: row[4]
+    }))
+    .filter(record => record.district && record.name);
+  if (!rows.length) return officialParkingPortal(location);
+  const district = location.district || '';
+  const scoped = district ? rows.filter(record => record.district.includes(district)) : rows;
+  const picked = (scoped.length ? scoped : rows).slice(0, 3);
+  return {
+    status: 'live',
+    source: '苗栗縣政府停車服務資訊收費路段',
+    body: picked.map(record => `${record.district}${record.name}：${record.range}${record.time ? `，${record.time}` : ''}${record.fee ? `，${record.fee}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function taitungParking(location) {
   const html = await fetchText(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
   const rows = htmlTableRows(html)
@@ -1785,6 +1819,7 @@ async function parkingInfo(location) {
   if (city === '基隆市') return keelungParking({ ...location, city });
   if (city === '新竹市') return hsinchuCityParking({ ...location, city });
   if (city === '新竹縣') return hsinchuCountyParking({ ...location, city });
+  if (city === '苗栗縣') return miaoliParking({ ...location, city });
   if (city === '彰化縣') return changhuaParking({ ...location, city });
   if (city === '嘉義市') return chiayiCityParking({ ...location, city });
   if (city === '臺北市') return taipeiParking({ ...location, city });
