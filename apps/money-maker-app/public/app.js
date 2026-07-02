@@ -71,6 +71,19 @@ const TYPES = {
     ],
     primary: (r) => `${r.service_date || "保養"} ${r.shop_name || ""}`.trim()
   },
+  other_cost: {
+    title: "其他車輛成本",
+    subtitle: "記錄 eTag、貨車貸款、保險或其他車輛支出。",
+    labels: { cost_date: "日期", category: "類別/項目", amount: "金額", odometer: "里程/公里數", note: "備註" },
+    fields: [
+      ["cost_date", "date"],
+      ["category", "text"],
+      ["amount", "number"],
+      ["odometer", "number"],
+      ["note", "textarea"]
+    ],
+    primary: (r) => `${r.cost_date || "成本"} ${r.category || ""} ${money(r.amount || 0)}`.trim()
+  },
   reconciliation: {
     title: "月底 AI 對帳",
     subtitle: "上傳客戶月底對帳單，AI 會讀出明細並和 App 內托運紀錄核對缺漏。",
@@ -391,7 +404,7 @@ function normalizeMatchText(value) {
 }
 
 function recordDateText(record) {
-  return String(record.delivery_date || record.fuel_date || record.service_date || record.created_at || "");
+  return String(record.delivery_date || record.fuel_date || record.service_date || record.cost_date || record.created_at || "");
 }
 
 function normalizeStatementMonth(value) {
@@ -560,6 +573,7 @@ function renderStats() {
     if (!inMonth) continue;
     if (record.type === "fuel") monthCost += Number(record.amount || 0);
     if (record.type === "maintenance") monthCost += Number(record.total_due || record.labor_total || 0) + Number(record.parts_total || 0);
+    if (record.type === "other_cost") monthCost += Number(record.amount || 0);
     if (record.type === "hotai") monthExtra += Number(record.extra_fee || 0);
   }
   $("#month-cost").textContent = money(monthCost);
@@ -587,11 +601,56 @@ async function fileToDataUrl(file) {
   });
 }
 
+function isSpreadsheetFile(file) {
+  return /\.xlsx$/i.test(file.name || "") || /spreadsheet|excel|officedocument/i.test(file.type || "");
+}
+
+async function handleSpreadsheetImport(file) {
+  setScanState("Excel 讀取中...");
+  const dataUrl = await fileToDataUrl(file);
+  const response = await fetch(`${getApiBase()}/api/import-spreadsheet`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: dataUrl })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || result.detail || "Excel 匯入失敗");
+  }
+  const now = new Date().toISOString();
+  const records = (result.records || []).map((record) => ({
+    id: crypto.randomUUID(),
+    ...record,
+    created_at: now,
+    updated_at: now
+  }));
+  if (!records.length) {
+    setScanState("Excel 沒有可匯入的資料。", true);
+    return;
+  }
+  const fuelCount = records.filter((record) => record.type === "fuel").length;
+  const maintenanceCount = records.filter((record) => record.type === "maintenance").length;
+  const otherCount = records.filter((record) => record.type === "other_cost").length;
+  const summary = `讀到 ${records.length} 筆：油耗 ${fuelCount}、保養 ${maintenanceCount}、其他 ${otherCount}。`;
+  if (!confirm(`${summary}\n要匯入 App 並同步嗎？`)) {
+    setScanState("已取消 Excel 匯入。");
+    return;
+  }
+  state.records = [...records, ...state.records];
+  saveRecords();
+  renderAll();
+  setScanState(`${summary} 已匯入並同步。`);
+}
+
 async function handleScan(event) {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
   setScanState("AI 辨識中...");
   try {
+    if (isSpreadsheetFile(files[0])) {
+      await handleSpreadsheetImport(files[0]);
+      return;
+    }
     const images = await Promise.all(files.slice(0, state.type === "reconciliation" ? 4 : 1).map(fileToDataUrl));
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/api/ai-scan`, {

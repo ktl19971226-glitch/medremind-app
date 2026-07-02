@@ -51,6 +51,10 @@
           <span>保養</span>
           <strong>維修紀錄</strong>
         </button>
+        <button class="mode-card" data-type="other_cost" type="button">
+          <span>其他</span>
+          <strong>車輛成本</strong>
+        </button>
         <button class="mode-card" data-type="reconciliation" type="button">
           <span>月底</span>
           <strong>AI 對帳</strong>
@@ -68,8 +72,8 @@
             拍照掃描
           </label>
           <label class="scan-button secondary-scan">
-            <input id="scan-upload" type="file" accept="image/*" multiple>
-            上傳照片
+            <input id="scan-upload" type="file" accept="image/*,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple>
+            上傳檔案
           </label>
         </div>
         <div class="scan-state" id="scan-state"></div>

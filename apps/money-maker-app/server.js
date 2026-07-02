@@ -6,8 +6,12 @@ const helmet = require("helmet");
 const path = require("path");
 const fs = require("fs/promises");
 const crypto = require("crypto");
+const os = require("os");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 
 const app = express();
+const unzipFile = promisify(execFile);
 const PORT = Number(process.env.PORT || 8092);
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const API_PREFIX = "/money-maker-api";
@@ -88,6 +92,19 @@ const scanTemplates = {
       "items 請保留主要保養項目、零件和耗材，不要編造看不到的內容。"
     ]
   },
+  other_cost: {
+    label: "其他車輛成本",
+    fields: {
+      cost_date: "成本日期",
+      category: "成本類別，例如 etag、貨車貸款、保險、其他",
+      amount: "金額，數字",
+      odometer: "里程或公里數，數字，沒有則 0"
+    },
+    notes: [
+      "這是車輛相關成本紀錄。",
+      "只抓車輛使用成本，不要抓托運收入。"
+    ]
+  },
   reconciliation: {
     label: "月底客戶對帳單",
     fields: {
@@ -137,6 +154,15 @@ function parseDataUrl(dataUrl) {
     return null;
   }
   return { mimeType: match[1], data: match[2] };
+}
+
+function parseFileDataUrl(dataUrl) {
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) return null;
+  return {
+    mimeType: parsed.mimeType,
+    buffer: Buffer.from(parsed.data, "base64")
+  };
 }
 
 function parseImages(image, images) {
@@ -197,6 +223,152 @@ function sanitizeReconciliationResult(result, rawText) {
   base.fields.statement_month = String(base.fields.statement_month || "").slice(0, 20);
   base.fields.customer_name = String(base.fields.customer_name || "").slice(0, 160);
   return base;
+}
+
+function decodeXml(value) {
+  return String(value || "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+async function unzipEntry(file, entry) {
+  const { stdout } = await unzipFile("unzip", ["-p", file, entry], { maxBuffer: 8 * 1024 * 1024 });
+  return stdout;
+}
+
+function sharedStringsFromXml(xml) {
+  return Array.from(String(xml || "").matchAll(/<si\b[\s\S]*?<\/si>/g)).map((match) => {
+    return Array.from(match[0].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g))
+      .map((part) => decodeXml(part[1]))
+      .join("");
+  });
+}
+
+function columnIndex(ref) {
+  const letters = String(ref || "").match(/[A-Z]+/);
+  if (!letters) return 0;
+  return letters[0].split("").reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1;
+}
+
+function cellText(cellXml, sharedStrings) {
+  const type = (cellXml.match(/\st="([^"]+)"/) || [])[1] || "";
+  if (type === "inlineStr") {
+    return Array.from(cellXml.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)).map((part) => decodeXml(part[1])).join("");
+  }
+  const value = (cellXml.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+  if (value == null) return "";
+  if (type === "s") return sharedStrings[Number(value)] || "";
+  return decodeXml(value);
+}
+
+async function parseXlsxRows(buffer) {
+  const tempFile = path.join(os.tmpdir(), `money-maker-import-${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.xlsx`);
+  await fs.writeFile(tempFile, buffer, { mode: 0o600 });
+  try {
+    let sharedStrings = [];
+    try {
+      sharedStrings = sharedStringsFromXml(await unzipEntry(tempFile, "xl/sharedStrings.xml"));
+    } catch (_) {
+      sharedStrings = [];
+    }
+    const sheetXml = await unzipEntry(tempFile, "xl/worksheets/sheet1.xml");
+    return Array.from(sheetXml.matchAll(/<row\b[\s\S]*?<\/row>/g)).map((rowMatch) => {
+      const row = [];
+      for (const cellMatch of rowMatch[0].matchAll(/<c\b[\s\S]*?<\/c>/g)) {
+        const cellXml = cellMatch[0];
+        const ref = (cellXml.match(/\sr="([^"]+)"/) || [])[1] || "";
+        row[columnIndex(ref)] = cellText(cellXml, sharedStrings);
+      }
+      return row.map((value) => String(value || "").trim());
+    }).filter((row) => row.some(Boolean));
+  } finally {
+    await fs.rm(tempFile, { force: true });
+  }
+}
+
+function normalizeImportDate(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (!match) return text;
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
+function parseLiters(title) {
+  const match = String(title || "").match(/(\d+(?:\.\d+)?)\s*公升/);
+  return match ? Number(match[1]) : 0;
+}
+
+function classifyCostTitle(title) {
+  const text = String(title || "");
+  if (/公升|柴油|汽油|無鉛/.test(text)) return "fuel";
+  if (/保養|輪胎|煞車|引擎|變速箱|電瓶|破胎|ABS|abs|輪軸/.test(text)) return "maintenance";
+  return "other_cost";
+}
+
+function spreadsheetRowsToRecords(rows) {
+  const headers = rows[0] || [];
+  const indexOf = (...names) => headers.findIndex((header) => names.includes(String(header).trim()));
+  const dateIndex = indexOf("日期", "時間");
+  const odometerIndex = indexOf("公里", "里程");
+  const amountIndex = indexOf("總額", "金額", "費用");
+  const titleIndex = indexOf("標題", "項目", "品項");
+  const noteIndex = indexOf("備註", "說明");
+  if (dateIndex < 0 || amountIndex < 0 || titleIndex < 0) {
+    return { records: [], skipped: Math.max(0, rows.length - 1), error: "Excel 欄位需包含日期、總額、標題" };
+  }
+  const records = [];
+  let skipped = 0;
+  for (const row of rows.slice(1)) {
+    const date = normalizeImportDate(row[dateIndex]);
+    const amount = Number(row[amountIndex] || 0);
+    const title = String(row[titleIndex] || "").trim();
+    const odometer = Number(row[odometerIndex] || 0);
+    const note = String(row[noteIndex] || "").trim();
+    if (!date || !title || !amount) {
+      skipped += 1;
+      continue;
+    }
+    const type = classifyCostTitle(title);
+    if (type === "fuel") {
+      records.push({
+        type,
+        fuel_date: date,
+        liters: parseLiters(title),
+        amount,
+        odometer,
+        fuel_type: title.replace(/^.*公升,?/, "").trim() || title,
+        note
+      });
+    } else if (type === "maintenance") {
+      records.push({
+        type,
+        service_date: date,
+        plate_no: "",
+        shop_name: "",
+        items: title,
+        labor_total: 0,
+        parts_total: 0,
+        tax: 0,
+        total_due: amount,
+        paid_status: "已收",
+        odometer,
+        note
+      });
+    } else {
+      records.push({
+        type,
+        cost_date: date,
+        category: title,
+        amount,
+        odometer,
+        note
+      });
+    }
+  }
+  return { records, skipped };
 }
 
 function isValidVaultKey(value) {
@@ -342,6 +514,34 @@ app.put("/api/private-sync/push", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: "同步寫入失敗", detail: error.message });
+  }
+});
+
+app.post("/api/import-spreadsheet", async (req, res) => {
+  try {
+    const { file } = req.body || {};
+    const parsed = parseFileDataUrl(file);
+    if (!parsed) {
+      return res.status(400).json({ error: "請上傳 Excel 檔案" });
+    }
+    const isExcel = /spreadsheet|excel|officedocument/i.test(parsed.mimeType);
+    if (!isExcel) {
+      return res.status(400).json({ error: "目前只支援 xlsx Excel 檔" });
+    }
+    const rows = await parseXlsxRows(parsed.buffer);
+    const result = spreadsheetRowsToRecords(rows);
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({
+      ok: true,
+      rows: Math.max(0, rows.length - 1),
+      imported: result.records.length,
+      skipped: result.skipped,
+      records: result.records.slice(0, 1000)
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Excel 匯入失敗", detail: error.message });
   }
 });
 
