@@ -156,9 +156,10 @@ const parkingDefaults = {
     availability: 'https://opendataap2.e-land.gov.tw/resource/files/2023-02-12/62f4d78b604ba16b8cc1e856dd28d2c3.json'
   },
   新竹縣: {
+    availability: 'https://hcpark.hchg.gov.tw/web/Parking',
     info: 'https://hcpark.hchg.gov.tw/web/Parking',
     label: '新竹縣政府路邊停車中心',
-    summary: '提供停車場查詢、停車費查詢與收費公告；目前未公開穩定即時剩餘車位 API。'
+    summary: '提供停車場查詢、地址、收費時間與費率資訊；目前未公開穩定即時剩餘車位 API。'
   },
   苗栗縣: {
     info: 'https://miaoliparking.jotangi.com.tw/',
@@ -166,9 +167,11 @@ const parkingDefaults = {
     summary: '提供停車費查詢、收費路段與停車服務資訊；目前未公開穩定即時剩餘車位 API。'
   },
   南投縣: {
+    availability: 'https://parking.nantou.gov.tw/ParkingLocation/SmartParkingFacilitiesPost',
+    details: 'https://parking.nantou.gov.tw/ParkingLocation/ParkingLotPost',
     info: 'https://parking.nantou.gov.tw/ParkingLocation',
     label: '南投縣政府停車服務資訊',
-    summary: '提供停車地圖、停車費查詢、南投/集集/埔里/草屯等收費公告；目前未公開穩定即時剩餘車位 API。'
+    summary: '提供停車地圖、停車場清單與路邊智慧車格資訊。'
   },
   雲林縣: {
     availability: 'https://www.opendata.vip/tdx/parking/YunlinCounty'
@@ -185,6 +188,7 @@ const parkingDefaults = {
     availability: 'https://www.opendata.vip/tdx/parking/HualienCounty'
   },
   臺東縣: {
+    availability: 'https://taitung.hfpark.tw/Web/Pages/Business/Parking',
     info: 'https://taitung.hfpark.tw/Web/Pages/Business/Parking',
     label: '臺東縣停車資訊網停車場車位表',
     summary: '提供臺東縣停車場車位表與停車費查詢；目前未公開穩定即時剩餘車位 API。'
@@ -1351,6 +1355,33 @@ async function hsinchuCityParking(location) {
   };
 }
 
+async function hsinchuCountyParking(location) {
+  const html = await fetchText(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
+  const rows = htmlTableRows(html, 'JQparking')
+    .filter(row => row.length >= 5 && /^\d+/.test(row[0]))
+    .map(row => ({
+      city: '新竹縣',
+      name: row[1],
+      address: row[2],
+      area: row[2],
+      time: row[3],
+      fee: row[4]
+    }))
+    .filter(record => record.name && record.address);
+  if (!rows.length) return officialParkingPortal(location);
+  const district = location.district || '';
+  const picked = (district
+    ? rows.filter(record => `${record.name}${record.address}`.includes(district))
+    : rows).slice(0, 3);
+  const records = picked.length ? picked : rows.slice(0, 3);
+  return {
+    status: 'live',
+    source: '新竹縣政府路邊停車中心停車場查詢',
+    body: records.map(record => `${record.name}：${record.address}${record.time ? `，${record.time}` : ''}${record.fee ? `，${record.fee}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function changhuaParking(location) {
   const data = await fetchJson(parkingDefaults[location.city]?.availability, {
     timeoutMs: 7000,
@@ -1563,6 +1594,111 @@ async function yilanParking(location) {
   };
 }
 
+async function nantouParking(location) {
+  const urls = parkingDefaults[location.city];
+  const [smartSpaces, parkingLots] = await Promise.all([
+    fetchJson(urls.availability, {
+      timeoutMs: 7000,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+      body: ''
+    }),
+    fetchJson(urls.details, {
+      timeoutMs: 7000,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+      body: ''
+    })
+  ]);
+
+  if (Array.isArray(smartSpaces) && smartSpaces.length) {
+    const grouped = new Map();
+    for (const record of smartSpaces) {
+      const name = record.billSegment || '未命名路段';
+      const current = grouped.get(name) || {
+        city: '南投縣',
+        area: name,
+        name,
+        availablecar: 0,
+        totalcar: 0,
+        updatedAt: record.created,
+        lat: record.latitude,
+        lng: record.longitude
+      };
+      current.totalcar += 1;
+      if (`${record.status}` === '0') current.availablecar += 1;
+      current.updatedAt = record.created || current.updatedAt;
+      grouped.set(name, current);
+    }
+    const records = [...grouped.values()];
+    const district = location.district || '';
+    const scopedRecords = district
+      ? records.filter(record => `${record.name}${record.area}`.includes(district))
+      : records;
+    const picked = pickParkingRecords(scopedRecords.length ? scopedRecords : (!district ? records : []), location);
+    if (picked.length) {
+      return {
+        status: 'live',
+        source: '南投縣路邊智慧車格',
+        body: picked.map(record => `${record.name}：可用車格 ${record.availablecar} 格，總車格 ${record.totalcar} 格${record.updatedAt ? `，更新 ${record.updatedAt}` : ''}${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+        shouldNotify: false
+      };
+    }
+  }
+
+  if (Array.isArray(parkingLots) && parkingLots.length) {
+    const records = parkingLots.map(record => ({
+      city: '南投縣',
+      name: record.carParkName,
+      address: record.address,
+      area: record.address,
+      lat: record.positionLat,
+      lng: record.positionLon,
+      fee: record.fareDescription
+    })).filter(record => record.name);
+    const picked = pickParkingRecords(records, location);
+    if (picked.length) {
+      return {
+        status: 'live',
+        source: '南投縣政府停車服務資訊',
+        body: picked.map(record => `${record.name}：${record.address || '地址未提供'}${record.fee ? `，${trimAlertText(record.fee, 80)}` : ''}${Number.isFinite(record.distance) ? `，約 ${record.distance.toFixed(1)} 公里` : ''}`).join('；'),
+        shouldNotify: false
+      };
+    }
+  }
+
+  return officialParkingPortal(location);
+}
+
+async function taitungParking(location) {
+  const html = await fetchText(parkingDefaults[location.city]?.availability, { timeoutMs: 7000 });
+  const rows = htmlTableRows(html)
+    .filter(row => row.length >= 5 && /^\d+$/.test(row[1] || '') && row[2])
+    .map(row => ({
+      city: '臺東縣',
+      system: row[0],
+      name: row[2],
+      bus: row[3],
+      availablecar: row[4],
+      motorcycle: row[5],
+      accessible: row[6],
+      note: row[8]
+    }))
+    .filter(record => record.name && numericValue(record.availablecar) !== null);
+  if (!rows.length) return officialParkingPortal(location);
+  const district = location.district || '';
+  const picked = (district
+    ? rows.filter(record => `${record.system}${record.name}`.includes(district))
+    : rows).slice(0, 3);
+  const records = picked.length ? picked : rows.slice(0, 3);
+  return {
+    status: 'live',
+    source: '臺東縣停車資訊網停車場車位表',
+    body: records.map(record => `${record.name}：小客車車位 ${record.availablecar} 格${record.bus ? `，大客車 ${record.bus} 格` : ''}${record.motorcycle ? `，機車 ${record.motorcycle} 格` : ''}${record.note ? `，${record.note}` : ''}`).join('；'),
+    shouldNotify: false
+  };
+}
+
 async function opendataVipParking(location) {
   const url = parkingDefaults[location.city]?.availability;
   const html = await fetchText(url, { timeoutMs: 7000 });
@@ -1648,6 +1784,7 @@ async function parkingInfo(location) {
   const city = canonicalCity(location.city);
   if (city === '基隆市') return keelungParking({ ...location, city });
   if (city === '新竹市') return hsinchuCityParking({ ...location, city });
+  if (city === '新竹縣') return hsinchuCountyParking({ ...location, city });
   if (city === '彰化縣') return changhuaParking({ ...location, city });
   if (city === '嘉義市') return chiayiCityParking({ ...location, city });
   if (city === '臺北市') return taipeiParking({ ...location, city });
@@ -1657,6 +1794,8 @@ async function parkingInfo(location) {
   if (city === '臺南市') return tainanParking({ ...location, city });
   if (city === '高雄市') return kaohsiungParking({ ...location, city });
   if (city === '宜蘭縣') return yilanParking({ ...location, city });
+  if (city === '南投縣') return nantouParking({ ...location, city });
+  if (city === '臺東縣') return taitungParking({ ...location, city });
   if (['雲林縣', '屏東縣', '花蓮縣', '金門縣'].includes(city)) return opendataVipParking({ ...location, city });
   if (city === '連江縣') return lianjiangParking({ ...location, city });
   if (parkingDefaults[city]?.info) return officialParkingPortal({ ...location, city });
