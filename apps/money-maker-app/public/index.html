@@ -21,12 +21,31 @@
     <main>
       <section class="summary-band" aria-label="統計">
         <div>
+          <span>本月淨利</span>
+          <strong id="month-profit">$0</strong>
+        </div>
+        <div>
+          <span>本月收入</span>
+          <strong id="month-income">$0</strong>
+        </div>
+        <div>
           <span>本月成本</span>
           <strong id="month-cost">$0</strong>
         </div>
+      </section>
+
+      <section class="dashboard-grid" aria-label="儀表板">
         <div>
-          <span>附加費用</span>
-          <strong id="month-extra">$0</strong>
+          <span>油耗</span>
+          <strong id="month-fuel">$0</strong>
+        </div>
+        <div>
+          <span>保養</span>
+          <strong id="month-maintenance">$0</strong>
+        </div>
+        <div>
+          <span>待確認</span>
+          <strong id="issue-count">0</strong>
         </div>
         <div>
           <span>總筆數</span>
@@ -34,7 +53,42 @@
         </div>
       </section>
 
+      <section class="insight-panel" aria-label="月結損益">
+        <div class="section-head">
+          <div>
+            <h2>月結損益</h2>
+            <p id="profit-note">本月資料整理中</p>
+          </div>
+          <button class="secondary-button" id="export-monthly-btn" type="button">月報</button>
+        </div>
+        <div class="metric-list" id="source-stats"></div>
+      </section>
+
+      <section class="insight-panel" aria-label="提醒">
+        <div class="section-head">
+          <div>
+            <h2>待確認提醒</h2>
+            <p>缺漏、重複單號與對帳差額</p>
+          </div>
+        </div>
+        <ul class="alert-list" id="alert-list"></ul>
+      </section>
+
+      <section class="insight-panel" aria-label="車輛成本趨勢">
+        <div class="section-head">
+          <div>
+            <h2>車輛成本趨勢</h2>
+            <p>油耗、每公里成本與保養波動</p>
+          </div>
+        </div>
+        <div class="metric-list" id="cost-trends"></div>
+      </section>
+
       <nav class="mode-grid" aria-label="功能">
+        <button class="mode-card" data-type="auto" type="button">
+          <span>AI</span>
+          <strong>自動分類</strong>
+        </button>
         <button class="mode-card active" data-type="hotai" type="button">
           <span>和泰</span>
           <strong>托運紀錄</strong>

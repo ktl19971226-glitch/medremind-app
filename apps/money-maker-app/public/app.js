@@ -3,6 +3,13 @@ const VAULT_KEY = "money-maker-private-vault-key-v1";
 const DEFAULT_API_BASE = "https://yaojidecare.app/money-maker-api";
 
 const TYPES = {
+  auto: {
+    title: "AI 自動分類",
+    subtitle: "直接拍照或上傳檔案，AI 會判斷要放到和泰、泰中、油耗、保養或月底對帳。",
+    labels: {},
+    fields: [],
+    primary: () => "AI 自動分類"
+  },
   hotai: {
     title: "和泰托運紀錄",
     subtitle: "掃描或手動輸入配送日期、流水號、運送區間、附加費用。",
@@ -267,6 +274,15 @@ function renderForm(values = {}) {
     $("#entry-form").innerHTML = renderReconciliationPanel();
     return;
   }
+  if (state.type === "auto") {
+    $("#entry-form").innerHTML = `
+      <div class="recon-empty">
+        <strong>自動分類模式</strong>
+        <p>拍照或上傳圖片時，AI 會先判斷單據類型，再把資料填入對應分類。Excel 檔會直接自動匯入油耗與保養。</p>
+      </div>
+    `;
+    return;
+  }
 
   const fields = type.fields.map(([key, inputType, options]) => {
     const label = type.labels[key] || key;
@@ -344,7 +360,7 @@ function setMode(type) {
 function filteredRecords() {
   const term = state.search.trim().toLowerCase();
   return activeRecords().filter((record) => {
-    if (record.type !== state.type) return false;
+    if (state.type !== "auto" && record.type !== state.type) return false;
     if (!term) return true;
     return JSON.stringify(record).toLowerCase().includes(term);
   });
@@ -550,21 +566,137 @@ function renderReconciliationPanel() {
   `;
 }
 
-function renderStats() {
-  const month = todayMonthPrefix();
-  let monthCost = 0;
-  let monthExtra = 0;
-  for (const record of activeRecords()) {
-    const dateText = record.delivery_date || record.fuel_date || record.service_date || record.created_at || "";
-    const inMonth = String(dateText).startsWith(month);
-    if (!inMonth) continue;
-    if (record.type === "fuel") monthCost += Number(record.amount || 0);
-    if (record.type === "maintenance") monthCost += Number(record.total_due || record.labor_total || 0) + Number(record.parts_total || 0);
-    if (record.type === "hotai") monthExtra += Number(record.extra_fee || 0);
+function maintenanceAmount(record) {
+  return Number(record.total_due || 0) || (Number(record.labor_total || 0) + Number(record.parts_total || 0) + Number(record.tax || 0));
+}
+
+function recordMonth(record) {
+  const value = record.statement_month || record.delivery_date || record.fuel_date || record.service_date || record.created_at || "";
+  return String(value).slice(0, 7);
+}
+
+function monthlyRecords(month) {
+  return activeRecords().filter((record) => recordMonth(record) === month);
+}
+
+function deliveryKey(record) {
+  if (!["hotai", "taichung"].includes(record.type)) return "";
+  return normalizeMatchText(record.serial_no || record.order_no);
+}
+
+function latestReconciliation(month) {
+  return activeRecords()
+    .filter((record) => record.type === "reconciliation" && String(record.statement_month || "").slice(0, 7) === month)
+    .sort((a, b) => recordTimestamp(b) - recordTimestamp(a))[0] || null;
+}
+
+function buildMonthlyReport(month = todayMonthPrefix()) {
+  const records = monthlyRecords(month);
+  const fuelRecords = records.filter((record) => record.type === "fuel");
+  const maintenanceRecords = records.filter((record) => record.type === "maintenance");
+  const hotaiRecords = records.filter((record) => record.type === "hotai");
+  const taichungRecords = records.filter((record) => record.type === "taichung");
+  const reconciliationRecords = records.filter((record) => record.type === "reconciliation");
+  const fuelCost = fuelRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0);
+  const maintenanceCost = maintenanceRecords.reduce((sum, record) => sum + maintenanceAmount(record), 0);
+  const reconciliationIncome = reconciliationRecords.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  const extraIncome = hotaiRecords.reduce((sum, record) => sum + Number(record.extra_fee || 0), 0);
+  const income = reconciliationIncome + extraIncome;
+  const cost = fuelCost + maintenanceCost;
+  const alerts = buildAlerts(month, records);
+  const fuelOdometers = fuelRecords.map((record) => Number(record.odometer || 0)).filter(Boolean).sort((a, b) => a - b);
+  const kilometers = fuelOdometers.length >= 2 ? fuelOdometers[fuelOdometers.length - 1] - fuelOdometers[0] : 0;
+  const liters = fuelRecords.reduce((sum, record) => sum + Number(record.liters || 0), 0);
+  return {
+    month,
+    records,
+    fuelRecords,
+    maintenanceRecords,
+    hotaiRecords,
+    taichungRecords,
+    reconciliationRecords,
+    income,
+    reconciliationIncome,
+    extraIncome,
+    cost,
+    fuelCost,
+    maintenanceCost,
+    profit: income - cost,
+    alerts,
+    kilometers,
+    liters
+  };
+}
+
+function buildAlerts(month, records) {
+  const alerts = [];
+  const seen = new Map();
+  for (const record of records) {
+    const key = deliveryKey(record);
+    if (!key) continue;
+    if (seen.has(key)) alerts.push(`重複單號：${key}`);
+    seen.set(key, record);
   }
-  $("#month-cost").textContent = money(monthCost);
-  $("#month-extra").textContent = money(monthExtra);
+
+  const report = latestReconciliation(month);
+  if (report && Array.isArray(report.items)) {
+    const comparison = compareReconciliation({
+      statement_month: report.statement_month,
+      customer_name: report.customer_name,
+      items: report.items,
+      subtotal: report.subtotal,
+      fuel_subsidy: report.fuel_subsidy,
+      repayment_deduction: report.repayment_deduction,
+      total: report.total
+    });
+    if (comparison.missingInApp.length) alerts.push(`對帳單有、App 沒有：${comparison.missingInApp.length} 筆`);
+    if (comparison.missingInStatement.length) alerts.push(`App 有、對帳單沒有：${comparison.missingInStatement.length} 筆`);
+    if (comparison.amountMismatches.length) alerts.push(`金額不一致：${comparison.amountMismatches.length} 筆`);
+    if (comparison.duplicates.length) alerts.push(`對帳單重複單號：${comparison.duplicates.length} 組`);
+    const totalDiff = Number(report.total || 0) - comparison.calculatedTotal;
+    if (Math.abs(totalDiff) > 1) alerts.push(`對帳表尾差額：${money(totalDiff)}`);
+  }
+  return alerts;
+}
+
+function renderMetricRows(container, rows) {
+  container.innerHTML = rows.map(([label, value]) => `
+    <div class="metric-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+  `).join("");
+}
+
+function renderStats() {
+  const report = buildMonthlyReport();
+  $("#month-profit").textContent = money(report.profit);
+  $("#month-income").textContent = money(report.income);
+  $("#month-cost").textContent = money(report.cost);
+  $("#month-fuel").textContent = money(report.fuelCost);
+  $("#month-maintenance").textContent = money(report.maintenanceCost);
+  $("#issue-count").textContent = String(report.alerts.length);
   $("#total-count").textContent = String(activeRecords().length);
+  $("#profit-note").textContent = `收入 ${money(report.income)} - 成本 ${money(report.cost)}`;
+
+  renderMetricRows($("#source-stats"), [
+    ["對帳收入", money(report.reconciliationIncome)],
+    ["和泰附加費", money(report.extraIncome)],
+    ["和泰筆數", `${report.hotaiRecords.length} 筆`],
+    ["泰中筆數", `${report.taichungRecords.length} 筆`],
+    ["對帳報告", `${report.reconciliationRecords.length} 份`]
+  ]);
+
+  const alertList = $("#alert-list");
+  alertList.innerHTML = report.alerts.length
+    ? report.alerts.slice(0, 8).map((alert) => `<li>${escapeHtml(alert)}</li>`).join("")
+    : `<li class="ok-alert">目前沒有缺漏或重複提醒</li>`;
+
+  const kmText = report.kilometers ? `${report.kilometers.toLocaleString("zh-TW")} 公里` : "資料不足";
+  const costPerKm = report.kilometers ? money(report.fuelCost / report.kilometers) : "-";
+  renderMetricRows($("#cost-trends"), [
+    ["本月加油", `${report.fuelRecords.length} 筆 / ${report.liters.toLocaleString("zh-TW", { maximumFractionDigits: 2 })} 公升`],
+    ["里程區間", kmText],
+    ["油錢/公里", costPerKm],
+    ["保養維修", `${report.maintenanceRecords.length} 筆 / ${money(report.maintenanceCost)}`]
+  ]);
 }
 
 function renderAll() {
@@ -647,8 +779,11 @@ async function handleScan(event) {
     if (!response.ok) {
       throw new Error(result.error || result.detail || "AI 辨識失敗");
     }
+    const detectedType = result.type && TYPES[result.type] && result.type !== "auto" ? result.type : state.type;
     const fields = { ...result.fields };
-    if (state.type === "reconciliation") {
+    if (detectedType === "reconciliation") {
+      state.type = "reconciliation";
+      $$(".mode-card").forEach((button) => button.classList.toggle("active", button.dataset.type === state.type));
       state.reconciliation = compareReconciliation(fields);
       renderForm();
       const issueCount = state.reconciliation.missingInApp.length
@@ -658,6 +793,10 @@ async function handleScan(event) {
       setScanState(issueCount ? `核對完成，發現 ${issueCount} 個需要確認的項目。` : "核對完成，沒有發現缺漏。");
       renderRecords();
       return;
+    }
+    if (detectedType !== state.type) {
+      state.type = detectedType;
+      $$(".mode-card").forEach((button) => button.classList.toggle("active", button.dataset.type === state.type));
     }
     if (state.type === "hotai" && fields.delivery_date) {
       fields.delivery_date = normalizeAiDate(fields.delivery_date);
@@ -732,6 +871,48 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
+function downloadCsv(filename, rows) {
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportMonthlyReport() {
+  const report = buildMonthlyReport();
+  const rows = [
+    ["區塊", "項目", "金額/數量"],
+    ["損益", "收入", report.income],
+    ["損益", "成本", report.cost],
+    ["損益", "淨利", report.profit],
+    ["成本", "油耗", report.fuelCost],
+    ["成本", "保養", report.maintenanceCost],
+    ["來源", "和泰筆數", report.hotaiRecords.length],
+    ["來源", "泰中筆數", report.taichungRecords.length],
+    ["來源", "對帳報告", report.reconciliationRecords.length],
+    ["趨勢", "公升數", report.liters],
+    ["趨勢", "里程區間", report.kilometers],
+    ["提醒", "待確認", report.alerts.length],
+    ...report.alerts.map((alert) => ["提醒", alert, ""]),
+    ["", "", ""],
+    ["type", "date/month", "title", "amount", "raw"],
+    ...report.records.map((record) => [
+      record.type,
+      recordMonth(record),
+      TYPES[record.type] ? TYPES[record.type].primary(record) : record.id,
+      record.amount || record.total_due || record.total || record.extra_fee || "",
+      JSON.stringify(record)
+    ])
+  ];
+  downloadCsv(`賺大錢月報-${report.month}.csv`, rows);
+}
+
 document.addEventListener("click", (event) => {
   const modeButton = event.target.closest(".mode-card");
   if (modeButton) setMode(modeButton.dataset.type);
@@ -792,6 +973,7 @@ $("#clear-filter").addEventListener("click", () => {
   renderRecords();
 });
 $("#export-btn").addEventListener("click", exportCsv);
+$("#export-monthly-btn").addEventListener("click", exportMonthlyReport);
 
 renderForm();
 renderAll();

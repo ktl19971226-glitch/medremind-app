@@ -34,6 +34,14 @@ app.use((req, _res, next) => {
 app.use(express.static(path.join(__dirname, "public")));
 
 const scanTemplates = {
+  auto: {
+    label: "自動分類單據",
+    fields: {},
+    notes: [
+      "先判斷圖片屬於 hotai、taichung、fuel、maintenance 或 reconciliation。",
+      "判斷後只輸出該類型需要的欄位。"
+    ]
+  },
   hotai: {
     label: "和泰托運紀錄",
     fields: {
@@ -114,6 +122,27 @@ const scanTemplates = {
 };
 
 function buildPrompt(type) {
+  if (type === "auto") {
+    return [
+      "你是台灣物流與車輛成本單據 OCR 結構化助手。請先判斷圖片類型，再結構化辨識。",
+      "請只輸出 JSON，不要 Markdown，不要解釋。",
+      "type 只能是 hotai、taichung、fuel、maintenance、reconciliation 之一。",
+      "類型規則：和泰汽車外車託運單用 hotai；泰中金屬送貨單用 taichung；加油發票/油耗紀錄用 fuel；保養維修單用 maintenance；月底客戶對帳單或月結明細用 reconciliation。",
+      "各類欄位定義：",
+      JSON.stringify(Object.fromEntries(Object.entries(scanTemplates)
+        .filter(([key]) => key !== "auto")
+        .map(([key, template]) => [key, template.fields])), null, 2),
+      "如果欄位看不清楚，填空字串或 0，不要猜太遠。每個欄位都要附 confidence，範圍 0 到 1。",
+      "輸出格式：",
+      JSON.stringify({
+        type: "hotai",
+        fields: {},
+        confidence: {},
+        raw_text: "",
+        warnings: []
+      }, null, 2)
+    ].join("\n\n");
+  }
   const template = scanTemplates[type] || scanTemplates.hotai;
   return [
     `你是台灣物流與車輛成本單據 OCR 結構化助手。請辨識圖片中的「${template.label}」。`,
@@ -571,9 +600,10 @@ app.post("/api/ai-scan", async (req, res) => {
     if (!parsed) {
       return res.status(502).json({ error: "AI 回傳格式無法解析", raw: text });
     }
-    res.json(type === "reconciliation"
+    const resultType = type === "auto" && scanTemplates[parsed.type] && parsed.type !== "auto" ? parsed.type : type;
+    res.json(resultType === "reconciliation"
       ? sanitizeReconciliationResult(parsed, text)
-      : sanitizeResult(type, parsed, text));
+      : sanitizeResult(resultType, parsed, text));
   } catch (error) {
     res.status(500).json({ error: "伺服器錯誤", detail: error.message });
   }

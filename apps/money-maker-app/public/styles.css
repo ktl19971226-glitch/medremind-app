@@ -94,7 +94,8 @@ h1 {
   width: 56px;
 }
 
-.summary-band {
+.summary-band,
+.dashboard-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
@@ -105,13 +106,20 @@ h1 {
   box-shadow: var(--shadow);
 }
 
-.summary-band div {
+.dashboard-grid {
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 10px;
+}
+
+.summary-band div,
+.dashboard-grid div {
   min-width: 0;
   padding: 14px 10px;
   background: var(--panel);
 }
 
-.summary-band span {
+.summary-band span,
+.dashboard-grid span {
   display: block;
   margin-bottom: 8px;
   color: var(--muted);
@@ -119,10 +127,83 @@ h1 {
   font-weight: 700;
 }
 
-.summary-band strong {
+.summary-band strong,
+.dashboard-grid strong {
   display: block;
   overflow-wrap: anywhere;
   font-size: 19px;
+}
+
+.insight-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-head h2 {
+  margin-bottom: 4px;
+  font-size: 18px;
+}
+
+.section-head p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.metric-list {
+  display: grid;
+  gap: 8px;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  font-weight: 800;
+}
+
+.metric-row span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.alert-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alert-list li {
+  border-left: 4px solid var(--warn);
+  border-radius: 8px;
+  background: #fff9ef;
+  padding: 10px 12px;
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.alert-list li.ok-alert {
+  border-left-color: var(--accent);
+  background: #f2fbf9;
+  color: var(--accent-strong);
 }
 
 .mode-grid {
@@ -456,5 +537,9 @@ dd {
 @media (max-width: 380px) {
   .scan-actions {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
