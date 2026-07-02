@@ -754,7 +754,10 @@ async function handleSpreadsheetImport(file) {
     return;
   }
   state.records = [...records, ...state.records];
+  state.type = fuelCount ? "fuel" : "maintenance";
+  $$(".mode-card").forEach((button) => button.classList.toggle("active", button.dataset.type === state.type));
   saveRecords();
+  renderForm();
   renderAll();
   setScanState(`${summary} 已匯入並同步。`);
 }

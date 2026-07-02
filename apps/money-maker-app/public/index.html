@@ -15,73 +15,72 @@
         <h1>賺大錢</h1>
         <p class="sync-state" id="sync-state">私有同步準備中</p>
       </div>
-      <button class="icon-button" id="export-btn" type="button" title="匯出 CSV">CSV</button>
+      <div class="top-actions">
+        <button class="icon-button" id="export-btn" type="button" title="匯出 CSV">CSV</button>
+      </div>
     </header>
 
     <main>
-      <section class="summary-band" aria-label="統計">
-        <div>
-          <span>本月淨利</span>
-          <strong id="month-profit">$0</strong>
-        </div>
-        <div>
-          <span>本月收入</span>
-          <strong id="month-income">$0</strong>
-        </div>
-        <div>
-          <span>本月成本</span>
-          <strong id="month-cost">$0</strong>
-        </div>
-      </section>
-
-      <section class="dashboard-grid" aria-label="儀表板">
-        <div>
-          <span>油耗</span>
-          <strong id="month-fuel">$0</strong>
-        </div>
-        <div>
-          <span>保養</span>
-          <strong id="month-maintenance">$0</strong>
-        </div>
-        <div>
-          <span>待確認</span>
-          <strong id="issue-count">0</strong>
-        </div>
-        <div>
-          <span>總筆數</span>
-          <strong id="total-count">0</strong>
-        </div>
-      </section>
-
-      <section class="insight-panel" aria-label="月結損益">
+      <section class="hero-panel" aria-label="本月總覽">
         <div class="section-head">
           <div>
-            <h2>月結損益</h2>
+            <h2>本月總覽</h2>
             <p id="profit-note">本月資料整理中</p>
           </div>
           <button class="secondary-button" id="export-monthly-btn" type="button">月報</button>
         </div>
-        <div class="metric-list" id="source-stats"></div>
-      </section>
-
-      <section class="insight-panel" aria-label="提醒">
-        <div class="section-head">
+        <div class="summary-band" aria-label="損益統計">
+          <div class="profit-cell">
+            <span>本月淨利</span>
+            <strong id="month-profit">$0</strong>
+          </div>
           <div>
-            <h2>待確認提醒</h2>
-            <p>缺漏、重複單號與對帳差額</p>
+            <span>本月收入</span>
+            <strong id="month-income">$0</strong>
+          </div>
+          <div>
+            <span>本月成本</span>
+            <strong id="month-cost">$0</strong>
           </div>
         </div>
-        <ul class="alert-list" id="alert-list"></ul>
-      </section>
-
-      <section class="insight-panel" aria-label="車輛成本趨勢">
-        <div class="section-head">
+        <div class="dashboard-grid" aria-label="儀表板">
           <div>
-            <h2>車輛成本趨勢</h2>
-            <p>油耗、每公里成本與保養波動</p>
+            <span>油耗</span>
+            <strong id="month-fuel">$0</strong>
+          </div>
+          <div>
+            <span>保養</span>
+            <strong id="month-maintenance">$0</strong>
+          </div>
+          <div>
+            <span>待確認</span>
+            <strong id="issue-count">0</strong>
+          </div>
+          <div>
+            <span>總筆數</span>
+            <strong id="total-count">0</strong>
           </div>
         </div>
-        <div class="metric-list" id="cost-trends"></div>
+      </section>
+
+      <section class="scan-panel" aria-label="掃描">
+        <div class="section-head">
+          <div>
+            <h2 id="form-title">和泰托運紀錄</h2>
+            <p id="form-subtitle">掃描或手動輸入配送日期、流水號、運送區間、附加費用。</p>
+          </div>
+        </div>
+        <div class="scan-actions">
+          <label class="scan-button">
+            <input id="scan-camera" type="file" accept="image/*" capture="environment" multiple>
+            拍照掃描
+          </label>
+          <label class="scan-button secondary-scan">
+            <input id="scan-upload" type="file" accept="image/*,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple>
+            上傳檔案
+          </label>
+        </div>
+        <div class="scan-state" id="scan-state"></div>
       </section>
 
       <nav class="mode-grid" aria-label="功能">
@@ -111,25 +110,38 @@
         </button>
       </nav>
 
-      <section class="scan-panel" aria-label="掃描">
-        <div>
-          <h2 id="form-title">和泰托運紀錄</h2>
-          <p id="form-subtitle">掃描或手動輸入配送日期、流水號、運送區間、附加費用。</p>
+      <form class="entry-form" id="entry-form" autocomplete="off"></form>
+
+      <section class="insight-panel" aria-label="待確認提醒">
+        <div class="section-head">
+          <div>
+            <h2>待確認</h2>
+            <p>缺漏、重複單號與對帳差額</p>
+          </div>
         </div>
-        <div class="scan-actions">
-          <label class="scan-button">
-            <input id="scan-camera" type="file" accept="image/*" capture="environment" multiple>
-            拍照掃描
-          </label>
-          <label class="scan-button secondary-scan">
-            <input id="scan-upload" type="file" accept="image/*,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple>
-            上傳檔案
-          </label>
-        </div>
-        <div class="scan-state" id="scan-state"></div>
+        <ul class="alert-list" id="alert-list"></ul>
       </section>
 
-      <form class="entry-form" id="entry-form" autocomplete="off"></form>
+      <section class="insight-panel two-column" aria-label="分析">
+        <div>
+          <div class="section-head compact">
+            <div>
+              <h2>月結損益</h2>
+              <p>收入、來源與對帳</p>
+            </div>
+          </div>
+          <div class="metric-list" id="source-stats"></div>
+        </div>
+        <div>
+          <div class="section-head compact">
+            <div>
+              <h2>車輛成本</h2>
+              <p>油耗、里程與保養</p>
+            </div>
+          </div>
+          <div class="metric-list" id="cost-trends"></div>
+        </div>
+      </section>
 
       <section class="toolbar">
         <input id="search-input" type="search" placeholder="搜尋日期、單號、廠商或備註">
