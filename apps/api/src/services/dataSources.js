@@ -266,8 +266,14 @@ const localBulletinDefaults = {
 
 const thsrStatusUrl = 'https://www.thsrc.com.tw/ArticleContent/3ec1c04f-d3de-45b1-becc-cba412d55123';
 const traLiveBoardPublicUrl = 'https://ptx.transportdata.tw/MOTC/v2/Rail/TRA/LiveBoard?$top=500&$format=JSON';
-const kaohsiungMetroAlertUrl = 'https://ptx.transportdata.tw/MOTC/v2/Rail/Metro/Alert/KRTC?$top=20&$format=JSON';
 const ptxBusAlertBaseUrl = 'https://ptx.transportdata.tw/MOTC/v2/Bus/Alert';
+const ptxMetroAlertBaseUrl = 'https://ptx.transportdata.tw/MOTC/v2/Rail/Metro/Alert';
+const ptxMetroAlerts = {
+  TRTC: { label: '臺北捷運', coverage: ['臺北市', '新北市'], fallback: 'https://web.metro.taipei/pages2026/WebServiceStatus' },
+  TYMC: { label: '桃園捷運', coverage: ['桃園市'], fallback: 'https://www.tymetro.com.tw/tymetro-new/tw/index.php' },
+  TMRT: { label: '臺中捷運', coverage: ['臺中市'], fallback: 'https://www.tmrt.com.tw/' },
+  KRTC: { label: '高雄捷運', coverage: ['高雄市'], fallback: 'https://www.krtc.com.tw/Information/notice' }
+};
 const taipeiTodayRoadworkUrl = 'https://tpnco.blob.core.windows.net/blobfs/Todaywork.json';
 const newTaipeiRoadworkUrl = 'https://data.ntpc.gov.tw/api/datasets/96B6101B-C033-4834-8BD5-E312651DB7A0/json?page=0&size=1000';
 const taoyuanTodayRoadworkUrl = 'https://opendata.tycg.gov.tw/api/dataset/56c616fe-07d7-4b0c-bb75-e8f8cd75500a/resource/52de3762-1490-4a86-a074-0062d746873b/download';
@@ -2147,7 +2153,41 @@ async function fatalTrafficAccident(location) {
   };
 }
 
+async function ptxMetroAlert(authorityCode) {
+  const config = ptxMetroAlerts[authorityCode];
+  if (!config) return null;
+  const source = `PTX/MOTC ${config.label}營運警示`;
+  const data = await fetchJson(`${ptxMetroAlertBaseUrl}/${authorityCode}?$top=20&$format=JSON`, { timeoutMs: 7000 });
+  const records = Array.isArray(data?.Alerts) ? data.Alerts : Array.isArray(data) ? data : [];
+  const activeAlerts = records.filter(record => activeWindow(record) && Number(record.Status) !== 1);
+  if (activeAlerts.length) {
+    const alert = activeAlerts[0];
+    const scope = alert.Scope?.Lines?.map(line => line.LineName?.Zh_tw || line.LineID).filter(Boolean).join('、') ||
+      alert.Scope?.Stations?.map(station => station.StationName?.Zh_tw || station.StationID).filter(Boolean).join('、') ||
+      config.label;
+    const timeText = [alert.PublishTime, alert.UpdateTime].filter(Boolean).join('，更新 ');
+    return {
+      status: 'live',
+      source,
+      body: `${scope}：${alert.Title || '營運異常'}，${trimAlertText(alert.Description || '')}${timeText ? `（${timeText}）` : ''}。`,
+      shouldNotify: true
+    };
+  }
+  if (records.length || data?.UpdateTime) {
+    const normal = records.find(record => Number(record.Status) === 1) || records[0];
+    return {
+      status: 'no-event',
+      source,
+      body: `${config.label}${normal?.Title || normal?.Description || '正常營運'}${data?.UpdateTime ? `，更新 ${data.UpdateTime}` : ''}。`,
+      shouldNotify: false
+    };
+  }
+  return null;
+}
+
 async function taipeiMetroStatus(location) {
+  const ptxStatus = await ptxMetroAlert('TRTC');
+  if (ptxStatus) return ptxStatus;
   const text = await fetchText(transitDefaults[canonicalCity(location.city)] || transitDefaults[location.city], { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '臺北捷運營運燈號', body: '臺北捷運營運燈號資料源暫時無法連線。' };
   const statusText = text.match(/realstatus__text[^>]*>([^<]+)</)?.[1]?.trim() || '';
@@ -2207,6 +2247,8 @@ async function traLiveBoard() {
 }
 
 async function taoyuanMetroStatus(location) {
+  const ptxStatus = await ptxMetroAlert('TYMC');
+  if (ptxStatus) return ptxStatus;
   const text = await fetchText(taoyuanMetroStatusUrl, { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '桃園捷運最新營運狀態', body: '桃園捷運營運狀態資料源暫時無法連線。' };
   const statusText = text.match(/最新營運狀態[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/)?.[1]
@@ -2226,6 +2268,8 @@ async function taoyuanMetroStatus(location) {
 }
 
 async function taichungMetroStatus() {
+  const ptxStatus = await ptxMetroAlert('TMRT');
+  if (ptxStatus) return ptxStatus;
   const text = await fetchText(taichungMetroStatusUrl, { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '臺中捷運營運狀態', body: '臺中捷運營運狀態資料源暫時無法連線。' };
   const statusText = cleanHtmlText(text.match(/捷運營運狀態[:：]\s*([\s\S]*?)(?:<\/|票價與乘車時間|<option)/)?.[1] || '');
@@ -2242,32 +2286,8 @@ async function taichungMetroStatus() {
 }
 
 async function kaohsiungMetroStatus() {
-  const data = await fetchJson(kaohsiungMetroAlertUrl, { timeoutMs: 7000 });
-  const records = Array.isArray(data?.Alerts) ? data.Alerts : Array.isArray(data) ? data : [];
-  const activeAlerts = records.filter(record => activeWindow(record) && Number(record.Status) !== 1);
-  if (activeAlerts.length) {
-    const alert = activeAlerts[0];
-    const scope = alert.Scope?.Lines?.map(line => line.LineName?.Zh_tw || line.LineID).filter(Boolean).join('、') ||
-      alert.Scope?.Stations?.map(station => station.StationName?.Zh_tw || station.StationID).filter(Boolean).join('、') ||
-      '高雄捷運';
-    const timeText = [alert.PublishTime, alert.UpdateTime].filter(Boolean).join('，更新 ');
-    return {
-      status: 'live',
-      source: 'PTX/MOTC 高雄捷運營運警示',
-      body: `${scope}：${alert.Title || '營運異常'}，${trimAlertText(alert.Description || '')}${timeText ? `（${timeText}）` : ''}。`,
-      shouldNotify: true
-    };
-  }
-  if (records.length || data?.UpdateTime) {
-    const normal = records.find(record => Number(record.Status) === 1) || records[0];
-    return {
-      status: 'no-event',
-      source: 'PTX/MOTC 高雄捷運營運警示',
-      body: `高雄捷運${normal?.Title || normal?.Description || '正常營運'}${data?.UpdateTime ? `，更新 ${data.UpdateTime}` : ''}。`,
-      shouldNotify: false
-    };
-  }
-
+  const ptxStatus = await ptxMetroAlert('KRTC');
+  if (ptxStatus) return ptxStatus;
   const text = await fetchText(kaohsiungMetroNoticeUrl, { timeoutMs: 7000 });
   if (!text) return { status: 'no-event', source: '高雄捷運重要公告', body: '高雄捷運營運警示與重要公告資料源暫時無法連線。' };
   return {
@@ -3155,21 +3175,28 @@ async function officialLocalBulletin(location) {
   };
 }
 
+async function metroStatusForCity(city, location) {
+  if (city === '桃園市') return taoyuanMetroStatus({ ...location, city });
+  if (city === '臺中市') return taichungMetroStatus();
+  if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
+  if (city === '高雄市') return kaohsiungMetroStatus();
+  return null;
+}
+
 async function transitInfo(location) {
   const city = canonicalCity(location.city);
   const highSpeedRail = await thsrStatus();
   if (highSpeedRail.status === 'live') return highSpeedRail;
   const railIncident = await ncdrCapAlert('transit', location);
   if (railIncident.status === 'live') return railIncident;
+  const metroStatus = await metroStatusForCity(city, location);
+  if (metroStatus?.status === 'live') return metroStatus;
   const traBoard = await traLiveBoard();
   if (traBoard.status === 'live') return traBoard;
   const tdxBusAlert = await tdxBusAlerts({ ...location, city });
   const busAlert = tdxBusAlert.status === 'not-configured' ? await ptxBusAlerts({ ...location, city }) : tdxBusAlert;
   if (busAlert.status === 'live') return busAlert;
-  if (city === '桃園市') return taoyuanMetroStatus({ ...location, city });
-  if (city === '臺中市') return taichungMetroStatus();
-  if (city === '臺北市' || city === '新北市') return taipeiMetroStatus({ ...location, city });
-  if (city === '高雄市') return kaohsiungMetroStatus();
+  if (metroStatus) return metroStatus;
   if (busAlert.status !== 'not-configured') return busAlert;
   if (traBoard.status !== 'not-configured') return traBoard;
   if (railIncident.status !== 'not-configured') return railIncident;
@@ -3808,6 +3835,12 @@ export function getSourceCoverage() {
         modules: ['transit'],
         source: traLiveBoardPublicUrl
       },
+      'ptx-metro-alerts-public': {
+        coverage: Object.values(ptxMetroAlerts).flatMap(config => config.coverage),
+        modules: ['transit'],
+        source: `${ptxMetroAlertBaseUrl}/{AuthorityCode}?$format=JSON`,
+        authorities: Object.fromEntries(Object.entries(ptxMetroAlerts).map(([code, config]) => [code, config.label]))
+      },
       'taoyuan-metro-status': {
         coverage: '桃園捷運營運狀態',
         modules: ['transit'],
@@ -3821,7 +3854,7 @@ export function getSourceCoverage() {
       'kaohsiung-metro-alert-public': {
         coverage: '高雄捷運營運警示',
         modules: ['transit'],
-        source: kaohsiungMetroAlertUrl
+        source: `${ptxMetroAlertBaseUrl}/KRTC?$format=JSON`
       },
       'fraud-dashboard': {
         coverage: '全台灣防詐宣導與今日常見手法',
