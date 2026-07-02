@@ -71,19 +71,6 @@ const TYPES = {
     ],
     primary: (r) => `${r.service_date || "保養"} ${r.shop_name || ""}`.trim()
   },
-  other_cost: {
-    title: "其他車輛成本",
-    subtitle: "記錄 eTag、貨車貸款、保險或其他車輛支出。",
-    labels: { cost_date: "日期", category: "類別/項目", amount: "金額", odometer: "里程/公里數", note: "備註" },
-    fields: [
-      ["cost_date", "date"],
-      ["category", "text"],
-      ["amount", "number"],
-      ["odometer", "number"],
-      ["note", "textarea"]
-    ],
-    primary: (r) => `${r.cost_date || "成本"} ${r.category || ""} ${money(r.amount || 0)}`.trim()
-  },
   reconciliation: {
     title: "月底 AI 對帳",
     subtitle: "上傳客戶月底對帳單，AI 會讀出明細並和 App 內托運紀錄核對缺漏。",
@@ -404,7 +391,7 @@ function normalizeMatchText(value) {
 }
 
 function recordDateText(record) {
-  return String(record.delivery_date || record.fuel_date || record.service_date || record.cost_date || record.created_at || "");
+  return String(record.delivery_date || record.fuel_date || record.service_date || record.created_at || "");
 }
 
 function normalizeStatementMonth(value) {
@@ -573,7 +560,6 @@ function renderStats() {
     if (!inMonth) continue;
     if (record.type === "fuel") monthCost += Number(record.amount || 0);
     if (record.type === "maintenance") monthCost += Number(record.total_due || record.labor_total || 0) + Number(record.parts_total || 0);
-    if (record.type === "other_cost") monthCost += Number(record.amount || 0);
     if (record.type === "hotai") monthExtra += Number(record.extra_fee || 0);
   }
   $("#month-cost").textContent = money(monthCost);
@@ -630,8 +616,7 @@ async function handleSpreadsheetImport(file) {
   }
   const fuelCount = records.filter((record) => record.type === "fuel").length;
   const maintenanceCount = records.filter((record) => record.type === "maintenance").length;
-  const otherCount = records.filter((record) => record.type === "other_cost").length;
-  const summary = `讀到 ${records.length} 筆：油耗 ${fuelCount}、保養 ${maintenanceCount}、其他 ${otherCount}。`;
+  const summary = `讀到 ${records.length} 筆：油耗 ${fuelCount}、保養 ${maintenanceCount}。`;
   if (!confirm(`${summary}\n要匯入 App 並同步嗎？`)) {
     setScanState("已取消 Excel 匯入。");
     return;

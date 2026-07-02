@@ -92,19 +92,6 @@ const scanTemplates = {
       "items 請保留主要保養項目、零件和耗材，不要編造看不到的內容。"
     ]
   },
-  other_cost: {
-    label: "其他車輛成本",
-    fields: {
-      cost_date: "成本日期",
-      category: "成本類別，例如 etag、貨車貸款、保險、其他",
-      amount: "金額，數字",
-      odometer: "里程或公里數，數字，沒有則 0"
-    },
-    notes: [
-      "這是車輛相關成本紀錄。",
-      "只抓車輛使用成本，不要抓托運收入。"
-    ]
-  },
   reconciliation: {
     label: "月底客戶對帳單",
     fields: {
@@ -304,8 +291,7 @@ function parseLiters(title) {
 function classifyCostTitle(title) {
   const text = String(title || "");
   if (/公升|柴油|汽油|無鉛/.test(text)) return "fuel";
-  if (/保養|輪胎|煞車|引擎|變速箱|電瓶|破胎|ABS|abs|輪軸/.test(text)) return "maintenance";
-  return "other_cost";
+  return "maintenance";
 }
 
 function spreadsheetRowsToRecords(rows) {
@@ -354,15 +340,6 @@ function spreadsheetRowsToRecords(rows) {
         tax: 0,
         total_due: amount,
         paid_status: "已收",
-        odometer,
-        note
-      });
-    } else {
-      records.push({
-        type,
-        cost_date: date,
-        category: title,
-        amount,
         odometer,
         note
       });
