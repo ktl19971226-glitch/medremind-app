@@ -369,14 +369,23 @@ function filteredRecords() {
 function renderRecords() {
   const list = $("#record-list");
   const records = filteredRecords();
+  const term = state.search.trim();
+  const visibleRecords = term ? records : records.slice(0, 30);
   if (!records.length) {
-    list.innerHTML = `<div class="empty-state">目前沒有${currentType().title}。</div>`;
+    list.innerHTML = `<div class="empty-state">${term ? "找不到符合搜尋的紀錄。" : `目前沒有${currentType().title}。`}</div>`;
     return;
   }
 
   const template = $("#record-template");
-  list.innerHTML = "";
-  for (const record of records) {
+  const hiddenCount = records.length - visibleRecords.length;
+  list.innerHTML = `
+    <div class="record-list-note">
+      ${term
+        ? `搜尋「${escapeHtml(term)}」找到 ${records.length} 筆`
+        : `顯示最新 ${visibleRecords.length} 筆${hiddenCount > 0 ? `，其餘 ${hiddenCount} 筆請用搜尋找` : ""}`}
+    </div>
+  `;
+  for (const record of visibleRecords) {
     const node = template.content.firstElementChild.cloneNode(true);
     const type = TYPES[record.type];
     node.dataset.id = record.id;

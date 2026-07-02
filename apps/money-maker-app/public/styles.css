@@ -404,6 +404,17 @@ label.field {
   gap: 10px;
 }
 
+.record-list-note {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--muted);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .empty-state {
   padding: 24px 12px;
   color: var(--muted);
